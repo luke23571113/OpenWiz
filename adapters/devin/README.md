@@ -13,7 +13,7 @@ Every Devin call goes through the kit's key helper, [`hostkey.py`](../../kernel/
 
 | Command | Devin call (v3 sessions API) |
 | --- | --- |
-| `start` | `POST /v3/organizations/<org>/sessions` with `prompt` (the skill's one-line brief, as the template's) and, unless `model` is `default`, `devin_mode`. It saves the session before it answers. If it can't save it, it terminates the session and says the outcome is unknown |
+| `start` | `POST /v3/organizations/<org>/sessions` with `prompt` (the skill's one-line brief, as the template's) and, unless `model` is `default`, `devin_mode`. It saves the session before it answers. If it can't save it, it terminates the session and says the outcome is unknown. A create whose answer is lost (the connection drops, Devin answers 408 or 5xx, or the helper fails after it may have sent) is also an unknown outcome: the error says to look for the session in Devin and resolve it before starting again, never to retry. Only a 4xx answer (except 408) or a refusal the helper makes before sending anything says nothing was started |
 | `wake` | `POST /v3/organizations/<org>/sessions/<run>/messages` with `message` ("You were woken: read the ticket again and carry on"). Devin resumes a suspended session for it. A stopped run takes no wake |
 | `stop` | Marks the run stopped, then `DELETE /v3/organizations/<org>/sessions/<run>`, which terminates the session. If Devin refuses, the run stays stopping: no wake, and the next `stop` sends the terminate again. Once Devin has terminated it (or answers 404 or 410), a later `stop` answers without a call |
 

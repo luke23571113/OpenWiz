@@ -13,6 +13,11 @@ START = {'repository': r'[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}', 'ticket':
          'model': r'[A-Za-z0-9][A-Za-z0-9 ._:@+-]{0,59}'}
 SESSION = r'devin-[a-z0-9]{1,94}'
 EFFORT = re.compile(r'[a-z][a-z0-9-]{0,19}')
+UNCERTAIN_CREATE = ('look in Devin for a new session on this ticket and terminate it there (or keep it and track it by '
+                    'hand), then start again: retrying now can start a second session')
+REFUSED_BEFORE_SENDING = ('no key in either ', 'the key in ', "the kit's fake host gave no test key",
+                          'OPENWIZ_HOSTKEY_TEST_ORIGIN is not', 'the helper runs only in', 'native TLS loaded',
+                          'kernel/driver-kit/hosts.json is not', 'the request holds the key')
 CANT_SET_EFFORT = ("this host can't set effort: remove the effort for this harness in your Models table or Roster "
                    "to run it at the host's default")
 RUN = {'run': SESSION}
@@ -61,7 +66,11 @@ def organization():
     return org
 
 
-def ask(method, path, body=None):
+def unknown_create(why):
+    return Refused('the new session\'s outcome is unknown: ' + why, UNCERTAIN_CREATE)
+
+
+def ask(method, path, body=None, creating=False):
     request = {'host': HOST, 'method': method, 'path': path}
     if body is not None:
         request['body'] = body
@@ -70,7 +79,11 @@ def ask(method, path, body=None):
                            text=True, timeout=120)
         out = json.loads(p.stdout)
     except (OSError, subprocess.TimeoutExpired, ValueError):
+        if creating:
+            raise unknown_create('the key helper gave no answer')
         raise Refused('the key helper kernel/driver-kit/hostkey.py gave no answer', 'run it by hand to see why')
+    if p.returncode and creating and not str(out.get('error')).startswith(REFUSED_BEFORE_SENDING):
+        raise unknown_create('Devin may have made it, but the key helper got no answer it could pass on')
     if p.returncode:
         raise Refused(('the key helper refused: ' + str(out.get('error')))[:300], str(out.get('next'))[:300])
     status, answer = out['status'], out['body']
@@ -124,13 +137,15 @@ def start():
     except OSError:
         raise Refused('the driver cannot save runs in its state folder; nothing was started', SAVE)
     try:
-        status, answer = ask('POST', '/v3/organizations/%s/sessions' % org, body)
+        status, answer = ask('POST', '/v3/organizations/%s/sessions' % org, body, creating=True)
+        if 400 <= status < 500 and status != 408:
+            raise Refused('Devin refused the new session (%d), so nothing was started' % status,
+                          'check your Devin organization and its session limits, then start again')
         if not 200 <= status < 300:
-            raise failed('the new session', status)
+            raise unknown_create('Devin answered %d' % status)
         run = answer.get('session_id') if isinstance(answer, dict) else None
         if not (isinstance(run, str) and re.fullmatch(SESSION, run)):
-            raise Refused('Devin answered no session id the driver can keep, so the outcome is unknown',
-                          'look for a new session in Devin and terminate it there before you start again')
+            raise unknown_create('Devin answered no session id the driver can keep')
     finally:
         try:
             os.remove(pending)
