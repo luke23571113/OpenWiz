@@ -703,6 +703,10 @@
                 "unchanged"
               ]
             },
+            "listed": {
+              "const": false,
+              "description": "Present on a successful local set of a model id outside the local offered list."
+            },
             "after": {
               "$ref": "#/$defs/any_role"
             },

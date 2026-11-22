@@ -135,7 +135,8 @@ needs `cloudroom` verified. No component reads `cloudroom_not_needed`.
   thread is read.
 - **Another host's `harness`** is verified when the chosen harness's program
   is installed (`claude` for `claude-code`, `codex` for `codex`) and the
-  chosen harness, model and effort are in the local offered list below.
+  saved choice follows the Models table's ids rule below. Setup checks the
+  installed program even when the model is outside the local offered list.
 
 The schema refuses a `cloud` report (or one without `host`) that is ready
 without `cloudroom` verified, a `cloud` report with `cloudroom_not_needed`,
@@ -167,7 +168,7 @@ its output gains `"host": "<name>"`. Its codes:
 | Component | Codes |
 | --- | --- |
 | `cloudroom` | `cloudroom_not_needed` only. Its `next` line is `None: your agents run on HOST, not CloudRoom, so CloudRoom is not needed.` |
-| `harness` | `harness_listed` (verified), `harness_unselected`, `harness_not_installed` (the program is not on `PATH`), `harness_unavailable` (not in the local offered list), `harness_unreadable` |
+| `harness` | `harness_listed` (verified: program installed and choice settable, including unlisted models), `harness_unselected`, `harness_not_installed` (the program is not on `PATH`), `harness_unavailable` (the saved choice fails the ids rule or names an unsupported harness), `harness_unreadable` |
 | `project` | today's codes except `project_answer_refused`, plus `project_no_write` (refused: the signed-in account can't write to the repository) |
 | `personal_github`, `github_app` | today's codes |
 
@@ -211,3 +212,15 @@ shape below.
   `harnesses_not_reported`, and `harnesses` is empty.
 - **`label`** keeps its one value, so a reader tells the two lists apart by
   `source`, never by the label.
+
+For the local source, `openwiz models set <role> <provider> <model> <effort>`
+accepts any settable model id for an installed harness, including ids
+outside J255. The [Models table ids rule](models.v1.md#the-models-table)
+still applies to the provider, model and effort. For a successful local
+set of a model outside the offered list, `openwiz models set --json` adds
+`"listed": false` to the top level of the
+[`set_report`](models.v1.schema.json#/$defs/set_report), on both
+`changed` and `unchanged`. Other reports omit the field. The offered list
+continues to show the current choices. For `cloud`, `set` still requires
+that the provider, model and effort appear together in the CloudRoom
+catalogue.
