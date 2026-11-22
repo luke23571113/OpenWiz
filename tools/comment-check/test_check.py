@@ -245,6 +245,12 @@ REVIEW_CASES = {
     '#1967 case as a literal argument in a substitution': (
         {}, {'k.sh': 'word="$(echo case)" # check this directive\nword="$(echo esac)" # New narration\n'},
         [], {('k.sh', 1, 'comment'), ('k.sh', 2, 'comment')}),
+    'R1 of #2311 a near-match before the closing tag': (
+        {}, {'n.html': '<title></title-example><!-- literal sample --></title>\n<!-- New narration. -->\n'
+                       '<style></style-x>body {} /* More narration. */</style>\n'},
+        [], {('n.html', 2, 'comment'), ('n.html', 3, 'comment')}),
+    'R2 of #2311 a literal case on a continued line': (
+        {}, {'c.sh': 'word="$(echo \\\ncase)" # actual narration\n'}, [], {('c.sh', 2, 'comment')}),
     '#1968 a backtick in an inner double quote of a substitution': (
         {}, {'b.sh': 'word="$(printf \'%s\' "`printf \'%s\' value # literal`")" # comment after unsure nesting\n# New narration.\n'},
         [], {('b.sh', 2, 'comment')}),

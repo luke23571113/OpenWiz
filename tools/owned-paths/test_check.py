@@ -124,16 +124,21 @@ class Check(unittest.TestCase):
             '- `tools/install/harness.py` and its tests (installer) are excluded from this change\n'
             '- `tools/release/test.py` and its tests in `example/project` (shared) are excluded from this change\n'
             '- `tools/install/setup/init.py`, plus its tests (shared: the staging only)\n'
-            '- `crates/core/src/widget.rs` and its tests in `example/project` (the runner)\n')
+            '- `crates/core/src/widget.rs` and its tests in `example/project` (the runner)\n'
+            '- `tools/plain/run.py` and its tests (review notes (CI))\n'
+            '- `tools/excluded/run.py` and its tests (notes (CI)) are excluded from this change\n')
         s['pr']['files'][0]['nodes'] = [{'path': p} for p in (
             'crates/core/src/widget_tests.rs', 'tools/install/harness.py', 'tools/install/setup/init.test.mjs',
-            'tools/install/test_install.py', 'tools/release/test_release.py')]
-        s['exit'], s['absent'] = 1, ['tests of `tools/install/harness.py`', 'tests of `tools/release/test.py`']
+            'tools/install/test_install.py', 'tools/release/test_release.py', 'tools/plain/test_run.py',
+            'tools/excluded/test_run.py')]
+        s['exit'], s['absent'] = 1, ['tests of `tools/install/harness.py`', 'tests of `tools/release/test.py`',
+                                     'tests of `tools/excluded/run.py`']
         s['out'] = ['owned: crates/core/src/widget_tests.rs (tests of `crates/core/src/widget.rs`)',
                     'owned: tools/install/harness.py (by `tools/install/harness.py`)',
                     'owned: tools/install/setup/init.test.mjs (tests of `tools/install/setup/init.py`)',
+                    'owned: tools/plain/test_run.py (tests of `tools/plain/run.py`)',
                     'OUT: tools/install/test_install.py (ticket #7)', 'OUT: tools/release/test_release.py (ticket #7)',
-                    'owned-paths: 2 file(s) outside']
+                    'OUT: tools/excluded/test_run.py (ticket #7)', 'owned-paths: 3 file(s) outside']
         self.verdict('annotated-exclusion', s)
 
     def test_an_unreadable_pull_request_is_an_error_not_a_pass(self):
