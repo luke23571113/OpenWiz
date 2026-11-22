@@ -292,7 +292,7 @@ fn run_form(
         }),
         Parsed::List { save } => {
             let checkout = save.then(|| Checkout::open(root));
-            let options = read_cloud_options(client, clock);
+            let options = read_options(client, clock, None);
             let agents = checkout.map(|checkout| checkout.and_then(|c| Agents::open(&c)));
             let text = match &agents {
                 Some(agents) => agents.as_ref().ok().and_then(|a| a.read(FLEET_FILE).ok()),
