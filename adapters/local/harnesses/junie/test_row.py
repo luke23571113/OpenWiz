@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-# The junie fake accepts only the start and wake the row sends, and exits 2 on anything else, so a
-# driver that builds a wrong Junie command line fails the kit instead of passing on a lenient fake.
 import json, os, subprocess, sys, tempfile
 
 sys.dont_write_bytecode = True
