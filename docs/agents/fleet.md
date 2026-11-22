@@ -116,7 +116,6 @@ Rust 1.99.1 with `rustfmt` and `clippy`; there is no `rust-toolchain.toml`.
 | 3 | root | `cargo clippy --workspace --all-targets -- -D warnings` | `ci` |
 | 4 | root | `cargo build --workspace` | `ci` |
 | 5 | root | `cargo test --workspace` | `ci` |
-| 6 | root | `cargo test -p openwiz-tests --test checks pending` | `ci` |
 | 7 | root | `cargo build --release` | `ci` |
 
 Source: [AGENTS.md, Commands](../../AGENTS.md#commands), and [the CI workflow](../../.github/workflows/ci.yml).
