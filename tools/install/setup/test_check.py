@@ -281,6 +281,15 @@ class CredentialShapedText(unittest.TestCase):
                                       f'Refused: {secret}' if place == 'reason' else 'Proposed.')
                 self.assertNotIn(secret, json.dumps(saved.read()))
         saved.propose('prepare_project', {}, [f"Select {PROJECT['repository']} and operation {'a1' * 16}."], 'Proposed.')
+        for name in ('sk-tools', 'eyJ-docs', 'AKIA-notes', 'xoxb-bot', 'ghp_pages'):
+            with self.subTest(repository=name):
+                done = subprocess.run([sys.executable, '-I', '-B', str(HERE / 'setup.py'), 'prepare', '--state-dir',
+                                       str(Path(tmp.name) / name), '--repository', f'synthetic-owner/{name}', '--host',
+                                       'local', '--operator', f'synthetic-{name}', '--service-issue', '7', '--harness',
+                                       'codex', '--model', 'synthetic-model', '--effort', 'medium'],
+                                      capture_output=True, text=True, timeout=60)
+                self.assertEqual((done.returncode, json.loads(done.stdout or '{}').get('phase')), (0, 'proposed'),
+                                 done.stderr)
         saved.update(lambda value: value.update(project=PROJECT))
         self.assertEqual(saved.read()['project'], PROJECT)
 

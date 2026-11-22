@@ -37,6 +37,16 @@ SLOW_SYNC = CLOCK.replace("sys.argv = sys.argv[2:]\n", "import os\nsync = os.fsy
                           "os.fsync = lambda fd: ((lambda later: open(clock, 'w').write(later))(str(time.time() + 12)), sync(fd))\n"
                           "sys.argv = sys.argv[2:]\n")
 
+FAILED_REWRITE = CLOCK.replace("sys.argv = sys.argv[2:]\n", "import errno, os\nsync, synced = os.fsync, []\n"
+                               "def fsync(fd):\n    if not synced:\n"
+                               "        later = str(time.time() + 12)\n        open(clock, 'w').write(later)\n"
+                               "    synced.append(fd)\n    sync(fd)\n"
+                               "def failing(real):\n    def call(*args):\n        if synced:\n"
+                               "            raise OSError(errno.EIO, 'synthetic write error')\n"
+                               "        return real(*args)\n    return call\n"
+                               "os.fsync, os.write, os.pwrite = fsync, failing(os.write), failing(os.pwrite)\n"
+                               "sys.argv = sys.argv[2:]\n")
+
 
 def revoked(calls):
     return [c[2] for c in calls if c[:2] == ("DELETE", "/installation/token")]
@@ -241,6 +251,15 @@ class RequestFixtureTests(ServiceFixture):
             self.assertEqual(self.mint(url, SMALL, bootstrap=SLOW_SYNC).returncode, 0)
             self.assertEqual([line["outcome"] for line in self.logged()], ["expiry", "minted"])
             self.assertEqual(len(revoked(calls)), 1)
+
+    def test_a_failed_audit_rewrite_keeps_the_entry_and_revokes_the_token(self):
+        with fake_github(self.pem, REQUESTS["installed"]) as (url, calls, fake):
+            fake["expires_at"] = NOW + 311
+            done = self.mint(url, SMALL, bootstrap=FAILED_REWRITE)
+            self.assertEqual((done.returncode, json.loads(done.stdout).get("kind")), (1, "refusal"))
+            self.assertEqual(len(self.logged()), 1, "the request's audit entry survives")
+            self.assertEqual(revoked(calls), ["Bearer " + fake["token"]])
+            self.assert_nothing_exposed(fake["token"], done.stdout, done.stderr)
 
 
 class FactoryTests(ServiceFixture):
