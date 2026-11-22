@@ -9,9 +9,25 @@ import subprocess
 import sys
 import urllib.parse
 
+TLS_ENVIRONMENT = ('OPENSSL_', 'SSL_', 'SSLKEYLOGFILE')
+NATIVE_TLS = ('_ssl', '_hashlib')
+
+
+def scrub_tls_environment():
+    for name in [n for n in os.environ if n.startswith(TLS_ENVIRONMENT)]:
+        del os.environ[name]
+
+
+# SECURITY: native TLS reads OPENSSL_CONF and friends when it loads, so they go before anything can import ssl.
+scrub_tls_environment()
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 REGISTRY = os.path.join(HERE, 'hosts.json')
 OVERRIDE = 'OPENWIZ_HOSTKEY_TEST_ORIGIN'
+TEST_KEY = 'OPENWIZ_HOSTKEY_TEST_KEY'
+TOOLS = {'linux': ['/usr/bin/secret-tool', 'lookup', 'service'],
+         'darwin': ['/usr/bin/security', 'find-generic-password', '-w', '-s']}
+TOOL_ENVIRONMENT = {'linux': ('HOME', 'LANG', 'DBUS_SESSION_BUS_ADDRESS', 'XDG_RUNTIME_DIR'), 'darwin': ('HOME', 'LANG')}
 METHODS = ('GET', 'POST', 'DELETE')
 FIELDS = ('origin', 'variable', 'keychain', 'header')
 NAME = re.compile(r'[a-z0-9]+(?:-[a-z0-9]+)*')
@@ -21,10 +37,13 @@ ENTRY = {'origin': re.compile(r'https://[a-z0-9]+(?:-[a-z0-9]+)*(?:\.[a-z0-9]+(?
          'header': re.compile(r'authorization-bearer')}
 TEST_ORIGIN = re.compile(r'http://127\.0\.0\.1:([1-9][0-9]{0,4})')
 PATH = re.compile(r"/[A-Za-z0-9._~!$&'()*+,;=/?%-]*")
-KEY = re.compile(r'[\x21-\x7e]{1,4096}')
+KEY = re.compile(r'[A-Za-z0-9._~+/=-]{16,4096}')
+KEY_FORMAT = 'a key of 16 to 4096 letters, digits or ._~+/=-'
 LIMIT = 1 << 20
 SCHEMA = 'send exactly host, method, path and an optional body, as kernel/driver-kit/README.md shows'
 _key = []
+FALLBACK = {'error': 'the answer held the key, so the helper did not print it', 'next': 'report it to OpenWiz'}
+LAST_RESORT = {'error': 'refused', 'next': 'retry'}
 
 
 class Refused(Exception):
@@ -125,32 +144,37 @@ def test_origin(environ):
 
 
 def find_key(entry, environ):
-    # SECURITY: under the test override the keychain is never read, so no stored key can reach a loopback fake.
     variable, keychain = entry['variable'], entry['keychain']
     names = '%s or the keychain entry %s' % (variable, keychain)
-    key, where = environ.get(variable, ''), variable
-    if not key and OVERRIDE not in environ:
-        key, where = _keychain(keychain, {k: v for k, v in environ.items() if k not in (variable, OVERRIDE)}), keychain
-    if not key:
-        extra = '; under OPENWIZ_HOSTKEY_TEST_ORIGIN only the variable is read' if OVERRIDE in environ else ''
-        raise Refused('no key in either %s%s' % (names, extra),
-                      'set %s, or add the key to your keychain as %s; OpenWiz never stores it' % (variable, keychain))
+    if OVERRIDE in environ:
+        # SECURITY: the loopback override reads only the fixture key, never a production source.
+        key, where = environ.get(TEST_KEY, ''), TEST_KEY
+        if not key:
+            raise Refused('no test key in %s; under %s the helper never reads %s' % (TEST_KEY, OVERRIDE, names),
+                          'set %s to a synthetic key; it and the override are only for the kit\'s tests' % TEST_KEY)
+    else:
+        key, where = environ.get(variable, ''), variable
+        if not key:
+            key, where = _keychain(keychain, environ), keychain
+        if not key:
+            raise Refused('no key in either %s' % names, 'set %s, or add the key to your keychain as %s; OpenWiz '
+                          'never stores it' % (variable, keychain))
+    _key.append(key)
     if not KEY.fullmatch(key):
-        raise Refused('the key in %s is not one line of printable characters' % where,
-                      'store the key alone, with no spaces or line breaks, in %s' % names)
+        raise Refused('the key in %s is not %s' % (where, KEY_FORMAT), 'store the key alone, as the host gave it, '
+                      'in %s' % (TEST_KEY if where == TEST_KEY else names))
     return key
 
 
-def _keychain(entry, env):
-    if sys.platform == 'darwin':
-        argv = ['security', 'find-generic-password', '-s', entry, '-w']
-    elif sys.platform.startswith('linux'):
-        argv = ['secret-tool', 'lookup', 'service', entry]
-    else:
+def _keychain(entry, environ):
+    platform = 'darwin' if sys.platform == 'darwin' else 'linux' if sys.platform.startswith('linux') else None
+    if platform is None:
         return ''
+    env = {k: environ[k] for k in TOOL_ENVIRONMENT[platform] if k in environ}
+    env['PATH'] = '/usr/bin:/bin'
     try:
-        p = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                           env=env, timeout=60)
+        p = subprocess.run(TOOLS[platform] + [entry], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                           stderr=subprocess.DEVNULL, env=env, timeout=60)
         out = p.stdout.decode('utf-8')
     except (OSError, subprocess.SubprocessError, UnicodeDecodeError):
         return ''
@@ -171,8 +195,7 @@ def send(origin, method, path, body, key):
         headers['Content-Type'] = 'application/json'
     try:
         if scheme == 'https':
-            for name in ('SSL_CERT_FILE', 'SSL_CERT_DIR'):
-                os.environ.pop(name, None)
+            scrub_tls_environment()
             conn = http.client.HTTPSConnection(host, int(port or 443), timeout=60,
                                                context=ssl.create_default_context())
         else:
@@ -209,6 +232,7 @@ def _strings(value):
 def answer(status, raw, key):
     try:
         body = json.loads(raw.decode('utf-8'), parse_constant=_no_constant) if raw else None
+        json.dumps(body, allow_nan=False)
     except ValueError:
         body = None
     if key.encode('utf-8') in raw or any(key in s for s in _strings(body)):
@@ -217,10 +241,29 @@ def answer(status, raw, key):
     return {'status': status, 'body': body}
 
 
+def screen(req, key):
+    sent = [req['path'], urllib.parse.unquote(req['path'])]
+    if 'body' in req:
+        sent += [json.dumps(req['body'], allow_nan=False)] + list(_strings(req['body']))
+    if any(key in text for text in sent):
+        raise Refused('the request holds the key, so the helper did not send it',
+                      'send the request without the key; the helper adds it to the header itself')
+
+
+def render(out, keys):
+    for answer, code in ((out, None), (FALLBACK, 1), (LAST_RESORT, 1)):
+        text = json.dumps(answer)
+        if not any(k in s for k in keys for s in [text] + list(_strings(answer))):
+            return text, code
+    return json.dumps(LAST_RESORT), 1
+
+
 def run(stdin, environ):
     if not sys.flags.isolated:
         raise Refused('the helper runs only in Python\'s isolated mode', 'run it as python3 -I '
                       'kernel/driver-kit/hostkey.py')
+    if any(m in sys.modules for m in NATIVE_TLS):
+        raise Refused('native TLS loaded before the helper cleared its environment', 'report it to OpenWiz')
     override = test_origin(environ)
     hosts = registry()
     data = stdin.read(LIMIT + 1)
@@ -237,7 +280,7 @@ def run(stdin, environ):
     if (target.scheme, target.netloc) != tuple(urllib.parse.urlsplit(origin)[:2]):
         raise Refused('path would leave the registered address', 'send only the path below the host')
     key = find_key(entry, environ)
-    _key.append(key)
+    screen(req, key)
     status, raw = send(origin, req['method'], req['path'], req.get('body'), key)
     return answer(status, raw, key)
 
@@ -250,10 +293,8 @@ def main():
         out, code = {'error': e.args[0], 'next': e.args[1]}, 1
     except BaseException as e:
         out, code = {'error': 'the key helper failed: ' + type(e).__name__, 'next': 'report it to OpenWiz'}, 1
-    text = json.dumps(out)
-    if any(k in s for k in _key for s in [text] + list(_strings(out))):
-        text, code = json.dumps({'error': 'the answer held the key, so the helper did not print it',
-                                 'next': 'report it to OpenWiz'}), 1
+    text, gated = render(out, _key)
+    code = gated or code
     sys.stdout.write(text + '\n')
     sys.stdout.flush()
     sys.exit(code)
