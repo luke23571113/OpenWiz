@@ -1015,54 +1015,35 @@ class Login(Base):
         self.assertEqual(set(result), {'schema', 'code', 'operation', 'opened'})
         return result, err.getvalue()
 
-    def test_a_failed_sign_in_shows_cloudrooms_own_words_and_nothing_secret(self):
+    def test_a_failed_sign_in_never_prints_cloudrooms_raw_output(self):
         self.installed('signed-out')
-        secret = (b'Could not reach the CloudRoom server.\n'
-                  b'Retry at https://www.cloudroom.dev/login?desktop=synthetic-nonce-0001 as owner@example.invalid\n'
+        secret = (b'Retry at https://www.cloudroom.dev/login?desktop=synthetic-nonce-0001 as owner@example.invalid\n'
                   b'token: synthetic-token-0123456789abcdefghij\n\x1b[31mpassword=hunter2\x1b[0m\n'
-                  b'Authorization: Bearer synthetic-bearer\n{"token": "tk1", "refresh_token":"tk2"}\n'
-                  b'Authorization:\tBearer\ttb3\naccessToken tk5\n\x1b[38:2:255:0:0mcolour\x1b[0m done\n')
-        hung = b'CloudRoom could not start its server.\nhalf a line with tk4'
-        for code, reply, said in ((1, b'', secret), (1, secret, b''), (None, b'', b''), (None, b'', hung),
-                                  (None, secret, b''), (1, b'', b''),
-                                  (0, b'{"error": {"message": "Sign-in is busy."}}', b'')):
+                  b'{\n  "error": "refresh failed",\n  "refresh_token":\n\n    "rt1"\n}\n'
+                  b'Your refresh token for this session is\n  rt2\n'
+                  b'{"message": "Your token is:\\n rt3", "refresh_token": {"detail": "rt4"}}\n')
+        run = 'openwiz-cloudroom: to see its full output, run: "$HOME"/.local/bin/room-cli cloud sign-in --json\n'
+        cases = (
+            (1, b'', secret, "openwiz-cloudroom: CloudRoom's sign-in exited with status 1 and gave no usable link.\n" + run),
+            (1, secret, b'', "openwiz-cloudroom: CloudRoom's sign-in exited with status 1 and gave no usable link.\n" + run),
+            (0, b'{"error": {"message": "rt5"}}', b'',
+             "openwiz-cloudroom: CloudRoom's sign-in exited with status 0 and gave no usable link.\n" + run),
+            (None, b'', secret + b'getaddrinfo ENOTFOUND www.cloudroom.dev',
+             "openwiz-cloudroom: CloudRoom's sign-in did not answer within 30 seconds; is CloudRoom running?\n"
+             'openwiz-cloudroom: CloudRoom reported: CloudRoom could not look up its server; check the network.\n' + run),
+            (1, b'', b'connect ECONNREFUSED 127.0.0.1:4100 rt6\nconnect ECONNREFUSED 127.0.0.1:4100 rt6\n',
+             "openwiz-cloudroom: CloudRoom's sign-in exited with status 1 and gave no usable link.\n"
+             'openwiz-cloudroom: CloudRoom reported: CloudRoom could not connect; is CloudRoom running?\n' + run),
+            (1, b'', b'getaddrinfo enotfound www.cloudroom.dev\n',
+             "openwiz-cloudroom: CloudRoom's sign-in exited with status 1 and gave no usable link.\n" + run),
+        )
+        for code, reply, said, expected in cases:
             with self.subTest(code=code, reply=reply, said=said):
                 self.host.sign_in_code, self.host.sign_in_reply, self.host.sign_in_said = code, reply, said
                 result, err = self.said()
                 self.assertEqual((result['code'], result['opened']), ('cloudroom_login_missing', None))
                 self.assertEqual(self.host.opened, [])
-                for word in ('synthetic-nonce', 'owner@example.invalid', 'synthetic-token', 'hunter2', 'synthetic-bearer',
-                             '\x1b', 'tk1', 'tk2', 'tb3', 'tk4', 'tk5', '38:2', '255'):
-                    self.assertNotIn(word, err)
-                if code is None:
-                    self.assertIn("CloudRoom's sign-in did not answer", err)
-                if said == hung:
-                    self.assertIn('openwiz-cloudroom: CloudRoom said: CloudRoom could not start its server.\n', err)
-                    self.assertNotIn('half a line', err)
-                if secret in (reply, said):
-                    self.assertIn('openwiz-cloudroom: CloudRoom said: Could not reach the CloudRoom server.\n', err)
-                    self.assertIn('openwiz-cloudroom: CloudRoom said: Retry at [link removed] as [address removed]\n', err)
-                    self.assertIn('openwiz-cloudroom: CloudRoom said: colour done\n', err)
-                elif code is None:
-                    pass
-                elif code == 0:
-                    self.assertIn('openwiz-cloudroom: CloudRoom said: Sign-in is busy.\n', err)
-                else:
-                    self.assertIn("CloudRoom's sign-in gave no usable link and said nothing", err)
-
-    def test_a_credential_split_across_lines_never_reaches_stderr(self):
-        self.installed('signed-out')
-        for said in (b'Sign-in failed.\n{\n  "error": "refresh failed",\n  "refresh_token":\n    "rt1"\n}\n',
-                     b'{\n  "message": "Sign-in failed.",\n  "session":\n    "rt1"\n}\n',
-                     b'Sign-in failed.\ntoken:\n  rt1\n',
-                     b'Sign-in failed.\nrefresh_token =\n\trt1 rt1\n',
-                     b'Sign-in failed.\n[{"nested": {"cookie":\n"rt1"}}]\n'):
-            with self.subTest(said=said):
-                self.host.sign_in_code, self.host.sign_in_reply, self.host.sign_in_said = 1, b'', said
-                result, err = self.said()
-                self.assertEqual((result['code'], result['opened']), ('cloudroom_login_missing', None))
-                self.assertIn('openwiz-cloudroom: CloudRoom said: Sign-in failed.\n', err)
-                self.assertNotIn('rt1', err)
+                self.assertEqual(err, expected)
 
     def test_an_opener_that_fails_is_shown_and_not_counted_as_opened(self):
         self.installed('signed-out')
@@ -1070,24 +1051,25 @@ class Login(Base):
                                     b'https://www.cloudroom.dev/login?desktop=synthetic-nonce-0001\n')
         result, err = self.said()
         self.assertIsNone(result['opened'])
-        self.assertEqual(err, 'openwiz-cloudroom: xdg-open said: no method available for opening [link removed]\n')
+        self.assertEqual(err, 'openwiz-cloudroom: xdg-open exited with status 4; the sign-in page did not open.\n'
+                              'openwiz-cloudroom: xdg-open reported: No browser is set up to open the sign-in page.\n'
+                              'openwiz-cloudroom: to see its full output, run: /usr/bin/xdg-open https://www.cloudroom.dev\n')
         self.host.open_result = (None, b'')
         result, err = self.said()
         self.assertEqual((result['opened'], err), ('sign_in', ''))
 
-    def test_an_app_that_fails_at_launch_shows_its_own_words(self):
+    def test_an_app_that_fails_at_launch_shows_its_status_and_known_errors_only(self):
         real = cloudroom.Host(system='Linux', machine='x86_64', home=self.host.home, root=self.host.root)
         self.host.open = real.open
         self.host.publish_appimage(b'#!/bin/sh\necho "error while loading shared libraries: libnss3.so" >&2\n'
-                                   b'echo "see https://example.invalid/help?session=synthetic-0001" >&2\n'
-                                   b'echo "state syn7h3t1cst4t3v4lu3" >&2\nexit 1\n')
+                                   b'echo "see https://example.invalid/help?session=synthetic-0001" >&2\nexit 1\n')
         self.installed(None)
         with patch.object(cloudroom, 'OPEN_WAIT', 120):
             result, err = self.said()
         self.assertIsNone(result['opened'])
-        self.assertEqual(err, 'openwiz-cloudroom: CloudRoom said: error while loading shared libraries: libnss3.so\n'
-                              'openwiz-cloudroom: CloudRoom said: see [link removed]\n'
-                              'openwiz-cloudroom: CloudRoom said: state [removed]\n')
+        self.assertEqual(err, 'openwiz-cloudroom: CloudRoom exited with status 1 at launch.\n'
+                              'openwiz-cloudroom: CloudRoom reported: A system library CloudRoom needs is missing.\n'
+                              'openwiz-cloudroom: to see its full output, run: "$HOME"/Applications/Cloudroom.AppImage\n')
 
     def test_a_launch_that_outlives_the_wait_never_fills_a_file(self):
         go, wrote, pidfile, app = (self.base / name for name in ('go', 'wrote', 'pid', 'app'))
