@@ -6,9 +6,16 @@ Runs the five checks of [driver v1](../driver.v1.md) against one driver, on one 
 python3 -I kernel/driver-kit/kit.py --driver adapters/<host>/driver \
   --repo <owner>/<throwaway> --ticket <n> --harness <h> --model <m> [--skill build-ticket] [--wait 900]
 python3 -I kernel/driver-kit/test_kit.py     # the kit's own tests: the template passes, each planted driver fails
+python3 -I kernel/driver-kit/test_hostkey.py # the key helper's own tests: every refusal, and the key never leaks
 ```
 
 It prints one line per check, in the order version, start, wake, stop, token: `pass <check>: <what>` or `fail <check>: <why>`. Exit 0: all five pass. 1: a check failed. 2: the kit could not run; it says why on stderr, `kit.py: <why>`. Wake and stop run only after start passes.
+
+## Key hosts
+
+A host driven only through an API that takes the user's key is reached only through the key helper, [`hostkey.py`](hostkey.py) (driver v1 N4). The driver runs `python3 -I kernel/driver-kit/hostkey.py` with exactly `host`, `method` (`GET`, `POST` or `DELETE`), `path` and an optional `body` on stdin, and reads back exactly `status` and `body`, or a D3 error. The helper alone reads the key, from the host's variable in [`hosts.json`](hosts.json) or else its keychain entry, and sends it only in an `Authorization: Bearer` header, over verified HTTPS, to the registered origin. It refuses an unregistered host or an escaping path before any network call, follows no redirect, and never prints or stores the key. Adding a host is one reviewed entry in `hosts.json`.
+
+When a driver's `README.md` names a registered host, the token check plants a canary key in that host's variable, points the helper at a loopback fake through `OPENWIZ_HOSTKEY_TEST_ORIGIN` (honoured only as `http://127.0.0.1:<port>`, and then the keychain is never read), and runs start, wake and stop. It passes only when the canary reached the fake only in the helper's header and never appears in the driver's output, on a command line or in another variable, and when no file of the driver (but its `README.md`, `evidence/` and `test_*` files) names the variable or the override, or calls `security` or `secret-tool`.
 
 ## The throwaway ticket
 
@@ -29,4 +36,5 @@ On macOS, with no `/proc`, the kit lists processes with `ps -A`, and reads each 
 - `fixtures/no-proc/`: runs Python as on macOS, on Linux: no `/proc`, no `prctl` and no pidfd, `sys.platform` `darwin`, and a `ps` that takes macOS's `-E` (with `NO_PROC_HIDE_ENV` set, it shows no environment at all; with `NO_PROC_PROBE_ONLY` set, only the kit's own probe's). The drivers' and the kit's tests put it first on `PATH` to run the macOS path (#2010).
 - `fixtures/fake-harness`: a synthetic harness. It posts one builder note into the tracker named by `KIT_TRACKER`, edits it when woken, then waits to be stopped.
 - `fixtures/planted/<name>`: the template with one planted break each. `test_kit.py` names the exact lines each must print.
-- `evidence/`: the red run and the green run; `red-1586.txt`, `red-1586-r1.txt` and `green-1586.txt` are those of the credential fixes. `red-2039.txt` and `green-2039.txt` are those of the run-seen rule on macOS.
+- `fixtures/key-host/`: a fake key-host driver, the template sending each start, wake and stop to host `devin` through the helper. `fixtures/planted/key-*/` are it with one key break each: it reads the key itself, passes it in an argument, in another variable or in a request body, prints it, asks for an unregistered host or for a path with a host in it, calls the keychain tool, or names the test override. `test_kit.py` also runs it against a fake host that answers a redirect: start fails, and the redirect's target gets no request.
+- `evidence/`: the red run and the green run; `red-1586.txt`, `red-1586-r1.txt` and `green-1586.txt` are those of the credential fixes. `red-2039.txt` and `green-2039.txt` are those of the run-seen rule on macOS. `red-2379-*.txt` and `green-2379.txt` are those of the key helper and the key check.

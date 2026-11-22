@@ -5,6 +5,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import signal
 import subprocess
 import sys
@@ -150,6 +151,38 @@ class Kit(unittest.TestCase):
                 self.setUp()
                 code, out, _ = self.keyed(os.path.join(FIXTURES, 'planted', name, 'driver'))
                 self.assertEqual((code, out), (1, lines))
+
+    def test_on_macos_a_key_in_an_argument_or_another_variable_is_caught(self):
+        for name in ('key-in-args', 'key-in-env'):
+            with self.subTest(name):
+                self.tearDown()
+                self.setUp()
+                code, out, _ = self.keyed(os.path.join(FIXTURES, 'planted', name, 'driver'),
+                                          python=os.path.join(NO_PROC, 'python3'), NO_PROC_PYTHON=sys.executable,
+                                          PATH=NO_PROC + os.pathsep + self.env['PATH'])
+                self.assertEqual((code, out), (1, PLANTED_KEY[name]))
+
+    def test_without_the_key_helper_the_kit_refuses_a_driver_with_a_readme_and_runs_one_without(self):
+        kit = os.path.join(self.folder, 'kernel', 'driver-kit')
+        os.makedirs(kit)
+        for name in ('kit.py', 'schema.json'):
+            shutil.copy(os.path.join(HERE, name), kit)
+        shutil.copytree(os.path.join(HERE, '..', 'records-kit'), os.path.join(self.folder, 'kernel', 'records-kit'))
+        shutil.copy(os.path.join(HERE, '..', 'records.v1.md'), os.path.join(self.folder, 'kernel'))
+        bare = os.path.join(self.folder, 'bare')
+        os.makedirs(bare)
+        for name in ('driver', 'schema.json'):
+            shutil.copy(os.path.join(os.path.dirname(TEMPLATE), name), bare)
+        for driver, want in ((KEY_HOST, 2), (TEMPLATE, 2), (os.path.join(bare, 'driver'), 0)):
+            with self.subTest(driver):
+                p = subprocess.run([sys.executable, '-I', os.path.join(kit, 'kit.py'), '--driver', driver, '--repo',
+                                    'example/site', '--ticket', '7', '--harness', 'fake-harness', '--model', 'm',
+                                    '--tracker', self.env['KIT_TRACKER'], '--wait', '8'], env=self.env,
+                                   capture_output=True, text=True, timeout=120)
+                self.assertEqual(p.returncode, want, p.stdout + p.stderr)
+                if want:
+                    self.assertEqual(p.stderr, 'kit.py: the key helper kernel/driver-kit/hostkey.py is missing, so '
+                                               'the kit cannot check host keys\n')
 
     def test_a_host_that_answers_a_redirect_fails_start_and_the_redirect_is_never_followed(self):
         kit = module(os.path.join(HERE, 'kit.py'))

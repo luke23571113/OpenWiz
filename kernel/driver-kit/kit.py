@@ -19,10 +19,7 @@ _spec = importlib.util.spec_from_loader('records_kit', importlib.machinery.Sourc
     'records_kit', os.path.join(HERE, '..', 'records-kit', 'check.py')))
 records_kit = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(records_kit)
-_spec = importlib.util.spec_from_loader('hostkey', importlib.machinery.SourceFileLoader(
-    'hostkey', os.path.join(HERE, 'hostkey.py')))
-hostkey = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(hostkey)
+OVERRIDE = 'OPENWIZ_HOSTKEY_TEST_ORIGIN'
 KEYCHAIN_TOOLS = re.compile(rb'(?<![A-Za-z0-9_-])(security|secret-tool|find-generic-password)(?![A-Za-z0-9_-])')
 
 SHAPES = re.compile(r'\b(?:[a-z_]*token|[a-z_]*key|secret|password|passwd|pwd|sig|signature|auth|credentials?)\s*='
@@ -246,10 +243,6 @@ class Ticket:
 class Kit:
     def __init__(self, args, ticket):
         self.args, self.ticket, self.schema = args, ticket, load_schema()
-        try:
-            self.hosts = hostkey.registry()
-        except hostkey.Refused as e:
-            raise Unusable(e.args[0])
         self.mark = 'OPENWIZ_KIT_RUN=' + secrets.token_hex(8)
         self.env = dict(os.environ, OPENWIZ_KIT_RUN=self.mark.partition('=')[2])
         self.leaks = []
@@ -495,6 +488,16 @@ class Kit:
             return []
         except (OSError, UnicodeDecodeError) as e:
             raise Unusable("cannot read the driver's README.md: %s" % type(e).__name__)
+        try:
+            spec = importlib.util.spec_from_loader('hostkey', importlib.machinery.SourceFileLoader(
+                'hostkey', os.path.join(HERE, 'hostkey.py')))
+            hostkey = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(hostkey)
+            self.hosts = hostkey.registry()
+        except OSError:
+            raise Unusable('the key helper kernel/driver-kit/hostkey.py is missing, so the kit cannot check host keys')
+        except hostkey.Refused as e:
+            raise Unusable(e.args[0])
         return [n for n in sorted(self.hosts)
                 if re.search(r'(?<![A-Za-z0-9_-])%s(?![A-Za-z0-9_-])' % re.escape(n), text, re.I)]
 
@@ -523,11 +526,11 @@ class Kit:
             tool = KEYCHAIN_TOOLS.search(data)
             if tool:
                 self.leak("the driver's file %s calls the keychain tool %s" % (rel, tool.group(1).decode()))
-            if hostkey.OVERRIDE.encode() in data:
-                self.leak("the driver's file %s names %s, the kit's test override" % (rel, hostkey.OVERRIDE))
+            if OVERRIDE.encode() in data:
+                self.leak("the driver's file %s names %s, the kit's test override" % (rel, OVERRIDE))
         canary = (name, 'kit-canary-' + secrets.token_hex(16), variable)
         host = FakeHost()
-        env = dict(self.env, **{variable: canary[1], hostkey.OVERRIDE: host.origin})
+        env = dict(self.env, **{variable: canary[1], OVERRIDE: host.origin})
         a = self.args
         try:
             kind, v = self.call('start', {'repository': a.repo, 'ticket': a.ticket, 'skill': a.skill,
