@@ -385,6 +385,32 @@ class Access(unittest.TestCase):
         self.assertEqual(status(second)['observation']['code'], 'access_unavailable')
         self.assertIsNone(status(first)['observation'], 'the second route\'s result is not the first operation\'s')
 
+    def test_pruning_the_checked_operation_never_hands_its_observation_to_an_older_check(self):
+        self.p['host'] = 'second.synthetic.invalid'
+        self.save()
+        pruned = self.preview()
+        self.p['host'] = 'openwiz.synthetic.invalid'
+        self.save()
+        kept = self.preview()
+        self.assertEqual(self.apply(kept)['operation']['phase'], 'applied')
+        self.p['host'] = 'second.synthetic.invalid'
+        self.save()
+        owner_report, self.provider = self.provider.owner_report, Recording(self.p, self.secrets)
+        self.provider.owner_report = owner_report
+        self.assertEqual(self.apply(pruned)['operation']['phase'], 'applied')
+        def fill(value):
+            value['operations'] += [{**value['operations'][0], 'operation_id': f'{n:032x}', 'phase': 'proposed',
+                                     'reason': 'Synthetic unchecked proposal.'}
+                                    for n in range(access.store.MAX_OPERATIONS - len(value['operations']))]
+        access.store.Store(str(self.state)).update(fill)
+        self.p['host'] = 'third.synthetic.invalid'
+        self.save()
+        self.preview()
+        saved = access.store.Store(str(self.state)).read()['operations']
+        self.assertNotIn(pruned['operation_id'], [o['operation_id'] for o in saved])
+        status = access.execute(['status', '--state-dir', str(self.state), '--operation', kept['operation_id']])
+        self.assertIsNone(status['observation'], 'the pruned later check\'s result is not the kept operation\'s')
+
     def test_tailscale_cli_runs_only_from_a_fixed_location_with_a_fixed_environment(self):
         planted, fixed = self.root / 'planted', self.root / 'fixed'
         planted.mkdir()
