@@ -23,7 +23,7 @@ It checks your computer, installs the verified prebuilt release (no Rust or Node
 
 ### OpenWiz 0.1.0
 
-OpenWiz 0.1.0 ("OpenWiz 0.01") also installs with no CloudRoom, on Apple silicon, an Intel Mac or Linux on x86_64, through its own [install skill](https://github.com/openwizdev/WizSkills/blob/maint/0.2/skills/install/SKILL.md) (WizSkills `maint/0.2`). On 0.1.0 the automatic fleet runs in CloudRoom; without CloudRoom you plan, start each builder by hand on this computer or on boat.dev, and review its pull request yourself.
+OpenWiz 0.1.0 ("OpenWiz 0.01") also installs with no CloudRoom, on Apple silicon, an Intel Mac or Linux on x86_64, through its own [install skill](https://github.com/openwizdev/WizSkills/blob/maint/0.2/skills/install/SKILL.md) (WizSkills `maint/0.2`). With 0.1.1 as the Latest release, select 0.1.0's own files as the [guide's 0.1.0 steps](docs/install.md#openwiz-010) show. On 0.1.0 the automatic fleet runs in CloudRoom; without CloudRoom you plan, start each builder by hand on this computer or on boat.dev, and review its pull request yourself.
 
 ## How it works
 
