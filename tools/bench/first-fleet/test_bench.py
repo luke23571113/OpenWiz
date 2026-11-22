@@ -80,6 +80,10 @@ class Broken(unittest.TestCase):
                     '{"at": "2026-11-22T10:02:00", "step": "grill", "waits_on": "user"}',
                     '{"at": "2026-11-22T10:00:00Z", "step": "grill", "waits_on": "user"}',
                     '{"at": "2026-11-22T10:02:00Z", "step": "grill", "waits_on": "user", "failure": 3}',
+                    '{"at": "2026-11-22T10:02:00Z", "step": "grill", "waits_on": "user", "failure": ""}',
+                    '{"at": "2026-11-22T10:02:00Z", "step": "grill", "waits_on": "user", "note": "x"}',
+                    '{"at": "2026-11-22T10:02:00Z", "step": "grill", "step": "plan", "waits_on": "user"}',
+                    '{"at": "2026-11-22T10:02:00Z", "waits_on": "user"}',
                     '["grill"]'):
             with self.subTest(bad=bad):
                 self.refused('steps.jsonl', good + bad + '\n', 2)
@@ -91,6 +95,8 @@ class Broken(unittest.TestCase):
             ('prs.json', prs.replace('"2026-11-22T10:18:00Z"', '"yesterday"'), 8),
             ('prs.json', prs.replace('"number": 11', '"number": "11"'), 2),
             ('prs.json', prs.replace('[{"number": 13}]', '"13"'), 8),
+            ('prs.json', prs.replace('"number": 22', '"number": 22, "title": "x"'), 8),
+            ('prs.json', prs.replace('"number": 22', '"number": 22, "number": 23'), 8),
             ('tickets.json', '{"createdAt":"2026-11-22T10:08:50Z","number":12}\n{"createdAt":\n', 3),
             ('tickets.json', '{"createdAt":"2026-11-22T10:08:50Z","number":12}\n{"number":13}\n', 2),
             ('spec.json', '{"createdAt":"2026-11-22T10:08:30Z"}\n', 1),
