@@ -132,7 +132,7 @@ jobs:
       - name: The live-check rig's tests
         if: matrix.part == 2
         run: |
-          for test in kernel/live-rig/test_*.py kernel/live-rig/hosts/test_*.py; do
+          for test in kernel/live-rig/test_*.py kernel/live-rig/*/test_*.py; do
             if [ -e "$test" ]; then python3 -I "$test"; fi
           done
       # #555: fail on any carried contract that differs from the pinned
