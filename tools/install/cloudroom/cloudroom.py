@@ -14,6 +14,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.parse
 import urllib.request
@@ -37,7 +38,10 @@ DESCRIPTION = """OpenWiz setup's CloudRoom step: install, reuse and sign in (#22
   cloudroom.py install --no --operation ID
       Declines that preview. Nothing is installed.
   cloudroom.py sign-in
-      Opens CloudRoom's own sign-in once, then reads the result back.
+      Opens CloudRoom's own sign-in once, then reads the result back. If it
+      fails, CloudRoom's own words go to standard error, with links, addresses
+      and secrets removed. On Linux it first checks for a desktop session and
+      FUSE, and names whichever is missing with its next step.
 
 Contract: contracts/public-cloudroom-setup.v1.md. Records go to owner-only
 `<state>/cloudroom/install.json`. Output is JSON with fixed public codes; never
@@ -73,6 +77,18 @@ INSTALLER_LIMIT = 1 << 30
 TIMEOUT = 30
 EFFECT_TIMEOUT = 900
 RUNNING_MS = 30 * 60 * 1000
+OPEN_WAIT = 3
+SAID_LINES, SAID_WIDTH = 20, 300
+FUSERMOUNT = ('usr/bin/fusermount', 'usr/bin/fusermount3', 'bin/fusermount', 'bin/fusermount3')
+LIBFUSE2 = tuple(f'{d}/libfuse.so.2' for d in ('lib/x86_64-linux-gnu', 'usr/lib/x86_64-linux-gnu', 'lib64',
+                                                'usr/lib64', 'lib', 'usr/lib'))
+RUNTIME_BYTES = 2 << 20
+REDACTIONS = ((re.compile(r'[A-Za-z][A-Za-z0-9+.-]*://\S*'), '[link removed]'),
+              (re.compile(r'\S+@\S+\.\S+'), '[address removed]'),
+              (re.compile(r'(?i)\b(token|password|passwd|secret|key|code|nonce|session|cookie|authorization|bearer)'
+                          r'\s*[:=].*'), r'\1 [removed]'),
+              (re.compile(r'(?i)\bbearer\s+\S+'), 'Bearer [removed]'),
+              (re.compile(r'[A-Za-z0-9+/_=.-]{24,}'), '[removed]'))
 
 
 class Redirects(urllib.request.HTTPRedirectHandler):
@@ -91,6 +107,7 @@ class Host:
         require(home.is_absolute() and str(home) != '/', 'no absolute HOME')
         self.home = home
         self.root = Path(root or '/')
+        self.environ = os.environ
 
     def _open_url(self, url):
         parts = urllib.parse.urlsplit(url)
@@ -122,18 +139,28 @@ class Host:
             os.fsync(handle.fileno())
 
     def run(self, argv, timeout):
+        return self.ask(argv, timeout)[:2]
+
+    def ask(self, argv, timeout):
         try:
             result = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, timeout=timeout,
                                     env={'PATH': '/usr/bin:/bin', 'HOME': str(self.home), 'LC_ALL': 'C'})
         except subprocess.TimeoutExpired:
-            return None, b''
+            return None, b'', b''
         except OSError:
-            return -1, b''
-        return result.returncode, result.stdout[:1 << 20]
+            return -1, b'', b''
+        return result.returncode, result.stdout[:1 << 20], result.stderr[:1 << 20]
 
     def open(self, argv):
-        subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                         start_new_session=True, close_fds=True)
+        with tempfile.TemporaryFile() as log:
+            child = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=log, stderr=log,
+                                     start_new_session=True, close_fds=True)
+            try:
+                code = child.wait(OPEN_WAIT)
+            except subprocess.TimeoutExpired:
+                return None, b''
+            log.seek(0)
+            return code, log.read(1 << 16)
 
     def alive(self, pid):
         try:
@@ -145,9 +172,10 @@ class Host:
         return True
 
 
-def room_cli(host, call):
+def room_cli(host, call, messages=False):
     require(type(call) is tuple and call in ROOM_CLI_CALLS, 'not an allowlisted room-cli call')
-    return host.run([str(host.home / LAUNCHER), *call], TIMEOUT)
+    argv = [str(host.home / LAUNCHER), *call]
+    return host.ask(argv, TIMEOUT) if messages else host.run(argv, TIMEOUT)
 
 
 def target(host):
@@ -632,6 +660,71 @@ def sign_in_link(raw):
     return url
 
 
+def said(raw):
+    lines = []
+    for line in raw.decode('utf-8', 'replace').splitlines():
+        line = re.sub(r'\x1b\[[0-9;?]*[A-Za-z]|[\x00-\x1f\x7f]', '', line).strip()
+        for pattern, replacement in REDACTIONS:
+            line = pattern.sub(replacement, line)
+        if line:
+            lines.append(line[:SAID_WIDTH])
+    return lines
+
+
+def reply_words(out):
+    try:
+        value = json.loads(out, object_pairs_hook=store.unique)
+    except (ValueError, Refused, RecursionError):
+        return said(out)
+    error = value.get('error') if type(value) is dict else None
+    message = error.get('message') if type(error) is dict else error
+    return said(message.encode()) if isinstance(message, str) else []
+
+
+def tell(who, lines):
+    for line in lines[:SAID_LINES]:
+        line = line[len(who) + 2:] if line.startswith(who + ': ') else line
+        print(f'openwiz-cloudroom: {who} said: {line}', file=sys.stderr)
+
+
+def launched(host, who, argv):
+    try:
+        code, out = host.open(argv)
+    except OSError:
+        print(f'openwiz-cloudroom: {who} could not be started here', file=sys.stderr)
+        return False
+    if code in (None, 0):
+        return True
+    tell(who, said(out) or [f'nothing, and exited with status {code}'])
+    return False
+
+
+def linux_needs(host, operation):
+    if host.system != 'Linux':
+        return
+    reasons = []
+    if not (host.environ.get('DISPLAY') or host.environ.get('WAYLAND_DISPLAY')):
+        reasons.append("CloudRoom's sign-in needs a desktop session, and this machine has none "
+                       '(no DISPLAY or WAYLAND_DISPLAY). Next: run sign-in from a desktop session on this machine, '
+                       'such as a local or remote desktop login; a headless server cannot sign in.')
+    missing = [] if os.path.exists(host.root / 'dev/fuse') else ['/dev/fuse']
+    if not any(os.path.exists(host.root / p) for p in FUSERMOUNT):
+        missing.append('fusermount')
+    app = checked_appimage(host, operation)
+    if app is not None and not any(os.path.exists(host.root / p) for p in LIBFUSE2):
+        try:
+            with open(app, 'rb') as handle:
+                if b'libfuse.so.2' in handle.read(RUNTIME_BYTES):
+                    missing.append('libfuse.so.2')
+        except OSError:
+            pass
+    if missing:
+        reasons.append("CloudRoom's AppImage needs FUSE, and this machine has no " + ' or '.join(missing) + '. '
+                       "Next: install FUSE with your distribution's packages (libfuse2, or libfuse2t64 on Ubuntu "
+                       '24.04 and later, and fuse3), make sure /dev/fuse exists, then run sign-in again.')
+    require(not reasons, ' '.join(reasons))
+
+
 def sign_in(host, state_dir):
     records = Records(state_dir)
     code = code_for(host, records.read())
@@ -639,19 +732,30 @@ def sign_in(host, state_dir):
             'CloudRoom is not installed here; install it first')
     if code == 'cloudroom_login_verified':
         return answer(code)
+    linux_needs(host, records.read())
     launcher = host.home / LAUNCHER
     opened = None
     if launcher.is_file():
-        result, out = room_cli(host, ROOM_CLI_CALLS[1])
+        result, out, err = room_cli(host, ROOM_CLI_CALLS[1], messages=True)
         url = sign_in_link(out) if result == 0 else None
         if url is not None:
-            host.open(opener(host) + [url])
-            opened = 'sign_in'
+            command = opener(host)
+            opened = 'sign_in' if launched(host, Path(command[0]).name, command + [url]) else None
+        elif result is None:
+            print("openwiz-cloudroom: CloudRoom's sign-in did not answer within "
+                  f'{TIMEOUT} seconds; is CloudRoom running?', file=sys.stderr)
+        else:
+            words = said(err) + reply_words(out)
+            if words:
+                tell('CloudRoom', words)
+            else:
+                print("openwiz-cloudroom: CloudRoom's sign-in gave no usable link and said nothing "
+                      f'(status {result})', file=sys.stderr)
     else:
         app = next((p for p in installation(host, records.read()) if p.name != 'room-cli'), None)
         if app is not None:
-            host.open((['/usr/bin/open'] if host.system == 'Darwin' else []) + [str(app)])
-            opened = 'app'
+            command = (['/usr/bin/open'] if host.system == 'Darwin' else []) + [str(app)]
+            opened = 'app' if launched(host, 'CloudRoom', command) else None
     return answer(code_for(host, records.read()), opened=opened)
 
 

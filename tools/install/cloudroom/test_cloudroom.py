@@ -1016,7 +1016,8 @@ class Login(Base):
         self.installed('signed-out')
         secret = (b'Could not reach the CloudRoom server.\n'
                   b'Retry at https://www.cloudroom.dev/login?desktop=synthetic-nonce-0001 as owner@example.invalid\n'
-                  b'token: synthetic-token-0123456789abcdefghij\n\x1b[31mpassword=hunter2\x1b[0m\n')
+                  b'token: synthetic-token-0123456789abcdefghij\n\x1b[31mpassword=hunter2\x1b[0m\n'
+                  b'Authorization: Bearer synthetic-bearer\n')
         for code, reply, said in ((1, b'', secret), (1, secret, b''), (None, b'', b''), (1, b'', b''),
                                   (0, b'{"error": {"message": "Sign-in is busy."}}', b'')):
             with self.subTest(code=code, reply=reply, said=said):
@@ -1024,7 +1025,8 @@ class Login(Base):
                 result, err = self.said()
                 self.assertEqual((result['code'], result['opened']), ('cloudroom_login_missing', None))
                 self.assertEqual(self.host.opened, [])
-                for word in ('synthetic-nonce', 'owner@example.invalid', 'synthetic-token', 'hunter2', '\x1b'):
+                for word in ('synthetic-nonce', 'owner@example.invalid', 'synthetic-token', 'hunter2', 'synthetic-bearer',
+                             '\x1b'):
                     self.assertNotIn(word, err)
                 if secret in (reply, said):
                     self.assertIn('openwiz-cloudroom: CloudRoom said: Could not reach the CloudRoom server.\n', err)
@@ -1034,7 +1036,7 @@ class Login(Base):
                 elif code == 0:
                     self.assertIn('openwiz-cloudroom: CloudRoom said: Sign-in is busy.\n', err)
                 else:
-                    self.assertIn("CloudRoom's sign-in gave no link and said nothing", err)
+                    self.assertIn("CloudRoom's sign-in gave no usable link and said nothing", err)
 
     def test_an_opener_that_fails_is_shown_and_not_counted_as_opened(self):
         self.installed('signed-out')
