@@ -31,17 +31,12 @@ def not_signed_in():
             env.driver('stop', out)
         if code != 1 or h.kit.invalid(out, h.ERROR) is not None or env.records():
             return False
-        log = out['next'].partition('read ')[2].partition(', fix what it says there')[0]
-        try:
-            with open(log) as f:
-                said = f.read()
-        except OSError:
-            return False
-        return 'the first turn ended at once' in out['error'] and 'kilo auth login' in said
+        # HR1 revision 4: the row's signed_out patterns name the cause, and its login_command is the next step.
+        return 'the harness is not signed in' in out['error'] and 'kilo auth login' in out['next']
 
 
 failed = [name for name, check in (('not installed: a D3 error whose next says to install and sign in', not_installed),
-                                    ('not signed in: a D3 error whose next points at the log naming kilo auth login',
+                                    ('not signed in: a D3 error saying so, whose next names kilo auth login',
                                      not_signed_in)) if not check()]
 for name in failed:
     print('fail kilo test_row.py: ' + name)
