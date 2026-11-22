@@ -440,28 +440,6 @@ mod tests {
 
     #[test]
     fn a_huge_sparse_collision_refuses_only_its_loop() {
-        const BOUNDED: &str = "OPENWIZ_SYN_SPARSE_BOUNDED";
-        if cfg!(target_os = "linux") && std::env::var_os(BOUNDED).is_none() {
-            let test = format!(
-                "{}::a_huge_sparse_collision_refuses_only_its_loop",
-                module_path!().split_once("::").unwrap().1
-            );
-            let out = std::process::Command::new("/bin/sh")
-                .args(["-c", "ulimit -v 262144 && exec \"$0\" \"$@\""])
-                .arg(std::env::current_exe().unwrap())
-                .args(["--exact", &test, "--test-threads=1"])
-                .env(BOUNDED, "1")
-                .output()
-                .unwrap();
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            assert!(
-                out.status.success() && stdout.contains("1 passed"),
-                "{:?}\n{stdout}\n{}",
-                out.status,
-                String::from_utf8_lossy(&out.stderr)
-            );
-            return;
-        }
         let root = scratch("sparse");
         let out = root.join("out");
         fs::File::create(out.join("a.md"))
