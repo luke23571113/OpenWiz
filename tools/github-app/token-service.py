@@ -18,7 +18,6 @@ and never a token. mint-token.py stays byte-identical to the copy WizSkills'
 launch-fleet carries: this tool uses the same guards from app.py.
 """
 from datetime import datetime
-import fcntl
 import json
 import os
 from pathlib import Path
@@ -49,7 +48,6 @@ REFRESH, LONGEST, HANDOVER = 300, 3900, 10
 REQUEST_LIMIT = 64 * 1024
 FOLDER, STARTED, LOG = "token-service", "started", "mint-log.jsonl"
 STOPPED = "Token service stopped: the owner has not started it."
-MINTED = b'"outcome": "minted"'
 
 
 class Refused(Exception):
@@ -193,40 +191,10 @@ def serve(api, log, data, setting):
     except Exception:
         line["outcome"] = "unavailable"
         message = refusal("unavailable")
-    token = message.get("token")
-    try:
-        fcntl.flock(log, fcntl.LOCK_EX)
-        start = os.lseek(log, 0, os.SEEK_END)
-        entry = record(log, line)
-        if token is not None and not fresh(message["expires_at"]):
-            app.revoke(api["base"], token)
-            token = None
-            relabel(log, start + entry.index(MINTED) + len(MINTED) - len(b'minted"'), b"expiry")
-            message = refusal("expiry")
-    except Exception:
-        app.revoke(api["base"], token)
-        raise
-    return message, REFUSALS[message["refusal"]][0] if message["kind"] == "refusal" else 0
-
-
-def record(log, line):
     entry = (json.dumps(line) + "\n").encode()
     app.require(os.write(log, entry) == len(entry))
     os.fsync(log)
-    return entry
-
-
-def relabel(log, at, outcome):
-    flags = fcntl.fcntl(log, fcntl.F_GETFL)
-    fcntl.fcntl(log, fcntl.F_SETFL, flags & ~os.O_APPEND)
-    try:
-        while outcome:
-            written = os.pwrite(log, outcome, at)
-            app.require(written > 0)
-            outcome, at = outcome[written:], at + written
-    finally:
-        fcntl.fcntl(log, fcntl.F_SETFL, flags)
-    os.fsync(log)
+    return message, REFUSALS[message["refusal"]][0] if message["kind"] == "refusal" else 0
 
 
 def refusal(code):

@@ -33,26 +33,6 @@ CLOCK = ("import runpy, sys, time\n"
          "clock = sys.argv[1]; time.time = lambda: float(open(clock).read())\n"
          "sys.argv = sys.argv[2:]\n"
          "runpy.run_path(sys.argv[0], run_name='__main__')\n")
-SLOW_SYNC = CLOCK.replace("sys.argv = sys.argv[2:]\n", "import os\nsync = os.fsync\n"
-                          "os.fsync = lambda fd: ((lambda later: open(clock, 'w').write(later))(str(time.time() + 12)), sync(fd))\n"
-                          "sys.argv = sys.argv[2:]\n")
-
-FAILED_REWRITE = CLOCK.replace("sys.argv = sys.argv[2:]\n", "import errno, os\nsync, synced = os.fsync, []\n"
-                               "def fsync(fd):\n    if not synced:\n"
-                               "        later = str(time.time() + 12)\n        open(clock, 'w').write(later)\n"
-                               "    synced.append(fd)\n    sync(fd)\n"
-                               "def failing(real):\n    def call(*args):\n        if synced:\n"
-                               "            raise OSError(errno.EIO, 'synthetic write error')\n"
-                               "        return real(*args)\n    return call\n"
-                               "os.fsync, os.write, os.pwrite = fsync, failing(os.write), failing(os.pwrite)\n"
-                               "sys.argv = sys.argv[2:]\n")
-
-LOCK_FAILS = CLOCK.replace("sys.argv = sys.argv[2:]\n", "import errno, fcntl\n"
-                           "def flock(*args):\n    raise OSError(errno.ENOLCK, 'synthetic lock error')\n"
-                           "fcntl.flock = flock\nsys.argv = sys.argv[2:]\n")
-SHORT_REWRITE = SLOW_SYNC.replace("sys.argv = sys.argv[2:]\n", "pwrite = os.pwrite\n"
-                                  "os.pwrite = lambda fd, data, at: pwrite(fd, data[:max(1, len(data) - 2)], at)\n"
-                                  "sys.argv = sys.argv[2:]\n")
 
 
 def revoked(calls):
@@ -146,11 +126,11 @@ class ServiceFixture(unittest.TestCase):
         return subprocess.run(["python3", "-I", str(SERVICE), command, "--state-dir", str(self.state)],
                               capture_output=True, text=True, timeout=60, env=dict(os.environ, **(env or {})))
 
-    def mint(self, endpoint, request, env=None, bootstrap=CLOCK):
+    def mint(self, endpoint, request, env=None):
         text = request if isinstance(request, str) else json.dumps(request)
         self.clock.write_text(str(NOW))
         environment = {k: v for k, v in os.environ.items() if k != "OPENWIZ_GITHUB_APP_MODE"}
-        return subprocess.run(["python3", "-I", "-c", bootstrap, str(self.clock), str(SERVICE), "mint",
+        return subprocess.run(["python3", "-I", "-c", CLOCK, str(self.clock), str(SERVICE), "mint",
                                "--state-dir", str(self.state), "--api-base", endpoint],
                               input=text, capture_output=True, text=True, timeout=60,
                               env=dict(environment, **(env or {})))
@@ -243,52 +223,6 @@ class RequestFixtureTests(ServiceFixture):
             self.assertEqual(self.logged()[-1]["outcome"], "expiry")
             fake["expires_at"] = NOW + 15 + 311
             self.assertEqual(self.mint(url, SMALL).returncode, 0)
-
-
-    def test_a_slow_audit_sync_is_checked_again_and_logged_as_the_answer(self):
-        with fake_github(self.pem, REQUESTS["installed"]) as (url, calls, fake):
-            fake["expires_at"] = NOW + 311
-            done = self.mint(url, SMALL, bootstrap=SLOW_SYNC)
-            self.assertEqual((done.returncode, json.loads(done.stdout).get("refusal")), (5, "expiry"))
-            self.assertEqual(self.logged(), [{"schema": "openwiz.token-service.v1", "kind": "mint-log", "at": NOW,
-                                              "requester": SMALL["requester"], "repositories": SMALL["repositories"],
-                                              "permissions": SMALL["permissions"], "outcome": "expiry",
-                                              "expires_at": NOW + 311}], "one line, matching the answer")
-            self.assert_valid(self.logged()[0])
-            self.assertEqual(revoked(calls), ["Bearer " + fake["token"]])
-            fake["expires_at"] = NOW + 12 + 311
-            self.assertEqual(self.mint(url, SMALL, bootstrap=SLOW_SYNC).returncode, 0)
-            self.assertEqual([line["outcome"] for line in self.logged()], ["expiry", "minted"])
-            self.assertEqual(len(revoked(calls)), 1)
-
-    def test_a_failed_audit_rewrite_keeps_the_entry_and_revokes_the_token(self):
-        with fake_github(self.pem, REQUESTS["installed"]) as (url, calls, fake):
-            fake["expires_at"] = NOW + 311
-            done = self.mint(url, SMALL, bootstrap=FAILED_REWRITE)
-            self.assertEqual((done.returncode, json.loads(done.stdout).get("kind")), (1, "refusal"))
-            self.assertEqual(len(self.logged()), 1, "the request's audit entry survives")
-            self.assertEqual(revoked(calls), ["Bearer " + fake["token"]])
-            self.assert_nothing_exposed(fake["token"], done.stdout, done.stderr)
-
-    def test_a_failed_audit_lock_revokes_and_a_short_rewrite_keeps_the_entry_readable(self):
-        with fake_github(self.pem, REQUESTS["installed"]) as (url, calls, fake):
-            done = self.mint(url, SMALL, bootstrap=LOCK_FAILS)
-            self.assertEqual((done.returncode, json.loads(done.stdout).get("kind")), (1, "refusal"))
-            self.assertEqual(revoked(calls), ["Bearer " + fake["token"]])
-            self.assert_nothing_exposed(fake["token"], done.stdout, done.stderr)
-            self.log.unlink(missing_ok=True)
-            fake["expires_at"] = NOW + 311
-            done = self.mint(url, SMALL, bootstrap=SHORT_REWRITE)
-            entries = self.log.read_text().splitlines()
-            self.assertEqual(len(entries), 1)
-            try:
-                entry = json.loads(entries[0])
-            except ValueError:
-                self.fail("a short rewrite left the audit entry unreadable")
-            self.assert_valid(entry)
-            self.assertEqual((done.returncode, json.loads(done.stdout).get("refusal"), entry["outcome"]),
-                             (5, "expiry", "expiry"))
-            self.assertEqual(len(revoked(calls)), 2)
 
 
 class FactoryTests(ServiceFixture):
