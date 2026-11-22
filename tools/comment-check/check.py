@@ -240,10 +240,17 @@ def shell_quoted(r, i, nested=False):
     return n, False
 
 
+def continued(s, j, start):
+    k = j - 1
+    while k > start and s[k - 1] == '\\':
+        k -= 1
+    return s[j - 1] == '\n' and (j - 1 - k) % 2 == 1
+
+
 def command_start(s, i, start):
     j = i
-    while j > start and s[j - 1] in ' \t':
-        j -= 1
+    while j > start and (s[j - 1] in ' \t' or continued(s, j, start)):
+        j -= 2 if s[j - 1] == '\n' else 1
     if j == start or s[j - 1] in ';&|()\n':
         return True
     k = j
@@ -533,7 +540,7 @@ def scan_html(s):
         i, tag = min(k + 1, n), m.group(2).lower()
         if m.group(1) or tag not in ('script', 'style', 'title', 'textarea'):
             continue
-        close = re.compile(r'</' + tag + r'\b', re.I).search(s, i)
+        close = re.compile(r'</' + tag + r'(?=[\t\n\f\r />])', re.I).search(s, i)
         stop = n if not close else close.start()
         if tag == 'style':
             scan_css(s[:stop], i, lines, out)
