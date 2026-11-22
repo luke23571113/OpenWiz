@@ -48,8 +48,6 @@ pub fn run_models_in(
     run_models_listing_acls(args, root, client, clock, lister, stdout, stderr)
 }
 
-/// Runs `models` with `lister` as the macOS `ls` that shows a file's extended ACL
-/// (`ls -lde`), or with no lister where the platform keeps no such ACL.
 pub fn run_models_listing_acls(
     args: &[String],
     root: &Path,
@@ -725,8 +723,6 @@ impl Agents {
         Ok(text)
     }
 
-    /// Refuses `rel` when replacing it would drop its macOS extended ACL, or when
-    /// that cannot be checked. A missing file has none to drop.
     fn keep_acl(&self, rel: &str) -> Result<(), String> {
         let Some(check) = &self.1 else {
             return Ok(());
@@ -874,8 +870,6 @@ fn access_acl(fd: impl AsFd) -> std::io::Result<Option<Vec<u8>>> {
     Ok(Some(acl))
 }
 
-/// Whether one regular file's `ls -lde` listing shows extended ACL entries, or
-/// `None` when the listing is not one this reads.
 fn extended_acl(listing: &str) -> Option<bool> {
     let mut lines = listing.lines();
     let mode = lines.next()?.split(' ').next()?;
