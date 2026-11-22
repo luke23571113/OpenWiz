@@ -6,4 +6,4 @@ Effort: `--effort low` or `--effort high` at start only (its resume refuses the 
 
 The good example row: a CLI that reports its session id as JSON, takes effort as a flag or a setting, and starts a local service under the turn.
 
-Synthetic: `fake` is the only CLI here, and its command line is in its opening comment.
+Synthetic: `fake` is the only CLI here, and its synthetic `--help` is its `HELP` text.

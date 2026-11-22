@@ -1,8 +1,3 @@
-"""The shared library for each harness row's fake CLI (adapters/local/harness-row.md, section 6).
-
-A row's `fake` parses its own CLI's command line, exits 2 on anything the real CLI's documentation doesn't allow
-(`refuse()`), then calls `turn()`. Fixture only: every value it writes is synthetic.
-"""
 import json, os, secrets, shutil, socket, subprocess, sys, time
 
 sys.dont_write_bytecode = True
@@ -32,11 +27,9 @@ def record(entry):
         f.write(json.dumps(entry) + '\n')
 
 
-def background(how):
-    """A stand-in for a CLI's service: 'tree' double-forks it under the turn, 'outside' asks a service host that
-    runs outside the run (FAKE_CLI_HOST) to start it, as a CLI does that reuses an already-running hub."""
+def background_service(how):
     clean = {'PATH': os.environ['PATH']}
-    if how == 'outside':
+    if how == 'via-running-hub':
         with socket.socket(socket.AF_UNIX) as s:
             s.connect(os.environ['FAKE_CLI_HOST'])
             pid = int(s.makefile().readline())
@@ -80,8 +73,6 @@ def post(model, skill, woken):
 
 
 def turn(prompt, model, session=None, announce=None, daemon=None):
-    """One turn. `session` is the id the CLI was handed, or None at a start whose CLI reports its own id, which
-    `announce(id)` prints as the real CLI would. `daemon` is None, 'tree' or 'outside'."""
     woken = prompt.startswith('You were woken')
     skill = prompt.partition('with the ')[2].partition(' skill')[0] or refuse()
     if os.environ.get('FAKE_CLI_WORKER'):
@@ -103,7 +94,7 @@ def turn(prompt, model, session=None, announce=None, daemon=None):
         record(entry)
         sys.exit(0)
     if daemon and not woken:
-        entry['daemon'] = background(daemon)
+        entry['daemon'] = background_service(daemon)
     record(entry)
     state = os.path.join(os.environ['OPENWIZ_LOCAL_STATE'], os.environ['OPENWIZ_RUN'] + '.json')
     while True:

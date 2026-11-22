@@ -6,4 +6,4 @@ Effort: none
 
 The good example row for a CLI that can't set effort: the driver chooses its session id.
 
-Synthetic: `fake` is the only CLI here, and its command line is in its opening comment.
+Synthetic: `fake` is the only CLI here, and its synthetic `--help` is its `HELP` text.

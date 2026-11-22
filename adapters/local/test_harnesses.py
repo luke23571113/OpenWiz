@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-"""The kit check for harness rows (adapters/local/harness-row.md, section 5).
-
-  python3 -I adapters/local/test_harnesses.py               # the planted rows, then every row in harnesses/
-  python3 -I adapters/local/test_harnesses.py --rows <dir>  # only the rows in <dir>
-"""
 import importlib.machinery, importlib.util, json, os, shutil, signal, socket, subprocess, sys, tempfile, threading, time
 
 sys.dont_write_bytecode = True
+USAGE = '''usage: test_harnesses.py            the planted rows, then every row in adapters/local/harnesses/
+       test_harnesses.py --rows <dir> only the rows in <dir>'''
 HERE = os.path.dirname(os.path.abspath(__file__))
 DRIVER = os.path.join(HERE, 'driver')
 KIT_DIR = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit')
@@ -52,7 +49,7 @@ sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_loader('local', importlib.machinery.SourceFileLoader('local', %r))
 t = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(t)
-t.START['effort'] = t.EFFORT  # what #2471 turns on: the effort start field
+t.START['effort'] = t.EFFORT
 t.main()
 '''
 
@@ -76,8 +73,7 @@ def since(pid):
         return None
 
 
-class Host:
-    """A service host outside every run: what a CLI reuses when it hands work to an already-running hub."""
+class RunningHubOutsideEveryRun:
 
     def __init__(self, path, env):
         self.pids, self.sock = [], socket.socket(socket.AF_UNIX)
@@ -105,8 +101,7 @@ class Host:
             p.wait()
 
 
-class Env:
-    """A throwaway machine for one harness: stubs, the row's fake, fake gh, a repository, approvals and a tracker."""
+class ThrowawayMachine:
 
     def __init__(self, rows, name, program=None, fake=None, mode=None, names=()):
         self.folder = tempfile.mkdtemp(prefix='rows-')
@@ -140,7 +135,7 @@ class Env:
                         OPENWIZ_LOCAL_STATE=self.state, OPENWIZ_LOCAL_SETTLE='2',
                         FAKE_CLI_LIB=FIXTURES, FAKE_CLI_RECORD=self.record, FAKE_CLI_ENV=','.join(names),
                         FAKE_CLI_HOST=os.path.join(self.folder, 'host'), PYTHONDONTWRITEBYTECODE='1')
-        self.host = Host(self.env['FAKE_CLI_HOST'], {'PATH': path})
+        self.host = RunningHubOutsideEveryRun(self.env['FAKE_CLI_HOST'], {'PATH': path})
         self.wrapper = os.path.join(self.folder, 'driver-with-effort')
         with open(self.wrapper, 'w') as f:
             f.write('#!%s\n' % sys.executable + WRAPPER % self.driver_path)
@@ -181,8 +176,7 @@ class Env:
             return self.driver('start', req, **env)
         return self.driver('start', dict(req, effort=effort), self.wrapper, **env)
 
-    def refuses(self, says, *start, **env):
-        """A start that is a D3 refusal and starts nothing: no new saved run and no new turn."""
+    def start_refused_starting_nothing(self, says, *start, **env):
         before = self.runs(), len(self.records())
         code, out = self.start(*start, **env)
         return code == 1 and kit.invalid(out, ERROR) is None and says(out) and \
@@ -215,8 +209,8 @@ def check_row(rows, name):
         row = local.read_row(os.path.join(folder, 'row.json'), name)
     except local.Broken as e:
         if name not in local.HARNESSES:
-            with Env(rows, name, mode='auto') as env:
-                if not env.refuses(lambda out: name + '/row.json' in out['error']):
+            with ThrowawayMachine(rows, name, mode='auto') as env:
+                if not env.start_refused_starting_nothing(lambda out: name + '/row.json' in out['error']):
                     raise Fail('driver', 'it did not refuse this broken row with a D3 error naming the row file, '
                                          'before starting anything')
         raise Fail('row.json ' + e.args[0], e.args[1])
@@ -276,7 +270,7 @@ def check_effort(env, row):
                 all(got['env'].get(k) == v for k, v in setting['env'].items())):
             raise Fail('effort', 'effort %s did not reach the fake CLI\'s command line or environment' % value)
     unlisted = next(v for v in ('medium', 'unlisted') if v not in table)
-    if not env.refuses(lambda out: out['next'] == CANT_SET_EFFORT, effort=unlisted, FAKE_CLI_RECORD_ONLY='1'):
+    if not env.start_refused_starting_nothing(lambda out: out['next'] == CANT_SET_EFFORT, effort=unlisted, FAKE_CLI_RECORD_ONLY='1'):
         raise Fail('effort', 'a start with an effort the row can\'t take was not refused with the fixed next, '
                              'starting nothing')
 
@@ -287,7 +281,7 @@ def check(rows, name):
         fake = check_folder(folder, row)
         names = set(row['env']) | {k for s in row['effort'].values() if isinstance(s, dict) for k in s['env']} \
             if isinstance(row['effort'], dict) else set(row['env'])
-        with Env(rows, name, row['program'], fake, next(iter(row['modes'])), sorted(names)) as env:
+        with ThrowawayMachine(rows, name, row['program'], fake, next(iter(row['modes'])), sorted(names)) as env:
             lines = env.kit()
             if lines != PASS:
                 raise Fail('kit', next((x for x in lines if not x.startswith('pass ')),
@@ -304,13 +298,12 @@ def check(rows, name):
         return 'fail %s: %s: %s' % (name, e.args[0], e.args[1])
 
 
-def check_driver(rows):
-    """The driver's own row rules, on the planted rows: an unknown harness, and a wake before a reported id."""
+def check_driver_unknown_harness_and_early_wake(rows):
     found = []
-    with Env(rows, 'example', 'example-cli', os.path.join(rows, 'example', 'fake'), 'auto') as env:
+    with ThrowawayMachine(rows, 'example', 'example-cli', os.path.join(rows, 'example', 'fake'), 'auto') as env:
         lists = lambda out: out['next'].startswith('use one of: claude, codex, ') and 'example-none' in out['next']
         found.append(('an unknown harness is a D3 error that lists the built-ins and the row folders, and starts '
-                      'nothing', env.refuses(lists, 'no-such-row')))
+                      'nothing', env.start_refused_starting_nothing(lists, 'no-such-row')))
         code, out = env.start(FAKE_CLI_QUIET='1', FAKE_CLI_RECORD_ONLY='1')
         before = len(env.records())
         woke = env.driver('wake', out) if code == 0 else (0, {})
@@ -331,7 +324,7 @@ def main(argv):
         print('\n'.join(lines))
         return 1 if any(x.startswith('fail ') for x in lines) else 0
     if argv:
-        print(__doc__.strip(), file=sys.stderr)
+        print(USAGE, file=sys.stderr)
         return 2
     planted, ok = os.path.join(FIXTURES, 'rows'), True
     if folders(planted) != sorted(PLANTED):
@@ -343,7 +336,7 @@ def main(argv):
         if got != PLANTED[name]:
             print('unexpected: planted row %s should give: %s' % (name, PLANTED[name]))
             ok = False
-    for line in check_driver(planted):
+    for line in check_driver_unknown_harness_and_early_wake(planted):
         print(line)
         ok = ok and line.startswith('pass ')
     rows = folders(ROWS)

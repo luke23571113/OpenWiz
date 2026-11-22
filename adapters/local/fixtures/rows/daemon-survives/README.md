@@ -6,4 +6,4 @@ Effort: none
 
 Planted bad row: its fake hands its work to an already-running hub outside the run, so the background process survives stop.
 
-Synthetic: `fake` is the only CLI here, and its command line is in its opening comment.
+Synthetic: `fake` is the only CLI here, and its synthetic `--help` is its `HELP` text.

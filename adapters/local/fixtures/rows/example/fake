@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
-# The fake example-cli: its synthetic --help allows only
-#   example-cli run --format json --model <m> [--yes] [--effort low|high] <prompt>
-#   example-cli run --session <id> --model <m> [--yes] <prompt>
-# with EXAMPLE_CLI_BACKEND=local and, optionally, EXAMPLE_CLI_THINKING=max.
 import json, os, sys
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.environ['FAKE_CLI_LIB'])
 import fake_cli
 
+HELP = '''The fake example-cli: its synthetic --help allows only:
+  example-cli run --format json --model <m> [--yes] [--effort low|high] <prompt>
+  example-cli run --session <id> --model <m> [--yes] <prompt>
+with EXAMPLE_CLI_BACKEND=local and, optionally, EXAMPLE_CLI_THINKING=max.'''
+
+if sys.argv[1:] == ['--help']:
+    print(HELP)
+    sys.exit(0)
 args = sys.argv[1:]
 if args[:1] != ['run'] or os.environ.get('EXAMPLE_CLI_BACKEND') != 'local' or \
         os.environ.get('EXAMPLE_CLI_THINKING') not in (None, 'max'):
