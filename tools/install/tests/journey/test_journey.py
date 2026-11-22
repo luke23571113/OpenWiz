@@ -57,6 +57,10 @@ FREE_ONLY = ('OpenWiz is free now. Paid plans come later. '
 NO_REFERRAL = 'Referral verification is unavailable. No referral is applied.'
 NOT_OFFERED = re.compile(r'upgrad|\btrial|\$\s?[0-9]|per month|checkout|subscri', re.I)
 SHELL_ARGUMENT = re.compile(r'"\$[0-9](?=["/])')
+
+
+def not_offered(raw):
+    return NOT_OFFERED.findall(SHELL_ARGUMENT.sub('"ARG', ' '.join(raw.split())))
 BUILD_TOOLS = ('cargo', 'rustc', 'rustup', 'npm', 'node', 'npx')
 REPO = 'synthetic-owner/synthetic-consumer'
 PROFILE = {'metadata': 'read', 'contents': 'write', 'issues': 'write', 'pull_requests': 'write',
@@ -395,9 +399,16 @@ class InstallJourney(unittest.TestCase):
                 text = ' '.join((ROOT / path).read_text().split())
                 self.assertIn(FREE_ONLY, text)
                 self.assertIn(NO_REFERRAL, text)
-                self.assertEqual(NOT_OFFERED.findall(SHELL_ARGUMENT.sub('"ARG', text)), [])
+                self.assertEqual(not_offered((ROOT / path).read_text()), [])
                 self.assertEqual(set(re.findall(r'cloudroom\.dev/[^\s`)]*', text)), {'cloudroom.dev/pricing'},
                                  "CloudRoom's own page, with no referral code or parameter")
+
+    def test_a_price_in_prose_is_refused_and_a_shell_argument_is_not(self):
+        shell = 'Run:\n\n```sh\nfixed() { grep -q x "$1/SKILL.md" && cat "$1"; }\n```\n'
+        self.assertEqual(not_offered(shell), [])
+        for prose in ('It costs "$5/month".', 'It costs "$5".', 'It costs $5.', 'Run `"$5/month"`.'):
+            with self.subTest(prose):
+                self.assertEqual(not_offered(shell + prose + '\n'), ['$5'])
 
     def test_from_the_line_to_a_first_fleet_on_a_cold_consumer(self):
         c = Consumer(self)
