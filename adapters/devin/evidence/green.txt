@@ -1,0 +1,23 @@
+# Green (openwizdev/openwiz#1996): the Devin driver's tests (the kit's five checks with its key check, on the synthetic
+# fake Devin) and the release runtime test. Synthetic; no host reached.
+
+$ python3 -I adapters/devin/test_driver.py -v
+test_a_host_refusal_is_an_error_and_a_failed_stop_is_tried_again (__main__.Driver.test_a_host_refusal_is_an_error_and_a_failed_stop_is_tried_again) ... ok
+test_kit_passes_all_five_with_its_key_check (__main__.Driver.test_kit_passes_all_five_with_its_key_check) ... ok
+test_model_harness_and_organization_are_checked_before_any_call (__main__.Driver.test_model_harness_and_organization_are_checked_before_any_call) ... ok
+test_start_wake_and_stop_are_devins_documented_calls (__main__.Driver.test_start_wake_and_stop_are_devins_documented_calls) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 2.180s
+
+OK
+
+$ python3 -I tools/release/test_package.py -v -k test_runtime_carries_exactly -k test_installed_boat_driver -k test_installed_build_carries
+test_installed_boat_driver_finds_the_wizskills_pin (__main__.Package.test_installed_boat_driver_finds_the_wizskills_pin) ... ok
+test_installed_build_carries_the_wizskills_root_files_its_skills_read (__main__.Package.test_installed_build_carries_the_wizskills_root_files_its_skills_read) ... ok
+test_runtime_carries_exactly_the_selected_drivers_and_kit_where_the_caller_finds_them (__main__.Package.test_runtime_carries_exactly_the_selected_drivers_and_kit_where_the_caller_finds_them) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 7.962s
+
+OK

@@ -124,7 +124,10 @@ def start():
             raise Refused('Devin answered no session id the driver can keep, so the outcome is unknown',
                           'look for a new session in Devin and terminate it there before you start again')
     finally:
-        os.remove(pending)
+        try:
+            os.remove(pending)
+        except OSError:
+            pass
     try:
         save(os.path.join(STATE, run + '.json'), {'request': req, 'org': org, 'stopped': False, 'ended': False})
     except OSError:
