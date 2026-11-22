@@ -20,8 +20,8 @@ _spec.loader.exec_module(kit)
 ORG = 'org-syn0001'
 START = {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket', 'harness': 'devin', 'model': 'default'}
 SESSIONS = '/v3/organizations/%s/sessions' % ORG
-CANT_SET_EFFORT = ("this host can't set effort: remove the effort for this harness in your Models table or Roster to run "
-                   "it at the host's default")
+CANT_SET_EFFORT = ("this host can't set effort: remove the effort for this harness in your Models table or Roster "
+                   "to run it at the host's default")
 
 
 class Driver(unittest.TestCase):
