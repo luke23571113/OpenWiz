@@ -47,6 +47,13 @@ FAILED_REWRITE = CLOCK.replace("sys.argv = sys.argv[2:]\n", "import errno, os\ns
                                "os.fsync, os.write, os.pwrite = fsync, failing(os.write), failing(os.pwrite)\n"
                                "sys.argv = sys.argv[2:]\n")
 
+LOCK_FAILS = CLOCK.replace("sys.argv = sys.argv[2:]\n", "import errno, fcntl\n"
+                           "def flock(*args):\n    raise OSError(errno.ENOLCK, 'synthetic lock error')\n"
+                           "fcntl.flock = flock\nsys.argv = sys.argv[2:]\n")
+SHORT_REWRITE = SLOW_SYNC.replace("sys.argv = sys.argv[2:]\n", "pwrite = os.pwrite\n"
+                                  "os.pwrite = lambda fd, data, at: pwrite(fd, data[:max(1, len(data) - 2)], at)\n"
+                                  "sys.argv = sys.argv[2:]\n")
+
 
 def revoked(calls):
     return [c[2] for c in calls if c[:2] == ("DELETE", "/installation/token")]
@@ -260,6 +267,26 @@ class RequestFixtureTests(ServiceFixture):
             self.assertEqual(len(self.logged()), 1, "the request's audit entry survives")
             self.assertEqual(revoked(calls), ["Bearer " + fake["token"]])
             self.assert_nothing_exposed(fake["token"], done.stdout, done.stderr)
+
+    def test_a_failed_audit_lock_revokes_and_a_short_rewrite_keeps_the_entry_readable(self):
+        with fake_github(self.pem, REQUESTS["installed"]) as (url, calls, fake):
+            done = self.mint(url, SMALL, bootstrap=LOCK_FAILS)
+            self.assertEqual((done.returncode, json.loads(done.stdout).get("kind")), (1, "refusal"))
+            self.assertEqual(revoked(calls), ["Bearer " + fake["token"]])
+            self.assert_nothing_exposed(fake["token"], done.stdout, done.stderr)
+            self.log.unlink(missing_ok=True)
+            fake["expires_at"] = NOW + 311
+            done = self.mint(url, SMALL, bootstrap=SHORT_REWRITE)
+            entries = self.log.read_text().splitlines()
+            self.assertEqual(len(entries), 1)
+            try:
+                entry = json.loads(entries[0])
+            except ValueError:
+                self.fail("a short rewrite left the audit entry unreadable")
+            self.assert_valid(entry)
+            self.assertEqual((done.returncode, json.loads(done.stdout).get("refusal"), entry["outcome"]),
+                             (5, "expiry", "expiry"))
+            self.assertEqual(len(revoked(calls)), 2)
 
 
 class FactoryTests(ServiceFixture):
