@@ -20,7 +20,7 @@ import urllib.request
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import store
 
-DESCRIPTION = "OpenWiz setup: prepare one project and check each connection independently (#1105).\n\n  setup.py prepare --repository OWNER/NAME --project PRJ --operator NAME \\\n      --service-issue N --answer-thread THR --harness H --model M --effort E\n      Without --yes: records the proposed settings and prints their effects,\n      operation id and fingerprint; nothing else is saved. With\n      --yes --operation ID: saves exactly that preview's settings.\n  setup.py check\n      Reads CloudRoom through the installed openwiz CLI, the agents' own\n      GitHub login through gh, and OpenWiz's App through GitHub's App API, and\n      records one result code per component. Reads only: the App's\n      installation token is minted to prove access, then discarded. Beside\n      each code it prints one `next` line: the exact command to run, or the\n      person's step (#2143).\n\nResults go to owner-only `<state>/setup/state.json` (store.py). Output is JSON with fixed public codes: never a token, key,\nprovider body or URL with credentials. No personal-token fallback for the App.\nPython 3.9+, standard library and /usr/bin/openssl only.\n"
+DESCRIPTION = "OpenWiz setup: prepare one project and check each connection independently (#1105).\n\n  setup.py prepare --repository OWNER/NAME --project PRJ --operator NAME \\\n      --service-issue N --answer-thread THR --harness H --model M --effort E\n      With --host NAME other than cloud, omit --project and --answer-thread.\n      Without --yes: records the proposed settings and prints their effects,\n      operation id and fingerprint; nothing else is saved. With\n      --yes --operation ID: saves exactly that preview's settings.\n  setup.py check\n      Reads CloudRoom through the installed openwiz CLI, the agents' own\n      GitHub login through gh, and OpenWiz's App through GitHub's App API, and\n      records one result code per component. Reads only: the App's\n      installation token is minted to prove access, then discarded. Beside\n      each code it prints one `next` line: the exact command to run, or the\n      person's step (#2143).\n\nResults go to owner-only `<state>/setup/state.json` (store.py). Output is JSON with fixed public codes: never a token, key,\nprovider body or URL with credentials. No personal-token fallback for the App.\nPython 3.9+, standard library and /usr/bin/openssl only.\n"
 
 HERE = Path(__file__).resolve().parent
 PROFILE = {'metadata': 'read', 'contents': 'write', 'issues': 'write',
@@ -61,9 +61,14 @@ def check_cloudroom(openwiz, state=None):
     return 'cloudroom_reachable'
 
 
+HARNESS_PROGRAMS = {'claude-code': 'claude', 'codex': 'codex'}
+
+
 def check_harness(openwiz, project):
     if project is None:
         return 'harness_unselected'
+    if 'host' in project:
+        return check_local_harness(openwiz, project)
     if openwiz is None:
         return 'harness_unreadable'
     code, value = run([str(openwiz), 'models', '--json'])
@@ -78,6 +83,27 @@ def check_harness(openwiz, project):
                         and project['effort'] in model.get('efforts', [])):
                     return 'harness_listed'
     return 'harness_unavailable'
+
+
+def check_local_harness(openwiz, project):
+    harness = project['harness']
+    program = HARNESS_PROGRAMS.get(harness)
+    if (program is None or not re.fullmatch(rf'{MODEL_ID}(?:/{MODEL_ID})*', project['model'])
+            or not re.fullmatch(MODEL_ID, project['effort'])):
+        return 'harness_unavailable'
+    if shutil.which(program) is None:
+        return 'harness_not_installed'
+    if openwiz is None:
+        return 'harness_unreadable'
+    code, value = run([str(openwiz), 'models', '--json', '--host', project['host']])
+    if (code != 0 or type(value) is not dict or value.get('schema') != 'openwiz.cloud-options.v1'
+            or value.get('source') != 'local' or value.get('state') != {'kind': 'offered'}
+            or type(value.get('harnesses')) is not list):
+        return 'harness_unreadable'
+    if any(type(entry) is dict and entry.get('harness') == harness and entry.get('provider') == harness
+           for entry in value['harnesses']):
+        return 'harness_listed'
+    return 'harness_unreadable'
 
 
 def gh(path):
@@ -251,17 +277,17 @@ def fleet_settings_usable(text):
     return bool(rows) or waits
 
 
-def check_brain(brain, repository):
+def check_brain(brain, repository, read=gh):
     if brain is None or brain['code_repository'].lower() != repository.lower():
         return 'project_verified'
     home = brain['brain_repository']
-    code, repo = gh(f'repos/{home}')
+    code, repo = read(f'repos/{home}')
     if code is None:
         return 'project_unreadable'
     if code != 0 or type(repo) is not dict or not str(repo.get('full_name', '')).lower() == home.lower() \
             or repo.get('private') is not True or repo.get('visibility') != 'private':
         return 'project_settings_missing' if code in (0, 1) else 'project_unreadable'
-    code, record = gh(f"repos/{home}/contents/{brain['folder']}/settings.json")
+    code, record = read(f"repos/{home}/contents/{brain['folder']}/settings.json")
     if code != 0 or type(record) is not dict or record.get('encoding') != 'base64':
         return 'project_settings_missing' if code in (0, 1) else 'project_unreadable'
     try:
@@ -281,13 +307,25 @@ def check_project(openwiz, project, runtime, brain=None):
         return 'project_unprepared'
     if project['runtime'] is None or runtime_pin(runtime) != project['runtime']:
         return 'project_runtime_missing'
-    code, issue = gh(f"repos/{project['repository']}/issues/{project['service_issue']}")
+    repository = project['repository']
+    local = 'host' in project
+    read = github_com if local else gh
+    if local:
+        code, repo = read(f'repos/{repository}')
+        if code != 0 or type(repo) is not dict:
+            return 'project_unreadable'
+        permissions = repo.get('permissions')
+        if type(permissions) is not dict or type(permissions.get('push')) is not bool:
+            return 'project_unreadable'
+        if not permissions['push']:
+            return 'project_no_write'
+    code, issue = read(f"repos/{repository}/issues/{project['service_issue']}")
     if code is None:
         return 'project_unreadable'
     if (code != 0 or type(issue) is not dict or issue.get('state') != 'open'
             or issue.get('number') != project['service_issue'] or 'pull_request' in issue):
         return 'project_issue_refused' if code in (0, 1) else 'project_unreadable'
-    code, settings = gh(f"repos/{project['repository']}/contents/docs/agents/fleet.md")
+    code, settings = read(f'repos/{repository}/contents/docs/agents/fleet.md')
     if code != 0 or type(settings) is not dict or settings.get('encoding') != 'base64':
         return 'project_settings_missing' if code in (0, 1) else 'project_unreadable'
     try:
@@ -296,6 +334,8 @@ def check_project(openwiz, project, runtime, brain=None):
         return 'project_settings_missing'
     if not fleet_settings_usable(text):
         return 'project_settings_missing'
+    if local:
+        return check_brain(brain, repository, read)
     if openwiz is None:
         return 'project_unreadable'
     code, thread = run([str(openwiz), 'show', project['answer_thread'], '--json'])
@@ -532,6 +572,7 @@ INSTALLATIONS = 'https://github.com/settings/installations'
 
 
 def next_steps(results, state, project, openwiz, identity=None):
+    host = (project or {}).get('host', 'cloud')
     where = ['--state-dir', shlex.quote(str(state))]
     app_tool = HERE.parent / 'github-app/setup.py'
     if not app_tool.is_file():
@@ -546,6 +587,9 @@ def next_steps(results, state, project, openwiz, identity=None):
         if project is not None:
             values.update({key: str(project[key]) for key in values})
         values.update(changed)
+        if host != 'cloud':
+            del values['project'], values['answer_thread']
+            values['host'] = host
         return tool(HERE / 'setup.py', 'prepare', *[word for key, value in values.items() for word in (
             '--' + key.replace('_', '-'), shlex.quote(value))])
 
@@ -612,6 +656,19 @@ def next_steps(results, state, project, openwiz, identity=None):
         'app_token_unusable': f'GitHub returned an unusable App token: run {again} again; if it repeats, {choose_personal}.',
         'app_verified': 'None: the App can act on the project.',
     }
+    if host != 'cloud':
+        program = HARNESS_PROGRAMS.get(project['harness'], 'the chosen harness')
+        local_models = models[:-1] + f' --host {host}`'
+        choose = prepare(harness='HARNESS', model='MODEL', effort='EFFORT')
+        steps.update({
+            'cloudroom_not_needed': f'None: your agents run on {host}, not CloudRoom, so CloudRoom is not needed.',
+            'harness_listed': 'None: the chosen harness is installed and the model and effort can be selected.',
+            'harness_not_installed': f'Install {program} and put it on PATH, then run {again} again.',
+            'harness_unreadable': f'The installed harness choices could not be read: try {local_models}, then run {again} again.',
+            'harness_unavailable': f'That harness, model or effort cannot be selected: see {local_models}, then prepare again: {choose}.',
+            'project_unreadable': f'GitHub could not be read for the project: check `gh auth status`, then run {again} again.',
+            'project_no_write': steps['identity_no_push'],
+        })
     unknown = f'This build does not know that code: run {again} again; if it repeats, reinstall OpenWiz.'
     found = {component: steps.get(code, unknown) for component, code in results.items()}
     if shutil.which('gh') is None:
@@ -634,7 +691,9 @@ def check(args):
             return check_one()
         except Exception:
             return failed
-    results = {'cloudroom': guarded(lambda: check_cloudroom(openwiz, setup.state), 'cloudroom_unreadable'),
+    host = (project or {}).get('host', 'cloud')
+    results = {'cloudroom': 'cloudroom_not_needed' if host != 'cloud' else
+               guarded(lambda: check_cloudroom(openwiz, setup.state), 'cloudroom_unreadable'),
                'harness': guarded(lambda: check_harness(openwiz, project), 'harness_unreadable'),
                'personal_github': guarded(lambda: check_identity(project, before.get('identity')),
                                           'identity_unreadable'),
@@ -655,8 +714,11 @@ def check(args):
         for component, code in results.items():
             value['observations'][component] = {'code': code, 'revision': bound, 'at': now}
     setup.update(change)
-    print(json.dumps({'schema': 'openwiz.setup-check.v1', 'results': results,
-                      'next': next_steps(results, setup.state, project, openwiz, before.get('identity'))}, sort_keys=True))
+    report = {'schema': 'openwiz.setup-check.v1', 'results': results,
+              'next': next_steps(results, setup.state, project, openwiz, before.get('identity'))}
+    if host != 'cloud':
+        report['host'] = host
+    print(json.dumps(report, sort_keys=True))
 
 
 def prepare(args):
@@ -665,14 +727,19 @@ def prepare(args):
     project = {'repository': args.repository, 'project': args.project, 'operator': args.operator,
                'service_issue': args.service_issue, 'answer_thread': args.answer_thread,
                'harness': args.harness, 'model': args.model, 'effort': args.effort, 'runtime': pin}
+    if args.host != 'cloud':
+        project['host'] = args.host
     store.check_project(project)
-    effects = [f"Select {args.repository} and CloudRoom project {args.project} for your first fleet.",
-               f"Record {args.operator} as the loop operator and issue #{args.service_issue} for service records.",
-               f"Send answers to thread {args.answer_thread}.",
-               f"Run agents on {args.harness}, {args.model}, {args.effort} effort.",
-               (f"Pin packaged runtime {pin.split()[0]} (source {pin.split()[1][:12]})." if pin
-                else "No packaged runtime found; project stays unverified."),
-               "Save these settings in this host's owner-only OpenWiz state. Nothing is sent or created."]
+    operator = f"Record {args.operator} as the loop operator and issue #{args.service_issue} for service records."
+    if args.host == 'cloud':
+        effects = [f"Select {args.repository} and CloudRoom project {args.project} for your first fleet.",
+                   operator, f"Send answers to thread {args.answer_thread}."]
+    else:
+        effects = [f"Select {args.repository} for your first fleet, with agents on {args.host}.", operator]
+    effects += [f"Run agents on {args.harness}, {args.model}, {args.effort} effort.",
+                (f"Pin packaged runtime {pin.split()[0]} (source {pin.split()[1][:12]})." if pin
+                 else "No packaged runtime found; project stays unverified."),
+                "Save these settings in this host's owner-only OpenWiz state. Nothing is sent or created."]
     def current(value):
         return value['project'] == project
     if not args.yes:
@@ -705,10 +772,11 @@ def main():
         command.add_argument('--runtime', help='installed runtime directory (default: this packaged runtime)')
     p = commands.choices['prepare']
     p.add_argument('--repository', required=True)
-    p.add_argument('--project', required=True)
+    p.add_argument('--project')
     p.add_argument('--operator', required=True)
     p.add_argument('--service-issue', type=int, required=True)
-    p.add_argument('--answer-thread', required=True)
+    p.add_argument('--answer-thread')
+    p.add_argument('--host', default='cloud', help='where the agents run (default: cloud)')
     p.add_argument('--harness', required=True)
     p.add_argument('--model', required=True)
     p.add_argument('--effort', required=True)
@@ -718,6 +786,11 @@ def main():
     c.add_argument('--openwiz', help='installed openwiz CLI (default: this package\'s)')
     c.add_argument('--api-base', default=API, help='GitHub API; loopback HTTP for synthetic tests only')
     args = parser.parse_args()
+    if args.command == 'prepare' and args.host == 'cloud':
+        missing = [flag for flag, value in (('--project', args.project), ('--answer-thread', args.answer_thread))
+                   if value is None]
+        if missing:
+            p.error('the following arguments are required: ' + ', '.join(missing))
     (prepare if args.command == 'prepare' else check)(args)
 
 
