@@ -317,6 +317,18 @@ class HostSetup(HostFixtureCase):
         self.assertEqual(self.invoke('prepare', *args, '--yes', '--operation', operation['operation_id']).stdout,
                          applied.stdout)
 
+    def test_prepare_names_every_missing_flag_in_one_error(self):
+        rest = ['--operator', 'synthetic-owner', '--service-issue', '7', '--harness', 'claude-code',
+                '--model', 'synthetic-model', '--effort', 'high']
+        cloud = '--repository, --project, --answer-thread'
+        for host, missing in ((None, cloud), ('cloud', cloud), ('local', '--repository')):
+            with self.subTest(host=host):
+                done = self.invoke('prepare', *rest, *(['--host', host] if host else []))
+                self.assertEqual(done.returncode, 2)
+                self.assertEqual(done.stdout, b'')
+                self.assertTrue(done.stderr.decode().endswith(
+                    f'error: the following arguments are required: {missing}\n'), done.stderr)
+
 
 class HostCheck(HostFixtureCase):
     def program(self, name, code):
@@ -449,6 +461,25 @@ Source: synthetic
         answer = self.checked()
         self.assertEqual(answer['results']['project'], 'project_no_write')
         self.assertEqual(answer['results']['personal_github'], 'identity_no_push')
+
+    def test_missing_repository_is_refused_with_a_prepare_again_step(self):
+        for body, code in (({'message': 'Not Found', 'status': '404'}, 'project_no_write'),
+                           ({'message': 'Bad credentials', 'status': '401'}, 'project_unreadable')):
+            with self.subTest(code=code):
+                self.setUp()
+                self.prepare_check()
+                self.program('claude', '')
+                self.program('gh', 'import json, sys\n'
+                                   'if sys.argv[2] == "user":\n'
+                                   '    print(json.dumps({"type": "User", "login": "synthetic-owner"}))\n'
+                                   '    sys.exit(0)\n'
+                                   f'print(json.dumps({body!r}))\n'
+                                   'sys.exit(1)\n')
+                answer = self.checked()
+                self.assertEqual(answer['results']['project'], code)
+                if code == 'project_no_write':
+                    self.assertIn('prepare --repository OWNER/NAME', answer['next']['project'])
+                    self.assertIn('--host local', answer['next']['project'])
 
     def test_non_settable_choice_names_only_local_next_steps(self):
         self.prepare_check(choice={'model': 'synthetic//demo'})
