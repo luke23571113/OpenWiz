@@ -74,6 +74,12 @@ class FakeHost(cloudroom.Host):
         self.signers = {}
         self.dmg_signer = CLOUDROOM_TEAM
         self.dead = set()
+        self.environ = {'DISPLAY': ':0'}
+        for path in ('dev/fuse', 'usr/bin/fusermount3'):
+            (base / 'root' / path).parent.mkdir(parents=True, exist_ok=True)
+            (base / 'root' / path).write_text('synthetic')
+        self.sign_in_code, self.sign_in_said = 0, b''
+        self.open_result = (None, b'')
 
     def fetch(self, url, limit):
         self.fetched.append(url)
@@ -108,7 +114,7 @@ class FakeHost(cloudroom.Host):
                     return 0, self.status
                 return 0, (FIXTURES / f'cloud-{self.status}.json').read_bytes()
             if argv[1:] == ['cloud', 'sign-in', '--json']:
-                return 0, self.sign_in_reply
+                return self.sign_in_code, self.sign_in_reply
             return 2, b''
         if name == 'hdiutil' and argv[1] == 'attach':
             mount = Path(argv[argv.index('-mountpoint') + 1])
@@ -144,8 +150,13 @@ class FakeHost(cloudroom.Host):
             return (0 if match and match.group(1) == signer else 3), b''
         return 127, b''
 
+    def ask(self, argv, timeout):
+        code, out = self.run(argv, timeout)
+        return code, out, self.sign_in_said if argv[1:] == ['cloud', 'sign-in', '--json'] else b''
+
     def open(self, argv):
         self.opened.append(list(argv))
+        return self.open_result
 
     def alive(self, pid):
         return pid not in self.dead
@@ -992,6 +1003,103 @@ class Login(Base):
                 result = self.sign_in()
                 self.assertIsNone(result['opened'])
                 self.assertEqual(self.host.opened, [])
+
+    def said(self):
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            cloudroom.main(['sign-in', '--state-dir', str(self.state)], host=self.host)
+        result = json.loads(out.getvalue())
+        self.assertEqual(set(result), {'schema', 'code', 'operation', 'opened'})
+        return result, err.getvalue()
+
+    def test_a_failed_sign_in_shows_cloudrooms_own_words_and_nothing_secret(self):
+        self.installed('signed-out')
+        secret = (b'Could not reach the CloudRoom server.\n'
+                  b'Retry at https://www.cloudroom.dev/login?desktop=synthetic-nonce-0001 as owner@example.invalid\n'
+                  b'token: synthetic-token-0123456789abcdefghij\n\x1b[31mpassword=hunter2\x1b[0m\n')
+        for code, reply, said in ((1, b'', secret), (1, secret, b''), (None, b'', b''), (1, b'', b''),
+                                  (0, b'{"error": {"message": "Sign-in is busy."}}', b'')):
+            with self.subTest(code=code, reply=reply, said=said):
+                self.host.sign_in_code, self.host.sign_in_reply, self.host.sign_in_said = code, reply, said
+                result, err = self.said()
+                self.assertEqual((result['code'], result['opened']), ('cloudroom_login_missing', None))
+                self.assertEqual(self.host.opened, [])
+                for word in ('synthetic-nonce', 'owner@example.invalid', 'synthetic-token', 'hunter2', '\x1b'):
+                    self.assertNotIn(word, err)
+                if secret in (reply, said):
+                    self.assertIn('openwiz-cloudroom: CloudRoom said: Could not reach the CloudRoom server.\n', err)
+                    self.assertIn('openwiz-cloudroom: CloudRoom said: Retry at [link removed] as [address removed]\n', err)
+                elif code is None:
+                    self.assertIn("CloudRoom's sign-in did not answer", err)
+                elif code == 0:
+                    self.assertIn('openwiz-cloudroom: CloudRoom said: Sign-in is busy.\n', err)
+                else:
+                    self.assertIn("CloudRoom's sign-in gave no link and said nothing", err)
+
+    def test_an_opener_that_fails_is_shown_and_not_counted_as_opened(self):
+        self.installed('signed-out')
+        self.host.open_result = (4, b'xdg-open: no method available for opening '
+                                    b'https://www.cloudroom.dev/login?desktop=synthetic-nonce-0001\n')
+        result, err = self.said()
+        self.assertIsNone(result['opened'])
+        self.assertEqual(err, 'openwiz-cloudroom: xdg-open said: no method available for opening [link removed]\n')
+        self.host.open_result = (None, b'')
+        result, err = self.said()
+        self.assertEqual((result['opened'], err), ('sign_in', ''))
+
+    def test_an_app_that_fails_at_launch_shows_its_own_words(self):
+        real = cloudroom.Host(system='Linux', machine='x86_64', home=self.host.home, root=self.host.root)
+        self.host.open = real.open
+        self.host.publish_appimage(b'#!/bin/sh\necho "error while loading shared libraries: libnss3.so" >&2\n'
+                                   b'echo "see https://example.invalid/help?session=synthetic-0001" >&2\nexit 1\n')
+        self.installed(None)
+        result, err = self.said()
+        self.assertIsNone(result['opened'])
+        self.assertEqual(err, 'openwiz-cloudroom: CloudRoom said: error while loading shared libraries: libnss3.so\n'
+                              'openwiz-cloudroom: CloudRoom said: see [link removed]\n')
+
+    def test_a_headless_linux_machine_is_told_what_sign_in_needs(self):
+        fuse_runtime = b'\x7fELF synthetic AppImage runtime libfuse.so.2 fusermount'
+        cases = {
+            'no desktop session': (dict(environ={}), ['needs a desktop session', 'DISPLAY or WAYLAND_DISPLAY',
+                                                      'Next: run sign-in from a desktop session']),
+            'empty display': (dict(environ={'DISPLAY': '', 'WAYLAND_DISPLAY': ''}), ['needs a desktop session']),
+            'no /dev/fuse': (dict(missing='dev/fuse'), ['needs FUSE', '/dev/fuse', 'Next: install FUSE']),
+            'no fusermount': (dict(missing='usr/bin/fusermount3'), ['needs FUSE', 'fusermount']),
+            'no libfuse2': (dict(app=fuse_runtime), ['libfuse.so.2', 'libfuse2']),
+            'headless and no FUSE': (dict(environ={}, missing='dev/fuse'), ['needs a desktop session', 'needs FUSE']),
+        }
+        for status in ('signed-out', None):
+            for index, (name, (case, words)) in enumerate(cases.items()):
+                with self.subTest(name, status=status):
+                    base = self.base / f'headless-{index}-{status}'
+                    base.mkdir()
+                    self.host, self.state = FakeHost(base), base / 'state'
+                    if 'app' in case:
+                        self.host.publish_appimage(case['app'])
+                    self.installed(status)
+                    self.host.environ = case.get('environ', self.host.environ)
+                    if 'missing' in case:
+                        (self.host.root / case['missing']).unlink()
+                    with self.assertRaises(cloudroom.Refused) as refused:
+                        self.sign_in()
+                    for word in words:
+                        self.assertIn(word, str(refused.exception))
+                    self.assertEqual(self.host.opened, [])
+                    self.assertNotIn(['cloud', 'sign-in', '--json'], [c[1:] for c in self.host.calls])
+        base = self.base / 'with libfuse2'
+        base.mkdir()
+        self.host, self.state = FakeHost(base), base / 'state'
+        self.host.publish_appimage(fuse_runtime)
+        self.installed(None)
+        (self.host.root / 'usr/lib/x86_64-linux-gnu').mkdir(parents=True)
+        (self.host.root / 'usr/lib/x86_64-linux-gnu/libfuse.so.2').write_text('synthetic')
+        self.assertEqual(self.sign_in()['opened'], 'app')
+        (self.base / 'mac').mkdir()
+        mac = FakeHost(self.base / 'mac', 'Darwin', 'arm64')
+        mac.environ = {}
+        mac.mac_app().mkdir(parents=True)
+        self.assertEqual(cloudroom.sign_in(mac, self.base / 'mac-state')['opened'], 'app')
 
     def test_sign_in_never_takes_a_password_or_token(self):
         result = subprocess.run([sys.executable, '-I', str(HERE / 'cloudroom.py'), 'sign-in', '--help'],
