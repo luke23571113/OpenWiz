@@ -597,7 +597,7 @@ class InstallJourney(unittest.TestCase):
         finally:
             sys.settrace(None)
         self.assertEqual(build.lstat().st_mode & 0o777, 0o700)
-        self.assertTrue(os.access(build / 'bin/openwiz', os.X_OK))
+        self.assertTrue(os.access(build / 'openwiz', os.X_OK))
 
     def test_a_repeated_install_reuses_the_verified_build(self):
         c = Consumer(self)

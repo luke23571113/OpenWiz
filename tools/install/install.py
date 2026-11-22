@@ -191,7 +191,15 @@ def damaged(build, assets, raw):
         except BaseException:
             os.chmod(build, stat.S_IMODE(meta.st_mode))
             raise
-        return stat.S_IMODE(meta.st_mode)
+        return meta
+
+
+def same_directory(path, meta):
+    try:
+        now = path.lstat()
+    except OSError:
+        return False
+    return (now.st_dev, now.st_ino) == (meta.st_dev, meta.st_ino)
 
 
 def repair_backups(builds, source, raw):
@@ -303,8 +311,8 @@ def install(manifest, archive, manifest_sha256, root, target, state_root=None,
                 require(member.size == item['bytes'] and member.mode == int(item['mode'], 8), 'archive asset metadata mismatch')
                 seen.add(path)
             require(seen == set(assets), 'incomplete archive')
-            damaged_mode = damaged(build, assets, raw) if build.exists() or build.is_symlink() else None
-            repair = damaged_mode is not None
+            damaged_meta = damaged(build, assets, raw) if build.exists() or build.is_symlink() else None
+            repair = damaged_meta is not None
             if repair or not (build.exists() or build.is_symlink()):
                 try:
                     backups = repair_backups(builds, value['source'], raw)
@@ -340,7 +348,6 @@ def install(manifest, archive, manifest_sha256, root, target, state_root=None,
                             except BaseException:
                                 os.rename(aside, build)
                                 raise
-                            damaged_mode = None
                             backups.append(aside)
                         else:
                             os.rename(temporary, build)
@@ -352,8 +359,8 @@ def install(manifest, archive, manifest_sha256, root, target, state_root=None,
                         if temporary.exists():
                             shutil.rmtree(temporary)
                 except BaseException:
-                    if damaged_mode is not None:
-                        os.chmod(build, damaged_mode)
+                    if damaged_meta is not None and same_directory(build, damaged_meta):
+                        os.chmod(build, stat.S_IMODE(damaged_meta.st_mode))
                     raise
         if not stage_only:
             if not channel.exists():
