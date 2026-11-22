@@ -1,11 +1,4 @@
 #!/usr/bin/env python3
-"""The first-fleet bench: time one run from the pasted install line to the first merged fleet pull request.
-
-  bench.py mark RUN_DIR STEP WAITS_ON [--failure TEXT] [--at TIME]
-  bench.py report RUN_DIR [--json]
-
-See README.md. Standard library only, Python 3.9.
-"""
 import argparse
 import datetime
 import json
@@ -22,7 +15,6 @@ FIELDS = {'spec.json': ('createdAt',), 'tickets.json': ('createdAt',),
 
 
 class Bad(Exception):
-    """An unreadable input: the message names the file and line."""
 
 
 def no_repeats(pairs):
@@ -43,7 +35,6 @@ def exact_keys(where, value, required, optional=()):
 
 
 def parse_time(value):
-    """An ISO 8601 time with a zone (`Z` or an offset), as UTC; None when it is not one."""
     if not isinstance(value, str):
         return None
     try:
@@ -97,8 +88,6 @@ def read_log(path):
 
 
 def read_json(path):
-    """A file of one JSON value, or of JSON values one after another (`gh ... --json` run per item).
-    Gives (line, value) pairs, a top-level array giving one pair per element."""
     if not path.is_file():
         raise Bad(f'{path.name}: missing')
     text = path.read_text(encoding='utf-8')

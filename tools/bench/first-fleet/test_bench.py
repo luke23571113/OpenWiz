@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""The first-fleet bench on fixture runs: python3 -I tools/bench/first-fleet/test_bench.py"""
 import json
 import pathlib
 import shutil
@@ -19,20 +18,17 @@ def bench(*args):
 
 
 class Report(unittest.TestCase):
-    # catches: a wrong start offset, step length, waits column, GitHub row or total.
     def test_merged_run_prints_the_exact_table_and_total(self):
         r = bench('report', FIXTURES / 'merged')
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(r.stdout, (FIXTURES / 'merged' / 'expected.txt').read_text())
 
-    # catches: --json drifting from the table (another total, offsets or rows).
     def test_merged_run_json_is_the_same_table(self):
         r = bench('report', FIXTURES / 'merged', '--json')
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(json.loads(r.stdout),
                          json.loads((FIXTURES / 'merged' / 'expected.json').read_text()))
 
-    # catches: a timer wait that goes unflagged.
     def test_timer_waits_are_flagged(self):
         r = bench('report', FIXTURES / 'timer')
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -41,7 +37,6 @@ class Report(unittest.TestCase):
         self.assertEqual(j['timer_waits'], ['build', 'review', 'merge'])
         self.assertEqual(j['total_seconds'], 1570)
 
-    # catches: a total invented from an open pull request or a missing merge time.
     def test_unmerged_run_reports_no_total_and_why(self):
         r = bench('report', FIXTURES / 'unmerged')
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -70,7 +65,6 @@ class Broken(unittest.TestCase):
             self.assertEqual(r.stdout, '')
             self.assertIn(f'{name} line {where}:', r.stderr)
 
-    # catches: a bad step log line skipped or reported without its line.
     def test_a_malformed_step_log_names_the_bad_line(self):
         good = '{"at": "2026-11-22T10:01:00Z", "step": "install", "waits_on": "agent"}\n'
         for bad in ('not json',
@@ -88,7 +82,6 @@ class Broken(unittest.TestCase):
             with self.subTest(bad=bad):
                 self.refused('steps.jsonl', good + bad + '\n', 2)
 
-    # catches: bad GitHub JSON read as missing data, or reported without its line.
     def test_malformed_github_json_names_the_bad_line(self):
         prs = (FIXTURES / 'merged' / 'prs.json').read_text()
         cases = (
@@ -107,7 +100,6 @@ class Broken(unittest.TestCase):
                 shutil.copy(FIXTURES / 'merged' / name, self.run_dir / name)
                 self.refused(name, text, where)
 
-    # catches: a missing input taken as an empty run.
     def test_a_missing_input_is_refused(self):
         (self.run_dir / 'prs.json').unlink()
         r = bench('report', self.run_dir)
@@ -122,7 +114,6 @@ class Mark(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp)
 
-    # catches: mark writing a line report cannot read, or overwriting the log.
     def test_mark_appends_one_timed_line_per_step(self):
         run_dir = self.tmp / 'run'
         for args in (('install', 'agent', '--at', '2026-11-22T10:01:00Z'),
@@ -143,7 +134,6 @@ class Mark(unittest.TestCase):
         self.assertEqual([s['step'] for s in j['steps']], ['install', 'connect', 'grill'])
         self.assertEqual(j['steps'][0]['length_seconds'], 150)
 
-    # catches: mark accepting a step or wait the report would then refuse.
     def test_mark_refuses_an_unknown_step_or_wait(self):
         run_dir = self.tmp / 'run'
         for args in (('deploy', 'agent'), ('grill', 'nobody'), ('grill', 'user', '--at', 'soon'),
