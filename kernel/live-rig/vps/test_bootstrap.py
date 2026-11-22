@@ -161,7 +161,10 @@ class Fixture:
         return sorted(found)
 
     def read(self, path):
-        return open(path).read() if os.path.exists(path) else ''
+        if not os.path.exists(path):
+            return ''
+        with open(path) as f:
+            return f.read()
 
 
 class BootstrapTest(unittest.TestCase):
@@ -255,13 +258,13 @@ class BootstrapTest(unittest.TestCase):
         self.assertEqual({p: sha256(p) for p in self.fx.tree()}, before)
         self.assertEqual(self.fx.read(self.fx.installer_log), installer_log)
 
-    def test_missing_system_tool_is_left_out_with_its_reason(self):
-        os.remove(os.path.join(self.fx.bin, 'git'))
+    def test_too_old_system_tool_is_left_out_with_its_reason(self):
+        script(os.path.join(self.fx.bin, 'git'), 'echo "git version 1.8.5 (synthetic)"\n')
         r = self.fx.run('--dry-run')
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         line, rest = self.summary(r.stdout)
         self.assertEqual(line, 'bootstrap: dry run, 5 to install, 1 already there, 3 left out')
-        self.assertIn('left out git: not on PATH; install git 2.0 or later with your system package manager '
+        self.assertIn('left out git: git 1.8.5 is older than 2.0; install git 2.0 or later with your system package manager '
                       '(this bootstrap never runs sudo)', rest)
         self.assertIn('left out fakeagent: needs git', rest)
 
@@ -274,7 +277,7 @@ class ToolsJsonTest(unittest.TestCase):
         for need in ('hermes', 'runpane', 'pane', 'droid', 'curl', 'git', 'gh', 'python3'):
             self.assertIn(need, names)
         hosts = {h for t in tools for h in t['hosts']}
-        self.assertTrue({'hermes', 'pane', 'factory', 'conductor', 'cursor'} <= hosts | {'all'}, hosts)
+        self.assertTrue({'hermes', 'pane', 'factory', 'conductor', 'cursor'} <= hosts, hosts)
         for t in tools:
             self.assertTrue(t['source'].startswith('https://') or t['kind'] == 'system', t['name'])
             self.assertGreater(len(t['why']), 20, t['name'])
