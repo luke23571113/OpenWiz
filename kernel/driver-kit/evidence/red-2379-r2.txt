@@ -1,3 +1,4 @@
+# The synthetic test key after "Bearer" is shown as <synthetic key>.
 # #2379: the decoded non-ASCII path escape cases against the helper before that check.
 test_each_path_escape_is_refused_before_any_network_call (__main__.Helper.test_each_path_escape_is_refused_before_any_network_call) ... 
   test_each_path_escape_is_refused_before_any_network_call (__main__.Helper.test_each_path_escape_is_refused_before_any_network_call) [/v1/%EF%BC%8F%EF%BC%8F] ... FAIL
@@ -51,7 +52,7 @@ AssertionError: Lists differ: [('POST /v1/%EF%BC%8F%EF%BC%8F HTTP/1.1', [613 cha
 
 First list contains 2 additional elements.
 First extra element 0:
-('POST /v1/%EF%BC%8F%EF%BC%8F HTTP/1.1', [('Host', '127.0.0.1:36423'), ('Accept-Encoding', 'identity'), ('Content-Length', '16'), ('Authorization', 'Bearer synthetic-host-key-Kit0ValueKit0ValueKit0Value'), ('Accept', 'application/json'), ('User-Agent', 'openwiz-hostkey/1'), ('Content-Type', 'application/json')], b'{"prompt": "hi"}')
+('POST /v1/%EF%BC%8F%EF%BC%8F HTTP/1.1', [('Host', '127.0.0.1:36423'), ('Accept-Encoding', 'identity'), ('Content-Length', '16'), ('Authorization', 'Bearer <synthetic key>'), ('Accept', 'application/json'), ('User-Agent', 'openwiz-hostkey/1'), ('Content-Type', 'application/json')], b'{"prompt": "hi"}')
 
 Diff is 747 characters long. Set self.maxDiff to None to see it. : a refused request reached the host
 
@@ -67,7 +68,7 @@ AssertionError: Lists differ: [('POST /v1/%EF%BC%8F%EF%BC%8F HTTP/1.1', [613 cha
 
 First list contains 2 additional elements.
 First extra element 0:
-('POST /v1/%EF%BC%8F%EF%BC%8F HTTP/1.1', [('Host', '127.0.0.1:36423'), ('Accept-Encoding', 'identity'), ('Content-Length', '16'), ('Authorization', 'Bearer synthetic-host-key-Kit0ValueKit0ValueKit0Value'), ('Accept', 'application/json'), ('User-Agent', 'openwiz-hostkey/1'), ('Content-Type', 'application/json')], b'{"prompt": "hi"}')
+('POST /v1/%EF%BC%8F%EF%BC%8F HTTP/1.1', [('Host', '127.0.0.1:36423'), ('Accept-Encoding', 'identity'), ('Content-Length', '16'), ('Authorization', 'Bearer <synthetic key>'), ('Accept', 'application/json'), ('User-Agent', 'openwiz-hostkey/1'), ('Content-Type', 'application/json')], b'{"prompt": "hi"}')
 
 Diff is 747 characters long. Set self.maxDiff to None to see it. : a refused request reached the host
 

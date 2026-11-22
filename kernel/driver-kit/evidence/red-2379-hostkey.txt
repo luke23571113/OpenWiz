@@ -1,3 +1,4 @@
+# The synthetic test key after "Bearer" is shown as <synthetic key>.
 test_a_good_request_reaches_the_registered_host_with_the_key_only_in_its_header (__main__.Helper.test_a_good_request_reaches_the_registered_host_with_the_key_only_in_its_header) ... ok
 test_a_host_not_in_the_registry_is_refused (__main__.Helper.test_a_host_not_in_the_registry_is_refused) ... 
   test_a_host_not_in_the_registry_is_refused (__main__.Helper.test_a_host_not_in_the_registry_is_refused) [nothost] ... FAIL
@@ -26,7 +27,7 @@ test_a_non_json_answer_comes_back_as_a_null_body (__main__.Helper.test_a_non_jso
   test_a_non_json_answer_comes_back_as_a_null_body (__main__.Helper.test_a_non_json_answer_comes_back_as_a_null_body) [b'{"n": NaN}'] ... FAIL
 test_a_redirect_comes_back_as_its_status_and_is_never_followed (__main__.Helper.test_a_redirect_comes_back_as_its_status_and_is_never_followed) ... ok
 test_an_answer_that_holds_the_key_is_dropped (__main__.Helper.test_an_answer_that_holds_the_key_is_dropped) ... 
-  test_an_answer_that_holds_the_key_is_dropped (__main__.Helper.test_an_answer_that_holds_the_key_is_dropped) [b'{"echo": "Bearer synthetic-host-key-Kit0ValueKit0ValueKit0Value"}'] ... FAIL
+  test_an_answer_that_holds_the_key_is_dropped (__main__.Helper.test_an_answer_that_holds_the_key_is_dropped) [b'{"echo": "Bearer <synthetic key>"}'] ... FAIL
   test_an_answer_that_holds_the_key_is_dropped (__main__.Helper.test_an_answer_that_holds_the_key_is_dropped) [b'<p>synthetic-host-key-Kit0ValueKit0ValueKit0Value</p>'] ... FAIL
   test_an_answer_that_holds_the_key_is_dropped (__main__.Helper.test_an_answer_that_holds_the_key_is_dropped) [b'{"k": "\\u0073ynthetic-ho\\u0073t-key-Kit0ValueKit0ValueKit0Value"}'] ... FAIL
   test_an_answer_that_holds_the_key_is_dropped (__main__.Helper.test_an_answer_that_holds_the_key_is_dropped) [b'{"synthetic-host-key-Kit0ValueKit0ValueKit0Value": 1}'] ... FAIL
@@ -243,7 +244,7 @@ Traceback (most recent call last):
                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/tmp/openwiz/kernel/driver-kit/test_hostkey.py", line 69, in run_helper
     self.assertNotIn(KEY, text)
-AssertionError: 'synthetic-host-key-Kit0ValueKit0ValueKit0Value' unexpectedly found in 'Traceback (most recent call last):\n  File "/tmp/openwiz/kernel/driver-kit/hostkey.py", line 44, in <module>\n    main()\n  File "/tmp/openwiz/kernel/driver-kit/hostkey.py", line 35, in main\n    status, raw = send(origin, req[\'method\'], req[\'path\'], req.get(\'body\'), find_key(entry, os.environ))\n                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "/tmp/openwiz/kernel/driver-kit/hostkey.py", line 25, in send\n    conn.request(method, path, body=None if body is None else json.dumps(body),\n  File "/usr/lib/python3.11/http/client.py", line 1311, in request\n    self._send_request(method, url, body, headers, encode_chunked)\n  File "/usr/lib/python3.11/http/client.py", line 1352, in _send_request\n    self.putheader(hdr, value)\n  File "/usr/lib/python3.11/http/client.py", line 1289, in putheader\n    raise ValueError(\'Invalid header value %r\' % (values[i],))\nValueError: Invalid header value b\'Bearer synthetic-host-key-Kit0ValueKit0ValueKit0Value\\n\'\n'
+AssertionError: 'synthetic-host-key-Kit0ValueKit0ValueKit0Value' unexpectedly found in 'Traceback (most recent call last):\n  File "/tmp/openwiz/kernel/driver-kit/hostkey.py", line 44, in <module>\n    main()\n  File "/tmp/openwiz/kernel/driver-kit/hostkey.py", line 35, in main\n    status, raw = send(origin, req[\'method\'], req[\'path\'], req.get(\'body\'), find_key(entry, os.environ))\n                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "/tmp/openwiz/kernel/driver-kit/hostkey.py", line 25, in send\n    conn.request(method, path, body=None if body is None else json.dumps(body),\n  File "/usr/lib/python3.11/http/client.py", line 1311, in request\n    self._send_request(method, url, body, headers, encode_chunked)\n  File "/usr/lib/python3.11/http/client.py", line 1352, in _send_request\n    self.putheader(hdr, value)\n  File "/usr/lib/python3.11/http/client.py", line 1289, in putheader\n    raise ValueError(\'Invalid header value %r\' % (values[i],))\nValueError: Invalid header value b\'Bearer <synthetic key>\\n\'\n'
 
 ======================================================================
 FAIL: test_a_key_that_is_not_one_printable_line_is_refused_without_its_value (__main__.Helper.test_a_key_that_is_not_one_printable_line_is_refused_without_its_value) ['synthetic-host-key-Kit0ValueKit0ValueKit0Value x']
@@ -436,7 +437,7 @@ First differing element 1:
 
 
 ======================================================================
-FAIL: test_an_answer_that_holds_the_key_is_dropped (__main__.Helper.test_an_answer_that_holds_the_key_is_dropped) [b'{"echo": "Bearer synthetic-host-key-Kit0ValueKit0ValueKit0Value"}']
+FAIL: test_an_answer_that_holds_the_key_is_dropped (__main__.Helper.test_an_answer_that_holds_the_key_is_dropped) [b'{"echo": "Bearer <synthetic key>"}']
 ----------------------------------------------------------------------
 Traceback (most recent call last):
   File "/tmp/openwiz/kernel/driver-kit/test_hostkey.py", line 177, in test_an_answer_that_holds_the_key_is_dropped
@@ -444,7 +445,7 @@ Traceback (most recent call last):
                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/tmp/openwiz/kernel/driver-kit/test_hostkey.py", line 69, in run_helper
     self.assertNotIn(KEY, text)
-AssertionError: 'synthetic-host-key-Kit0ValueKit0ValueKit0Value' unexpectedly found in '{"status": 500, "body": {"echo": "Bearer synthetic-host-key-Kit0ValueKit0ValueKit0Value"}}\n'
+AssertionError: 'synthetic-host-key-Kit0ValueKit0ValueKit0Value' unexpectedly found in '{"status": 500, "body": {"echo": "Bearer <synthetic key>"}}\n'
 
 ======================================================================
 FAIL: test_an_answer_that_holds_the_key_is_dropped (__main__.Helper.test_an_answer_that_holds_the_key_is_dropped) [b'<p>synthetic-host-key-Kit0ValueKit0ValueKit0Value</p>']
