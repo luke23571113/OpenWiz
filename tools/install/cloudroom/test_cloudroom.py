@@ -1053,12 +1053,15 @@ class Login(Base):
         real = cloudroom.Host(system='Linux', machine='x86_64', home=self.host.home, root=self.host.root)
         self.host.open = real.open
         self.host.publish_appimage(b'#!/bin/sh\necho "error while loading shared libraries: libnss3.so" >&2\n'
-                                   b'echo "see https://example.invalid/help?session=synthetic-0001" >&2\nexit 1\n')
+                                   b'echo "see https://example.invalid/help?session=synthetic-0001" >&2\n'
+                                   b'echo "state syn7h3t1cst4t3v4lu3" >&2\nexit 1\n')
         self.installed(None)
-        result, err = self.said()
+        with patch.object(cloudroom, 'OPEN_WAIT', 120):
+            result, err = self.said()
         self.assertIsNone(result['opened'])
         self.assertEqual(err, 'openwiz-cloudroom: CloudRoom said: error while loading shared libraries: libnss3.so\n'
-                              'openwiz-cloudroom: CloudRoom said: see [link removed]\n')
+                              'openwiz-cloudroom: CloudRoom said: see [link removed]\n'
+                              'openwiz-cloudroom: CloudRoom said: state [removed]\n')
 
     def test_a_headless_linux_machine_is_told_what_sign_in_needs(self):
         fuse_runtime = b'\x7fELF synthetic AppImage runtime libfuse.so.2 fusermount'

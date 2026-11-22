@@ -88,7 +88,7 @@ REDACTIONS = ((re.compile(r'[A-Za-z][A-Za-z0-9+.-]*://\S*'), '[link removed]'),
               (re.compile(r'(?i)\b(token|password|passwd|secret|key|code|nonce|session|cookie|authorization|bearer)'
                           r'\s*[:=].*'), r'\1 [removed]'),
               (re.compile(r'(?i)\bbearer\s+\S+'), 'Bearer [removed]'),
-              (re.compile(r'[A-Za-z0-9+/_=.-]{24,}'), '[removed]'))
+              (re.compile(r'[A-Za-z0-9+/_=.-]{24,}|(?=[A-Za-z+/_=.-]*[0-9])[A-Za-z0-9+/_=.-]{16,}'), '[removed]'))
 
 
 class Redirects(urllib.request.HTTPRedirectHandler):
