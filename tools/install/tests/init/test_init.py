@@ -259,6 +259,39 @@ class Init(unittest.TestCase):
                 self.assertEqual(self.files(COMPANION, 'main'), {})
                 self.assertEqual([c for c in self.writes() if c[1] == merge], [['PUT', merge]])
 
+    def test_a_resumed_apply_merges_only_the_companion_and_proposal_this_operation_made(self):
+        brain = 'openwiz/brain'
+        theirs = {'number': 1, 'state': 'open', 'head': brain, 'base': 'main', 'title': 'Theirs', 'body': ''}
+        ours = repository(COMPANION, 'private', description=f'OpenWiz private brain for {CODE}')
+
+        def collaborator_pull(w):
+            w['repos'][COMPANION.lower()]['branches'][brain] = {'.openwiz/brain/README.md': 'Theirs.\n'}
+            w['repos'][COMPANION.lower()]['pulls'].append(theirs)
+        cases = (
+            ('collaborator proposal', {'method': 'POST', 'path': f'repos/{CODE}/labels', 'mode': 'drop'},
+             collaborator_pull),
+            ('companion made elsewhere', {'method': 'POST', 'path': 'user/repos', 'mode': 'drop'},
+             lambda w: w['repos'].update({COMPANION.lower(): dict(ours, id=7)})),
+            ('companion replaced', {'method': 'POST', 'path': f'repos/{CODE}/labels', 'mode': 'drop'},
+             lambda w: w['repos'][COMPANION.lower()].update(id=7)),
+            ('proposal pushed to', {'method': 'PUT', 'path': f'repos/{COMPANION}/pulls/1/merge', 'mode': 'drop'},
+             lambda w: w['repos'][COMPANION.lower()]['pulls'][0].update(sha='a' * 40)))
+        for name, fault, change in cases:
+            with self.subTest(name):
+                shutil.rmtree(self.state, ignore_errors=True)
+                self.world({CODE.lower(): repository(CODE, 'public')}, faults=[dict(fault, times=1)])
+                preview = self.init()
+                self.assertEqual(self.apply(preview, expect=6)['outcome'], 'uncertain')
+                self.edit(change)
+                done = self.apply(preview)
+                self.assertEqual((done['outcome'], done['reason_code']), ('applied', 'brain_proposed'))
+                self.assertEqual(done['pull_requests'][0]['state'], 'open')
+                self.assertNotIn(('merge_pull_request', 'applied'),
+                                 [(e['kind'], e['phase']) for e in done['effects']])
+                self.assertEqual(self.files(COMPANION, 'main'), {})
+                self.assertEqual([c for c in self.writes() if c[1].endswith('/merge')],
+                                 [['PUT', f'repos/{COMPANION}/pulls/1/merge']] if fault['method'] == 'PUT' else [])
+
     def test_the_contract_refuses_a_merge_outside_a_companion_created_in_the_same_apply(self):
         examples = json.loads((ROOT / 'tools/install/tests/setup-onboard-contract/fixtures/cases.json')
                               .read_text())['examples']
@@ -356,8 +389,10 @@ class Init(unittest.TestCase):
                     self.assertEqual(sum(1 for c in world['log'] if c == ['POST', 'user/repos']),
                                      2 if (mode, path) == ('drop', 'user/repos') else 1)
                     self.assertEqual(len(world['repos'][COMPANION.lower()]['pulls']), 1)
-                    self.assertEqual(done['pull_requests'][0]['state'], 'merged')
+                    unattributed = mode == 'lose' and path in ('user/repos', f'repos/{COMPANION}/pulls')
+                    self.assertEqual(done['pull_requests'][0]['state'], 'open' if unattributed else 'merged')
                     self.assertEqual(sum(1 for c in world['log'] if c[1].endswith('/merge')),
+                                     0 if unattributed else
                                      2 if (mode, path) == ('drop', f'repos/{COMPANION}/pulls/1/merge') else 1)
                     self.assertEqual(world['repos'][CODE.lower()]['labels'], FACTORY_LABELS)
                     self.assertEqual(set(world['repos'][COMPANION.lower()]['branches']['openwiz/brain']), FILES)
