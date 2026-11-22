@@ -165,3 +165,43 @@ fn local_set_and_show_use_project_roles_without_cloudroom() {
     assert_eq!(shown["roles"]["builder"]["choice"]["model"], "gpt-6.2-sol");
     assert!(!sandbox.0.join("calls").exists());
 }
+
+#[test]
+fn local_set_reports_unlisted_choices_and_refuses_unsettable_ones() {
+    let sandbox = project();
+    install(&sandbox, "codex");
+    save_host(&sandbox, "cloud-nine-keys");
+    let set = |provider, model, code| {
+        report(
+            sandbox.run(&[
+                "models", "set", "--host", "local", "reviewer", provider, model, "medium", "--json",
+            ]),
+            code,
+            "models.v1.schema.json",
+            "set_report",
+        )
+    };
+    for outcome in ["changed", "unchanged"] {
+        let accepted = set("codex", "synthetic-vendor/demo", 0);
+        assert_eq!(accepted["outcome"], outcome);
+        assert_eq!(accepted["listed"], false);
+        assert_eq!(
+            accepted["after"]["choice"]["model"],
+            "synthetic-vendor/demo"
+        );
+    }
+
+    let fleet = fs::read(sandbox.0.join(FLEET)).unwrap();
+    let snapshot = fs::read(sandbox.0.join(SNAPSHOT)).unwrap();
+    for (provider, model, reason) in [
+        ("claude-code", "claude-opus-5-5", "not_offered"),
+        ("codex", "synthetic-vendor/demo:latest", "not_writable"),
+    ] {
+        let refused = set(provider, model, 5);
+        assert_eq!(refused["refusal"]["reason"], reason);
+        assert!(refused.get("listed").is_none());
+        assert_eq!(fs::read(sandbox.0.join(FLEET)).unwrap(), fleet);
+        assert_eq!(fs::read(sandbox.0.join(SNAPSHOT)).unwrap(), snapshot);
+    }
+    assert!(!sandbox.0.join("calls").exists());
+}
