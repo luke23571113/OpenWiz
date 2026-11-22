@@ -1,22 +1,22 @@
-Runs at 78ad35459c04bfd19a08a01a99f749c580bcbff3
-E
-======================================================================
-ERROR: test_cloudroom (unittest.loader._FailedTest.test_cloudroom)
+Runs at 78ad35459c04bfd19a08a01a99f749c580bcbff3 (code and tests unchanged since; this commit adds only this log)
+...................................openwiz-cloudroom: CloudRoom's sign-in gave no usable link and said nothing (status 0)
+openwiz-cloudroom: CloudRoom's sign-in gave no usable link and said nothing (status 0)
+openwiz-cloudroom: CloudRoom's sign-in gave no usable link and said nothing (status 0)
+openwiz-cloudroom: CloudRoom's sign-in gave no usable link and said nothing (status 0)
+openwiz-cloudroom: CloudRoom's sign-in gave no usable link and said nothing (status 0)
+openwiz-cloudroom: CloudRoom's sign-in gave no usable link and said nothing (status 0)
+..............
 ----------------------------------------------------------------------
-ImportError: Failed to import test module: test_cloudroom
-Traceback (most recent call last):
-  File "/usr/lib/python3.11/unittest/loader.py", line 154, in loadTestsFromName
-    module = __import__(module_name)
-             ^^^^^^^^^^^^^^^^^^^^^^^
-ModuleNotFoundError: No module named 'test_cloudroom'
+Ran 49 tests in 2.583s
 
-
-----------------------------------------------------------------------
-Ran 1 test in 0.000s
-
-FAILED (errors=1)
+OK
 .
 ----------------------------------------------------------------------
-Ran 1 test in 1.412s
+Ran 1 test in 1.393s
+
+OK
+..................
+----------------------------------------------------------------------
+Ran 18 tests in 4.025s
 
 OK
