@@ -74,8 +74,8 @@ PLANTED_KEY = {
                                       + SCRIPT],
     'key-runtime-relative': PASS[:4] + ['fail token: the file ../../runtime-reader, which a process of the driver '
                                         'ran, ' + SCRIPT],
-    'key-runtime-credential-path': PASS[:4] + ['fail token: a file a process of the driver ran, which the kit does '
-                                               'not name, ' + SCRIPT],
+    'key-runtime-credential-path': PASS[:4] + ['fail token: %s; a file a process of the driver ran, which the kit '
+                                               'does not name, %s' % (IN_ARGS, SCRIPT)],
     'key-local-login': PASS[:4] + [KEY_PASS],
 }
 HOST_SCHEMA = {'type': 'object', 'required': ['origin', 'variable', 'keychain', 'header'],
@@ -194,7 +194,7 @@ class Kit(unittest.TestCase):
                 self.tearDown()
                 self.setUp()
                 code, out, _ = self.keyed(os.path.join(FIXTURES, 'planted', name, 'driver'))
-                self.assertEqual((code, out), (1, lines))
+                self.assertEqual((code, out), (0 if all(x.startswith('pass') for x in lines) else 1, lines))
 
     def test_on_macos_a_key_in_an_argument_or_another_variable_is_caught(self):
         for name in ('key-in-args', 'key-in-env', 'key-runtime-script', 'key-runtime-relative'):
