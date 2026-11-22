@@ -312,6 +312,8 @@ def check_project(openwiz, project, runtime, brain=None):
     read = github_com if local else gh
     if local:
         code, repo = read(f'repos/{repository}')
+        if code == 1 and type(repo) is dict and repo.get('message') == 'Not Found':
+            return 'project_no_write'
         if code != 0 or type(repo) is not dict:
             return 'project_unreadable'
         permissions = repo.get('permissions')
@@ -667,7 +669,7 @@ def next_steps(results, state, project, openwiz, identity=None):
             'harness_unreadable': f'The installed harness choices could not be read: try {local_models}, then run {again} again.',
             'harness_unavailable': f'That harness, model or effort cannot be selected: see {local_models}, then prepare again: {choose}.',
             'project_unreadable': f'GitHub could not be read for the project: check `gh auth status`, then run {again} again.',
-            'project_no_write': steps['identity_no_push'],
+            'project_no_write': f"The signed-in GitHub account cannot push to {repository}, or cannot see it: if OWNER/NAME is wrong, prepare again with the right one: {prepare(repository='OWNER/NAME')}; otherwise {gh_login[0].lower() + gh_login[1:]} with an account that can push, or ask its owner for write access.",
         })
     unknown = f'This build does not know that code: run {again} again; if it repeats, reinstall OpenWiz.'
     found = {component: steps.get(code, unknown) for component, code in results.items()}
@@ -772,10 +774,10 @@ def main():
         command.add_argument('--runtime', help='installed runtime directory (default: this packaged runtime)')
     p = commands.choices['prepare']
     p.add_argument('--repository', required=True)
-    p.add_argument('--project')
+    cloud_only = [p.add_argument('--project')]
     p.add_argument('--operator', required=True)
     p.add_argument('--service-issue', type=int, required=True)
-    p.add_argument('--answer-thread')
+    cloud_only.append(p.add_argument('--answer-thread'))
     p.add_argument('--host', default='cloud', help='where the agents run (default: cloud)')
     p.add_argument('--harness', required=True)
     p.add_argument('--model', required=True)
@@ -785,12 +787,16 @@ def main():
     c = commands.choices['check']
     c.add_argument('--openwiz', help='installed openwiz CLI (default: this package\'s)')
     c.add_argument('--api-base', default=API, help='GitHub API; loopback HTTP for synthetic tests only')
+    if sys.argv[1:2] == ['prepare']:
+        host = argparse.ArgumentParser(add_help=False, exit_on_error=False)
+        host.add_argument('--host', default='cloud')
+        try:
+            cloud = host.parse_known_args(sys.argv[2:])[0].host == 'cloud'
+        except argparse.ArgumentError:
+            cloud = False
+        for action in cloud_only:
+            action.required = cloud
     args = parser.parse_args()
-    if args.command == 'prepare' and args.host == 'cloud':
-        missing = [flag for flag, value in (('--project', args.project), ('--answer-thread', args.answer_thread))
-                   if value is None]
-        if missing:
-            p.error('the following arguments are required: ' + ', '.join(missing))
     (prepare if args.command == 'prepare' else check)(args)
 
 
