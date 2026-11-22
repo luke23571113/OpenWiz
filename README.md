@@ -9,7 +9,7 @@
 
 You make the decisions: answer a few questions. The agents run the factory: they write the spec and the tickets, build, review and merge. You watch it ship.
 
-**Status:** OpenWiz 0.1.0 ("OpenWiz 0.01") is out: the [release](https://github.com/openwizdev/OpenWiz/releases/tag/v0.1.0) installs on macOS on Apple silicon and on Linux on x86_64 (glibc 2.34 or later). Intel Macs are not supported for 0.1.0: the install needs CloudRoom, and CloudRoom offers no Intel Mac build today, though the `openwiz` program itself runs there. OpenWiz builds itself, in public, in this repo.
+**Status:** OpenWiz 0.1.0 ("OpenWiz 0.01") is out: the [release](https://github.com/openwizdev/OpenWiz/releases/tag/v0.1.0) installs on macOS on Apple silicon and on Linux on x86_64 (glibc 2.34 or later). An Intel Mac installs from 0.1.1 on, with agents on this computer or on boat.dev: CloudRoom offers no Intel Mac build today. OpenWiz builds itself, in public, in this repo.
 
 ## Quick start
 
