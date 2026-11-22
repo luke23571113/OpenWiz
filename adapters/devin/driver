@@ -12,6 +12,9 @@ START = {'repository': r'[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}', 'ticket':
          'skill': r'(?=.{1,60}$)[a-z0-9]+(-[a-z0-9]+)*', 'harness': r'devin',
          'model': r'[A-Za-z0-9][A-Za-z0-9 ._:@+-]{0,59}'}
 SESSION = r'devin-[a-z0-9]{1,94}'
+EFFORT = re.compile(r'[a-z][a-z0-9-]{0,19}')
+CANT_SET_EFFORT = ("this host can't set effort: remove the effort for this harness in your Models table or Roster to run "
+                   "it at the host's default")
 RUN = {'run': SESSION}
 ORG = re.compile(r'org-[A-Za-z0-9]{1,64}')
 MODES = ('normal', 'fast', 'fusion', 'lite', 'ultra', 'fast-ultra', 'swe-2-medium', 'swe-2-high', 'swe-2-max')
@@ -34,6 +37,10 @@ def read(fields):
         req = json.loads(sys.stdin.read(), object_pairs_hook=unique)
     except ValueError:
         raise Refused('the input is not JSON', 'send one JSON object on stdin, as `driver schema` shows')
+    if fields is START and isinstance(req, dict) and 'effort' in req:
+        word = req['effort'] if isinstance(req['effort'], str) and EFFORT.fullmatch(req['effort']) else '(not one plain word)'
+        raise Refused('Devin can\'t run harness devin at effort %s: its sessions API takes no effort' % word,
+                      CANT_SET_EFFORT)
     if not isinstance(req, dict) or set(req) != set(fields):
         raise Refused('the input needs exactly ' + ', '.join(fields), 'send only those fields; never a login')
     for key, pattern in fields.items():

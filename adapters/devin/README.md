@@ -2,6 +2,8 @@
 
 Login: held by Devin
 
+Effort: the host can't set it (Devin's sessions API takes no effort setting; `model` picks Devin's mode instead). A start that carries `effort` is refused, and nothing starts.
+
 - The key is your own `DEVIN_API_KEY`, or the keychain entry `openwiz-devin` when that variable is unset.
 - OpenWiz never stores it. Remove it from your environment or keychain to revoke it.
 
