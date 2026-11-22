@@ -27,6 +27,8 @@ def not_installed():
 def not_signed_in():
     with h.ThrowawayMachine(ROWS, 'kilo', 'kilo', FAKE, 'default', ['KILO_NO_DAEMON']) as env:
         code, out = env.start(FAKE_KILO_SIGNED_OUT='1')
+        if code == 0:
+            env.driver('stop', out)
         if code != 1 or h.kit.invalid(out, h.ERROR) is not None or env.records():
             return False
         log = out['next'].partition('read ')[2].partition(', fix what it says there')[0]
