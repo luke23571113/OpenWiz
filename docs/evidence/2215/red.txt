@@ -21,3 +21,25 @@ AssertionError: ('#!/bin/sh\n# synthetic rogue gh\nexit 0\n', 'synthetic-agent-t
 Ran 1 test in 0.006s
 
 FAILED (failures=2)
+R1 red at 31e2161b plus the synthetic regression test. The exec boundary is intercepted.
+$ python3 -I tools/github-app/test_agent_token.py -k intermediate_symlink_targets
+F
+======================================================================
+FAIL: test_r1_gh_checks_intermediate_symlink_targets_before_path_exec (__main__.Review.test_r1_gh_checks_intermediate_symlink_targets_before_path_exec)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/github-app/test_agent_token.py", line 740, in test_r1_gh_checks_intermediate_symlink_targets_before_path_exec
+    self.assertEqual((code, run.call_count), (128, 0), "unsafe intermediate directory must block exec")
+AssertionError: Tuples differ: (None, 1) != (128, 0)
+
+First differing element 0:
+None
+128
+
+- (None, 1)
++ (128, 0) : unsafe intermediate directory must block exec
+
+----------------------------------------------------------------------
+Ran 1 test in 0.005s
+
+FAILED (failures=1)
