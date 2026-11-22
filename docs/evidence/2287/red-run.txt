@@ -1,17 +1,17 @@
-# Red run for openwizdev/OpenWiz#2287 on main's code, new tests only (paths scrubbed)
+# Red run for openwizdev/OpenWiz#2287 on main's code, new tests only (paths and the fake bearer token scrubbed)
 $ python3 -I tools/github-app/test.py HardeningTests SetupCheckOwnerBoundary.test_the_proof_token_is_revoked_and_must_cover_selected_repositories_only SetupTests.test_the_setup_page_has_a_44_pixel_button_a_viewport_and_a_language
 FAIL: test_a_token_refused_after_minting_is_revoked_and_a_good_one_kept (__main__.HardeningTests.test_a_token_refused_after_minting_is_revoked_and_a_good_one_kept) [write permissions]
-AssertionError: Lists differ: [] != ['Bearer synthetic-installation-token']
+AssertionError: Lists differ: [] != ['Bearer <the fake token>']
 FAIL: test_a_token_refused_after_minting_is_revoked_and_a_good_one_kept (__main__.HardeningTests.test_a_token_refused_after_minting_is_revoked_and_a_good_one_kept) [too long]
-AssertionError: Lists differ: [] != ['Bearer synthetic-installation-token']
+AssertionError: Lists differ: [] != ['Bearer <the fake token>']
 FAIL: test_a_token_refused_after_minting_is_revoked_and_a_good_one_kept (__main__.HardeningTests.test_a_token_refused_after_minting_is_revoked_and_a_good_one_kept) [other repository]
-AssertionError: Lists differ: [] != ['Bearer synthetic-installation-token']
+AssertionError: Lists differ: [] != ['Bearer <the fake token>']
 FAIL: test_an_interrupted_key_write_leaves_no_key_and_never_replaces_one (__main__.HardeningTests.test_an_interrupted_key_write_leaves_no_key_and_never_replaces_one)
 AssertionError: True is not false : a crash mid-write left a key at its final name
 FAIL: test_openssl_runs_by_absolute_path_with_a_fixed_environment_or_not_at_all (__main__.HardeningTests.test_openssl_runs_by_absolute_path_with_a_fixed_environment_or_not_at_all)
 AssertionError: True is not false : openssl was taken from PATH
 FAIL: test_the_proof_token_is_revoked_and_must_cover_selected_repositories_only (__main__.SetupCheckOwnerBoundary.test_the_proof_token_is_revoked_and_must_cover_selected_repositories_only) (selection='selected')
-AssertionError: Lists differ: [] != ['Bearer synthetic-installation-token']
+AssertionError: Lists differ: [] != ['Bearer <the fake token>']
 FAIL: test_the_proof_token_is_revoked_and_must_cover_selected_repositories_only (__main__.SetupCheckOwnerBoundary.test_the_proof_token_is_revoked_and_must_cover_selected_repositories_only) (selection='all')
 AssertionError: 'app_verified' != 'app_wrong_repository'
 FAIL: test_the_setup_page_has_a_44_pixel_button_a_viewport_and_a_language (__main__.SetupTests.test_the_setup_page_has_a_44_pixel_button_a_viewport_and_a_language)
@@ -20,13 +20,13 @@ Ran 5 tests in 5.291s
 FAILED (failures=8)
 $ python3 -I tools/github-app/test_token_service.py RequestFixtureTests.test_a_grant_wider_or_other_than_the_request_is_refused RequestFixtureTests.test_a_slow_audit_sync_is_checked_again_and_logged_as_the_answer
 FAIL: test_a_grant_wider_or_other_than_the_request_is_refused (__main__.RequestFixtureTests.test_a_grant_wider_or_other_than_the_request_is_refused) [{'permissions': {'metadata': 'read', 'workflows': 'write'}}]
-AssertionError: Lists differ: [] != ['Bearer synthetic-token']
+AssertionError: Lists differ: [] != ['Bearer <the fake token>']
 FAIL: test_a_grant_wider_or_other_than_the_request_is_refused (__main__.RequestFixtureTests.test_a_grant_wider_or_other_than_the_request_is_refused) [{'repositories': [{'full_name': 'synthetic-owner/work'}, {'full_name': 'synthetic-owner/tools'}]}]
-AssertionError: Lists differ: [] != ['Bearer synthetic-token']
+AssertionError: Lists differ: [] != ['Bearer <the fake token>']
 FAIL: test_a_grant_wider_or_other_than_the_request_is_refused (__main__.RequestFixtureTests.test_a_grant_wider_or_other_than_the_request_is_refused) [{'repository_selection': 'all'}]
-AssertionError: Lists differ: [] != ['Bearer synthetic-token']
+AssertionError: Lists differ: [] != ['Bearer <the fake token>']
 FAIL: test_a_grant_wider_or_other_than_the_request_is_refused (__main__.RequestFixtureTests.test_a_grant_wider_or_other_than_the_request_is_refused) [{'expires_at': 'not a time'}]
-AssertionError: Lists differ: [] != ['Bearer synthetic-token']
+AssertionError: Lists differ: [] != ['Bearer <the fake token>']
 FAIL: test_a_slow_audit_sync_is_checked_again_and_logged_as_the_answer (__main__.RequestFixtureTests.test_a_slow_audit_sync_is_checked_again_and_logged_as_the_answer)
 AssertionError: Tuples differ: (0, None) != (5, 'expiry')
 Ran 2 tests in 3.869s

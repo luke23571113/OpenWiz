@@ -204,7 +204,7 @@ class RequestFixtureTests(ServiceFixture):
                 fake["grant"] = grant
                 done = self.mint(url, SMALL)
                 self.assertEqual((done.returncode, json.loads(done.stdout).get("refusal")), (5, "github"))
-                self.assertEqual(revoked(calls), [] if "token" in grant else ["Bearer synthetic-token"])
+                self.assertEqual(revoked(calls), [] if "token" in grant else ["Bearer " + fake["token"]])
                 self.assertEqual(self.logged()[-1]["outcome"], "github")
                 self.assert_nothing_exposed("synthetic-token", done.stdout, done.stderr)
 
@@ -236,7 +236,7 @@ class RequestFixtureTests(ServiceFixture):
             self.assertEqual(self.logged(), [{"schema": "openwiz.token-service.v1", "kind": "mint-log", "at": NOW,
                                               "requester": SMALL["requester"], "repositories": SMALL["repositories"],
                                               "outcome": "expiry"}], "one line, matching the answer")
-            self.assertEqual(revoked(calls), ["Bearer synthetic-token"])
+            self.assertEqual(revoked(calls), ["Bearer " + fake["token"]])
             fake["expires_at"] = NOW + 12 + 311
             self.assertEqual(self.mint(url, SMALL, bootstrap=SLOW_SYNC).returncode, 0)
             self.assertEqual([line["outcome"] for line in self.logged()], ["expiry", "minted"])

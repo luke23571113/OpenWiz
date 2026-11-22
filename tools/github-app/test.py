@@ -499,7 +499,7 @@ class HardeningTests(KeyFixture):
                 behavior.update(change)
                 result = self.token(endpoint)
                 self.assertEqual((result.returncode, result.stdout), (1, b""))
-                self.assertEqual(revoked(calls), ["Bearer synthetic-installation-token"])
+                self.assertEqual(revoked(calls), ["Bearer " + behavior["token"]])
         with fake_github(self.pem) as (endpoint, calls, _behavior):
             self.assertEqual(self.token(endpoint).returncode, 0)
             self.assertEqual(revoked(calls), [])
@@ -582,7 +582,7 @@ class SetupCheckOwnerBoundary(KeyFixture):
                     "repository_selection": selection,
                     "repositories": [{"full_name": "synthetic-owner/synthetic-repo"}]})
                 self.assertEqual(self.check(endpoint)[0], code)
-                self.assertEqual(revoked(calls), ["Bearer synthetic-installation-token"])
+                self.assertEqual(revoked(calls), ["Bearer " + behavior["token"]])
 
 
 class Form(HTMLParser):
