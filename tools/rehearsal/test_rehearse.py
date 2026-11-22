@@ -1,11 +1,4 @@
 #!/usr/bin/env python3
-"""Seam 1 of spec #2437 (#2441): the rehearsal runner on a synthetic release, on fixtures only.
-
-Green on a good package; red, naming the step, on each planted break the spec lists. The
-release is assembled by the real packager from this checkout's runtime and the pinned skills
-(fixtures/release.py); GitHub and the harness are the recording fakes in fakes/. It proves the
-runner and its checks, never a real release, account, harness or machine.
-"""
 import hashlib
 import json
 import os
@@ -21,16 +14,14 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path.insert(0, str(HERE / 'fixtures'))
 sys.dont_write_bytecode = True
-import release  # noqa: E402
+import release
 
 RUNNER = HERE / 'rehearse.py'
 SKILLS = ROOT / '.wizskills/skills'
 SOURCE = '1' * 40
-# This machine's own target, as the installer's preflight reads it; elsewhere the suite skips.
 TARGET = {('Linux', 'x86_64'): 'x86_64-unknown-linux-gnu', ('Darwin', 'arm64'): 'aarch64-apple-darwin',
           ('Darwin', 'x86_64'): 'x86_64-apple-darwin'}.get((platform.system(), platform.machine()))
 STEPS = ['preflight', 'install', 'build_identity', 'setup', 'skills', 'first_fleet_dry_run']
-# Each planted break, the one step it must fail, and words its log must name.
 BREAKS = {
     'flipped-archive-byte': ('install', 'refused'),
     'other-version-manifest': ('install', "it installed version '0.0.98'"),
@@ -40,11 +31,10 @@ BREAKS = {
     'calls-cargo': ('build_identity', 'it called a build tool or the harness: cargo build --release'),
 }
 sys.path.insert(0, str(HERE))
-import rehearse  # noqa: E402
+import rehearse
 
 
 def caller_env():
-    """The test's own environment without any token, App or CloudRoom variable (the runner refuses them)."""
     return {k: v for k, v in os.environ.items() if not rehearse.SECRET.fullmatch(k)}
 
 

@@ -1,6 +1,4 @@
 #!/bin/sh
-# The rehearsal's `claude` (#2441): it answers --version and nothing else. Any other call is
-# recorded in $REHEARSAL_TOOL_LOG, which fails the rehearsal step that made it.
 if [ "$#" -eq 1 ] && [ "$1" = --version ]; then
   echo '2.0.0 (Claude Code, synthetic rehearsal fake)'
   exit 0

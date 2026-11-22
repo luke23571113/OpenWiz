@@ -1,7 +1,4 @@
 #!/bin/sh
-# The rehearsal's recording build tool (#2441), on PATH as cargo, rustc, rustup, npm, node and npx.
-# A stranger's install needs none of them: any call is recorded in $REHEARSAL_TOOL_LOG, which
-# fails the rehearsal step that made it.
 echo "${0##*/} $*" >> "$REHEARSAL_TOOL_LOG"
 echo "synthetic ${0##*/}: build tools are refused in the rehearsal" >&2
 exit 97

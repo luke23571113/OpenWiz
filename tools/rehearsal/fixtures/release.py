@@ -1,13 +1,3 @@
-"""A synthetic release for the rehearsal's fixture suite (#2441), built like the Packages job's.
-
-The runtime is this checkout's own tracked install, setup, App, CloudRoom and local-driver
-files and the pinned WizSkills skills; the program is a synthetic `openwiz` that answers
-`--build-identity` and `models --json --host local` only. The real packager,
-tools/release/package.py, assembles the archive, manifest, checksum file and SHA256SUMS
-from that tree, so the files are laid out exactly as an uploaded `packages/` folder.
-
-Each planted break changes one thing a stranger's install would trip on. Synthetic values only.
-"""
 import hashlib
 import json
 from pathlib import Path
@@ -37,14 +27,12 @@ TOOLS = {
 }
 BREAKS = ('flipped-archive-byte', 'other-version-manifest', 'other-commit-identity', 'setup-needs-cloudroom',
           'dry-run-writes', 'calls-cargo')
-# The planted edits, each to exactly one place in the shipped bytes.
 NOT_NEEDED = "'cloudroom_not_needed' if host != 'cloud' else"
 NEEDS_CLOUDROOM = "'cloudroom_missing' if host != 'cloud' else"
 WHERE_READ = "login = run(['gh', 'api', 'user', '--jq', '.login'], env)"
 WHERE_WRITE = "run(['gh', 'api', '-X', 'POST', 'user/repos', '-f', 'name=synthetic-planted'], env)\n    " + WHERE_READ
 
 PROGRAM = '''#!/usr/bin/env python3
-"""A synthetic openwiz for the rehearsal's fixtures: --build-identity and local models only."""
 import json, shutil, subprocess, sys
 IDENTITY = %r
 CALLS_CARGO = %r
@@ -76,7 +64,6 @@ def mode(path):
 
 
 def products(skills, version, source, target, planted):
-    """Every product file's bytes, by its path in the archive."""
     files = {name: (ROOT / tool).read_bytes() for name, tool in TOOLS.items()}
     for path in sorted(Path(skills).rglob('*')):
         if path.is_file() and '__pycache__' not in path.parts:
@@ -98,13 +85,11 @@ def replace_once(data, old, new):
 
 
 def plant_skill(skills):
-    """The dry-run break: the install skill's own `where` makes a GitHub write (both copies change)."""
     path = Path(skills) / 'install/scripts/first_fleet.py'
     path.write_bytes(replace_once(path.read_bytes(), WHERE_READ, WHERE_WRITE))
 
 
 def build(folder, skills, version='0.0.99', source='1' * 40, target='x86_64-unknown-linux-gnu', planted=None):
-    """Write the uploaded `packages/` folder for one synthetic candidate; return its archive path."""
     assert planted in (None,) + BREAKS
     folder = Path(folder)
     shipped = '0.0.98' if planted == 'other-version-manifest' else version

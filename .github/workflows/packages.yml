@@ -83,13 +83,6 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # #2441 (spec #2437): a stranger's install of the Linux archive this run just built, on a clean
-  # Debian 12 (glibc 2.36) with only Python 3, Git and CA certificates: no Rust, Cargo, Node or
-  # npm. tools/rehearsal/rehearse.py runs every command with env -i, a fresh HOME and an
-  # allowlisted PATH, with fakes for GitHub and the harness; the runner itself starts under env -i
-  # and refuses any token variable. No secret and no token: the
-  # artifact comes from this run, and the receipt (contracts/rehearsal.v1.md) is uploaded on
-  # pass and on fail.
   rehearse-linux:
     needs: package
     runs-on: ubuntu-24.04
@@ -127,7 +120,6 @@ jobs:
           path: rehearsal.json
           if-no-files-found: error
           retention-days: 7
-  # The one check run release candidate's gate reads: green only when every rehearse job is.
   rehearsal:
     needs: [rehearse-linux]
     if: always()

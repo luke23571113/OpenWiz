@@ -1,5 +1,19 @@
 #!/usr/bin/env python3
-"""The clean-machine install rehearsal (#2441, spec #2437): a stranger's install of one built package.
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
+
+sys.dont_write_bytecode = True
+
+DESCRIPTION = """The clean-machine install rehearsal (#2441, spec #2437): a stranger's install of one built package.
 
   rehearse.py --assets DIR --target TARGET --version X.Y.Z --source COMMIT \\
       --checkout DIR --skills DIR --output FILE
@@ -31,19 +45,6 @@ receipt. A passed step's commands and output go to stderr. Standard-library Pyth
 and macOS. It proves an install of these bytes with fakes for GitHub and the harness; never a
 real account, repository, harness or fleet.
 """
-import argparse
-import hashlib
-import json
-import os
-from pathlib import Path
-import re
-import shlex
-import shutil
-import subprocess
-import sys
-import tempfile
-
-sys.dont_write_bytecode = True
 
 SCHEMA = 'openwiz.rehearsal.v1'
 STEPS = ('preflight', 'install', 'build_identity', 'setup', 'skills', 'first_fleet_dry_run')
@@ -51,7 +52,6 @@ TARGETS = ('aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-
 BUILD_TOOLS = ('cargo', 'rustc', 'rustup', 'npm', 'node', 'npx')
 ALLOWED = ('python3', 'git', 'sh', 'uname', 'ldd')
 NOT_ON_PATH = ('room-cli', 'cloudroom', 'codex', 'openwiz') + BUILD_TOOLS
-# No token, App key or CloudRoom variable may reach the rehearsal, not even its own process.
 SECRET = re.compile(r'(GITHUB_TOKEN|GH_TOKEN|GH_ENTERPRISE_TOKEN|GITHUB_ENTERPRISE_TOKEN|OPENWIZ_GITHUB_APP_.*|ACTIONS_.*TOKEN.*'
                     r'|ROOM_.*|CLOUDROOM.*)')
 HERE = Path(__file__).resolve().parent
@@ -76,7 +76,6 @@ def require(condition, why):
 
 
 def parsed(text):
-    """One JSON object: the whole output, or its last line (setup tools print exactly one)."""
     for candidate in (text, (text.strip().splitlines() or [''])[-1]):
         try:
             value = json.loads(candidate)
@@ -88,7 +87,6 @@ def parsed(text):
 
 
 class Stranger:
-    """A clean machine's user: fresh HOME, allowlisted PATH, the fakes, and nothing inherited."""
 
     def __init__(self, work):
         self.work = work
@@ -121,7 +119,6 @@ class Stranger:
         self.transcript = []
 
     def run(self, argv, extra=None):
-        """Run one command as the stranger (env -i): its exit code and stdout; output kept for a failure."""
         argv = [str(a) for a in argv]
         try:
             done = subprocess.run(['/usr/bin/env', '-i'] + ['%s=%s' % kv for kv in
@@ -140,7 +137,6 @@ class Stranger:
         return parsed(out)
 
     def effects(self):
-        """A build-tool or extra claude call, or a GitHub write: either fails the step that made it."""
         called = self.tool_log.read_text().strip()
         require(not called, 'it called a build tool or the harness: %s' % called.replace('\n', '; '))
         calls = [json.loads(line) for line in self.gh_log.read_text().splitlines()]
@@ -237,7 +233,6 @@ class Rehearsal:
         require(code == 0 and out.startswith('Next: '), 'next exit %s' % code)
 
     def assets(self):
-        """The three files `install download` would have left: checksum file, manifest and archive."""
         folder, target = Path(self.args.assets), self.args.target
         found = [folder / ('openwiz-%s.sha256' % target), folder / ('openwiz-%s.manifest.json' % target)]
         archives = sorted(folder.glob('openwiz-*-%s.tar.gz' % target))
@@ -269,7 +264,7 @@ def digest_of(folder, pattern):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog='rehearse.py', description=__doc__,
+    parser = argparse.ArgumentParser(prog='rehearse.py', description=DESCRIPTION,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     for name in ('assets', 'target', 'version', 'source', 'checkout', 'skills', 'output'):
         parser.add_argument('--' + name, required=True)

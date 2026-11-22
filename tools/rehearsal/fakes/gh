@@ -1,11 +1,4 @@
 #!/usr/bin/env python3
-"""The rehearsal's recording `gh` (#2441): a synthetic signed-in account over a fixture world.
-
-Reads (`gh --version`, `gh auth status`, and `gh api` GETs with no fields) answer from the JSON
-world at $REHEARSAL_GH_WORLD; a path the world lacks is GitHub's 404. Everything else is a write,
-or a command this fake does not know: it is recorded as such and refused, and the rehearsal fails
-on any such record. Every call is one JSON line in $REHEARSAL_GH_LOG. Standard library only.
-"""
 import json
 import os
 import sys
@@ -27,7 +20,6 @@ def refuse(argv, kind):
 
 
 def jq(value, query):
-    """Only `.a.b` paths: anything else is refused rather than guessed."""
     if query == '.':
         return value
     if not query.startswith('.') or not all(query[1:].split('.')):
