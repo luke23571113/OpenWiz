@@ -12,6 +12,8 @@ pub const J255_CLAUDE_MODEL: &str = "claude-opus-5-5";
 pub const J255_CODEX_MODEL: &str = "gpt-6.2-sol";
 pub const J255_EFFORT: &str = "medium";
 
+const LOCAL_LABEL: &str = "Installed local harnesses with OpenWiz's current choices";
+
 pub const SAVED_COPY_LABEL: &str = "as reported by CloudRoom; it may answer from a saved copy";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -153,7 +155,7 @@ pub fn local_options(
     CloudOptions {
         schema: OPTIONS_SCHEMA_ID.to_owned(),
         read_at,
-        label: SAVED_COPY_LABEL.to_owned(),
+        label: LOCAL_LABEL.to_owned(),
         state,
         harnesses,
         unavailable: vec![],
