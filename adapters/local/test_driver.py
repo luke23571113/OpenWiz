@@ -519,5 +519,29 @@ class Local(unittest.TestCase):
                     % approvals})
         self.no_new_turn(0)
 
+    def test_padded_row_labels_count_as_the_same_row(self):
+        padded = self.repository_with('padded', ['| Harness permission mode | `acceptEdits` |',
+                                                 '| Harness permission mode (claude)  | `acceptEdits` |'],
+                                      {'claude': 'acceptEdits'})
+        spaced = self.repository_with('spaced', ['|  Harness  permission mode  | `acceptEdits` |',
+                                                 '| Harness permission mode (claude) | `acceptEdits` |'],
+                                      {'claude': 'acceptEdits'})
+        twice = self.repository_with('twice-padded', ['| Harness permission mode (codex) | `workspace-write` |',
+                                                      '| Harness permission mode (codex)  | `workspace-write` |'],
+                                     {'codex': 'workspace-write'})
+        for harness, repository, says in (('claude', padded, 'saves both'), ('claude', spaced, 'saves both'),
+                                          ('codex', twice, 'no harness permission mode for codex')):
+            with self.subTest(repository):
+                self.assertIn(says, self.refused(harness, repository)['error'])
+        self.no_new_turn(0)
+        aligned = self.repository_with('aligned', ['|  Harness permission mode (claude)   | `acceptEdits`     |',
+                                                   '| Harness  permission mode (codex)    | `workspace-write` |'],
+                                       {'claude': 'acceptEdits', 'codex': 'workspace-write'})
+        for harness, mode in (('claude', 'acceptEdits'), ('codex', 'workspace-write')):
+            with self.subTest(harness):
+                self.assertEqual(self.start(harness, repository=aligned)[0], 0)
+                self.until(lambda: len(self.logged()) and self.logged()[-1][4] == mode)
+        self.assertEqual([t[4] for t in self.logged()], ['acceptEdits', 'workspace-write'])
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
