@@ -161,6 +161,19 @@ class ContractTests(unittest.TestCase):
                     parent[key] = case['value']
                 self.assertEqual(package_errors(changed, rules), case['errors'])
 
+    def test_historical_changelog_headings_are_checked(self):
+        rules = self.rules()
+        package = read_json((FIXTURES / 'package.json').read_text())
+        current = '# Changelog\n\n## 0.1.0 - 2030-01-02\n\n- Synthetic change.\n\n'
+        for name, earlier, errors in (
+                ('non-SemVer earlier heading', '## not-semver - 2030-01-01', ['version']),
+                ('earlier section dated later', '## 0.1.0-rc.1 - 2030-01-03', ['changelog']),
+                ('earlier section on the same day', '## 0.1.0-rc.1 - 2030-01-02', [])):
+            with self.subTest(name=name):
+                changed = copy.deepcopy(package)
+                changed['files']['CHANGELOG.md'] = f'{current}{earlier}\n\n- Earlier change.\n'
+                self.assertEqual(package_errors(changed, rules), errors)
+
     def test_standalone_resolution_examples_and_safe_diagnostics(self):
         rules = self.rules()
         package = read_json((FIXTURES / 'package.json').read_text())
