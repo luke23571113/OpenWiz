@@ -111,17 +111,40 @@ class Kit(unittest.TestCase):
             except OSError:
                 pass
 
-    def kit(self, driver, python=sys.executable, wait='8', **env):
+    def kit(self, driver, python=sys.executable, wait='8', harness='fake-harness', guard=True, **env):
         env = dict(self.env, **env)
-        no_real_harness(env['PATH'])
+        if guard:
+            no_real_harness(env['PATH'])
         p = subprocess.run([python, '-I', os.path.join(HERE, 'kit.py'), '--driver', driver,
-                            '--repo', 'example/site', '--ticket', '7', '--harness', 'fake-harness',
+                            '--repo', 'example/site', '--ticket', '7', '--harness', harness,
                             '--model', 'Synthetic 1', '--tracker', self.env['KIT_TRACKER'], '--wait', wait],
                            env=env, capture_output=True, text=True, timeout=120)
         return p.returncode, p.stdout.splitlines(), p.stderr
 
     def test_template_passes_all_five(self):
         self.assertEqual(self.kit(TEMPLATE)[:2], (0, PASS))
+
+    def test_an_unedited_template_copy_run_by_the_kit_starts_no_real_harness(self):
+        copy, real, ran = (os.path.join(self.folder, n) for n in ('copy', 'real', 'ran'))
+        os.mkdir(copy)
+        os.mkdir(real)
+        for name in ('driver', 'schema.json'):
+            shutil.copy2(os.path.join(os.path.dirname(TEMPLATE), name), copy)
+        for name in ('claude', 'codex'):
+            with open(os.path.join(real, name), 'w') as f:
+                f.write('#!/bin/sh\necho %s >> %s\n' % (name, ran))
+            os.chmod(os.path.join(real, name), 0o700)
+        for live in ('', '1'):
+            for name in ('claude', 'codex'):
+                with self.subTest(live=live, harness=name):
+                    self.tearDown()
+                    self.setUp()
+                    if os.path.exists(ran):
+                        os.remove(ran)
+                    code, out, err = self.kit(os.path.join(copy, 'driver'), wait='2', harness=name, guard=False,
+                                              PATH=real + os.pathsep + self.env['PATH'], OPENWIZ_TEMPLATE_LIVE=live)
+                    self.assertEqual((code, out[1].startswith('fail start: ')), (1, True), out)
+                    self.assertFalse(os.path.exists(ran), 'the kit started a real %s through the template' % name)
 
     def test_without_proc_as_on_macos_the_template_passes_all_five(self):
         macos = {'PATH': NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable}
