@@ -305,7 +305,11 @@ def start(req, run, holds_credential):
     try:
         saved(run, dict(state, thread=thread, starting=False))
     except OSError:  # the thread exists but its run is not saved: end it, and never say retry
-        if room('thread', 'archive', thread)[0] == 0:
+        try:
+            archived = room('thread', 'archive', thread)[0] == 0
+        except Refused:
+            archived = False
+        if archived:
             raise Unknown('run %s started a thread it could not save, so the driver archived it; the outcome is '
                           'unknown' % run, 'read `room-cli thread list` and the ticket for what its agent did before you start again')
         raise Unknown('run %s started a thread it could not save or archive; the outcome is unknown' % run,

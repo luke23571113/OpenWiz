@@ -3,6 +3,7 @@ test_a_credential_shaped_thread_id_is_never_kept_or_passed (__main__.Driver.test
 test_a_failed_room_cli_command_is_named_by_fixed_words (__main__.Driver.test_a_failed_room_cli_command_is_named_by_fixed_words) ... ok
 test_a_kit_lost_during_spawn_never_claims_nothing_started (__main__.Driver.test_a_kit_lost_during_spawn_never_claims_nothing_started) ... ok
 test_a_start_it_could_not_finish_stays_starting (__main__.Driver.test_a_start_it_could_not_finish_stays_starting) ... ok
+test_a_start_whose_cleanup_archive_times_out_still_names_its_run (__main__.Driver.test_a_start_whose_cleanup_archive_times_out_still_names_its_run) ... ok
 test_a_stop_that_could_not_save_keeps_the_run_unwakeable_once_writes_recover (__main__.Driver.test_a_stop_that_could_not_save_keeps_the_run_unwakeable_once_writes_recover) ... ok
 test_a_stop_that_could_write_nothing_still_keeps_the_run_unwakeable (__main__.Driver.test_a_stop_that_could_write_nothing_still_keeps_the_run_unwakeable) ... ok
 test_a_stop_waits_for_a_wake_in_progress (__main__.Driver.test_a_stop_waits_for_a_wake_in_progress) ... ok
@@ -20,6 +21,6 @@ test_stop_that_cannot_save_ends_the_thread_and_leaves_nothing_to_wake (__main__.
 test_wake_is_the_fleet_routes_queued_delivery (__main__.Driver.test_wake_is_the_fleet_routes_queued_delivery) ... ok
 
 ----------------------------------------------------------------------
-Ran 20 tests in 18.384s
+Ran 21 tests in 18.338s
 
 OK
