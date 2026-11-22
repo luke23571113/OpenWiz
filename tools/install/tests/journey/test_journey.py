@@ -568,6 +568,37 @@ class InstallJourney(unittest.TestCase):
         self.assertEqual(build.lstat().st_mode & 0o777, 0o000)
         self.assertEqual(sorted(p.name for p in build.parent.iterdir()), [build.name])
 
+    def test_a_repair_interrupted_just_after_the_swap_keeps_the_replacements_mode(self):
+        c = Consumer(self)
+        installer = entry().installer
+        build = Path(self.install(c, release(c.dir / 'published'))[0]['build'])
+        build.chmod(0o000)
+        self.addCleanup(lambda: [p.chmod(0o700) for p in build.parent.iterdir()])
+        name = c.downloads / (NAME + '.manifest.json')
+        checksum = (c.downloads / (NAME + '.sha256')).read_text().split()[0]
+        archive = c.downloads / json.loads(name.read_text())['archive']
+        rename, swapped = os.rename, []
+
+        def swap(source, destination):
+            rename(source, destination)
+            swapped.append(Path(source).name.startswith('.stage-') and Path(destination) == build)
+
+        def interrupt_on_the_next_line(frame, event, _):
+            if frame.f_code is not installer.install.__code__:
+                return None
+            if event == 'line' and any(swapped):
+                raise KeyboardInterrupt
+            return interrupt_on_the_next_line
+
+        sys.settrace(interrupt_on_the_next_line)
+        try:
+            with mock.patch.object(installer.os, 'rename', swap), self.assertRaises(KeyboardInterrupt):
+                installer.install(name, archive, checksum, c.root, TARGET)
+        finally:
+            sys.settrace(None)
+        self.assertEqual(build.lstat().st_mode & 0o777, 0o700)
+        self.assertTrue(os.access(build / 'bin/openwiz', os.X_OK))
+
     def test_a_repeated_install_reuses_the_verified_build(self):
         c = Consumer(self)
         published = release(c.dir / 'published')
