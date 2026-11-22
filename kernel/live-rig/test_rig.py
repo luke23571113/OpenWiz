@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import datetime
+import importlib.machinery
+import importlib.util
 import json
 import os
 import secrets
@@ -187,6 +189,25 @@ class Rig(unittest.TestCase):
         self.assertEqual((code, out), (1, ['ran fixture-quoting fake-harness: 2 of 5']), err)
         self.assertIn('fail start: cannot start <repository> in <checkout>/adapters/quoting\n',
                       self.record('fixture-quoting')['stdout'])
+
+    def test_load_host_and_check_host_are_importable_and_give_the_exact_skip_reasons(self):
+        name = 'rig'
+        spec = importlib.util.spec_from_loader(name, importlib.machinery.SourceFileLoader(
+            name, os.path.join(HERE, 'rig.py')))
+        rig = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(rig)
+        files = {'fixture-template': 'template.json', 'fixture-missing': 'missing.json',
+                 'fixture-signed-out': 'signed-out.json', 'fixture-cost': 'cost-unknown.json'}
+        old_path = os.environ['PATH']
+        os.environ['PATH'] = self.env['PATH']
+        try:
+            for host, why in dict(SKIPS, **{'fixture-template': None}).items():
+                with self.subTest(host):
+                    config = rig.load_host(os.path.join(HOSTS, files[host]))
+                    self.assertEqual((config['host'], rig.check_host(config)), (host, why))
+        finally:
+            os.environ['PATH'] = old_path
+        self.assertEqual(self.kit_calls(), [])
 
     def test_every_host_in_one_run_keeps_paths_logins_the_repository_and_planted_secrets_out(self):
         code, out, err = self.rig()
