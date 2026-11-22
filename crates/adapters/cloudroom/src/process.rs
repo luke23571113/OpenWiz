@@ -159,28 +159,7 @@ fn execute_with_read_timeout(
             after_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
         }));
     }
-    let mut spawned = None;
-    for program in &resolved {
-        match scrub(&mut Command::new(program))
-            .args(invocation.argv())
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-        {
-            Ok(child) => {
-                spawned = Some(child);
-                break;
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => continue,
-            Err(_) => break,
-        }
-    }
-    let mut child = spawned.ok_or_else(|| {
-        Failure::Source(SourceError::Unavailable {
-            detail: "room-cli could not be started".to_owned(),
-        })
-    })?;
+    let mut child = launch(&resolved, invocation, started, stop_at)?;
     let stdout = collect(child.stdout.take(), MAX_STDOUT_BYTES);
     let stderr = collect(child.stderr.take(), MAX_STDERR_BYTES);
     let timed_out = || {
@@ -243,6 +222,36 @@ fn execute_with_read_timeout(
     Err(Failure::Exited {
         exit_code: status.code(),
         stderr: err,
+    })
+}
+
+fn launch(
+    resolved: &[std::path::PathBuf],
+    invocation: &Invocation,
+    started: Instant,
+    stop_at: Instant,
+) -> Result<Child, Failure> {
+    let mut spawned = None;
+    for program in resolved {
+        match scrub(&mut Command::new(program))
+            .args(invocation.argv())
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+        {
+            Ok(child) => {
+                spawned = Some(child);
+                break;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => continue,
+            Err(_) => break,
+        }
+    }
+    spawned.ok_or_else(|| {
+        Failure::Source(SourceError::Unavailable {
+            detail: "room-cli could not be started".to_owned(),
+        })
     })
 }
 
@@ -339,5 +348,71 @@ mod scrub_tests {
             assert!(!is_scrubbed(name), "{name}");
         }
         assert!(is_scrubbed_bytes(b"BB_\xff"));
+    }
+
+    const PROBE: &str = "OPENWIZ_SYN_SCRUB_PROBE";
+
+    #[test]
+    fn a_child_loses_thread_context_and_keeps_the_server_address() {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+        if let Some(out) = std::env::var_os(PROBE) {
+            let child = scrub(&mut Command::new("/usr/bin/env")).output().unwrap();
+            std::fs::write(out, child.stdout).unwrap();
+            return;
+        }
+        let out = std::env::temp_dir().join(format!("openwiz-2291-scrub-{}", std::process::id()));
+        let _ = std::fs::remove_file(&out);
+        let test = format!(
+            "{}::a_child_loses_thread_context_and_keeps_the_server_address",
+            module_path!().split_once("::").unwrap().1
+        );
+        let status = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", &test, "--test-threads=1"])
+            .env_clear()
+            .env(PROBE, &out)
+            .env("ROOM_THREAD_ID", "thr_syn_2291")
+            .env("ROOM_PROJECT_ID", "prj_syn_2291")
+            .env("BB_THREAD_ID", "thr_syn_2291")
+            .env(OsStr::from_bytes(b"BB_\xff"), "synthetic")
+            .env("ROOM_SERVER_URL", "http://127.0.0.1:9")
+            .env("SYN_KEPT", "synthetic")
+            .stdout(Stdio::null())
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let env = std::fs::read(&out).unwrap();
+        std::fs::remove_file(&out).unwrap();
+        let mut names: Vec<String> = env
+            .split(|b| *b == b'\n')
+            .filter(|line| !line.is_empty())
+            .map(|line| String::from_utf8_lossy(line.split(|b| *b == b'=').next().unwrap()).into())
+            .collect();
+        names.sort();
+        assert_eq!(names, [PROBE, "ROOM_SERVER_URL", "SYN_KEPT"]);
+    }
+
+    #[test]
+    fn the_launch_deadline_is_checked_before_each_candidate() {
+        use std::os::unix::fs::PermissionsExt;
+        let denied =
+            std::env::temp_dir().join(format!("openwiz-2291-denied-{}", std::process::id()));
+        std::fs::write(&denied, "#!/bin/sh\nexit 0\n").unwrap();
+        std::fs::set_permissions(&denied, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let candidates = vec![denied.clone(); 2048];
+        let invocation = Invocation::ThreadList {
+            include_hidden: false,
+            include_archived: false,
+        };
+        let budget = Duration::from_millis(20);
+        let started = Instant::now();
+        let result = launch(&candidates, &invocation, started, started + budget);
+        let elapsed = started.elapsed();
+        std::fs::remove_file(&denied).unwrap();
+        assert!(
+            matches!(result, Err(Failure::Source(SourceError::TimedOut { .. }))),
+            "after {elapsed:?}"
+        );
+        assert!(elapsed < budget + Duration::from_millis(20), "{elapsed:?}");
     }
 }
