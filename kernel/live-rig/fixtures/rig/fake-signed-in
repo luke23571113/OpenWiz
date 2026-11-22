@@ -1,0 +1,4 @@
+#!/bin/sh
+# A read-only status command that says "signed in"; its output must never reach the rig's output.
+echo "fake-signed-in output the rig discards"
+exit 0
