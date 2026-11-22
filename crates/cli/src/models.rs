@@ -11,10 +11,13 @@ use openwiz_core::models::{
     read,
 };
 use openwiz_core::new_thread::operation::NewThreadClient;
-use openwiz_core::new_thread::options::{CloudOptions, OptionsState, cloud_options};
+use openwiz_core::new_thread::options::{
+    CloudOptions, J255_CLAUDE_MODEL, J255_CODEX_MODEL, J255_EFFORT, OptionsState, cloud_options,
+    local_options,
+};
 use openwiz_core::ops::Clock;
 use rustix::fd::AsFd;
-use rustix::fs::{AtFlags, CWD, FileType, Gid, Mode, OFlags, Uid, XattrFlags};
+use rustix::fs::{Access, AtFlags, CWD, FileType, Gid, Mode, OFlags, Uid, XattrFlags};
 use rustix::io::Errno;
 use serde_json::{Value, json};
 
@@ -47,9 +50,10 @@ pub fn run_models_in(
     ) {
         return run_form(args, root, client, clock, stdout, stderr);
     }
-    let mut json = false;
-    for arg in args {
-        match arg.as_str() {
+    let (mut json, mut host) = (false, None);
+    let mut args_iter = args.iter().map(String::as_str);
+    while let Some(arg) = args_iter.next() {
+        match arg {
             "--help" | "-h" => {
                 let _ = stdout.write_all(
                     crate::response::help(
@@ -61,19 +65,17 @@ pub fn run_models_in(
                 return EXIT_OK;
             }
             "--json" => json = true,
+            "--host" => {
+                if let Err(why) = parse_host(&mut host, args_iter.next()) {
+                    return usage(stderr, &why);
+                }
+            }
             other => {
-                let _ = writeln!(
-                    stderr,
-                    "openwiz: models takes only --json, not {}; nothing was read (see openwiz \
-                     --help)",
-                    clean(other)
-                );
-                return EXIT_USAGE;
+                return usage(stderr, &format!("models has no option {}", clean(other)));
             }
         }
     }
-    let deadline = clock.monotonic() + READ_TIMEOUT;
-    let options = cloud_options(client.catalogue(deadline), client.cli_levels(), clock.now());
+    let options = read_options(client, clock, host);
     let printed = if json {
         let mut out = serde_json::to_string_pretty(&options)
             .unwrap_or_else(|e| format!("{{\"error\": \"{e}\"}}"));
@@ -88,6 +90,80 @@ pub fn run_models_in(
         OptionsState::Offered => EXIT_OK,
         OptionsState::NoOptions { .. } => EXIT_NO_OPTIONS,
     }
+}
+
+fn usage(stderr: &mut dyn Write, why: &str) -> i32 {
+    let _ = writeln!(
+        stderr,
+        "openwiz: {why}; nothing was read (see openwiz --help)"
+    );
+    EXIT_USAGE
+}
+
+fn valid_host(name: &str) -> bool {
+    name.len() <= 40
+        && name != "cloudroom"
+        && name.split('-').all(|part| {
+            !part.is_empty()
+                && part
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+        })
+}
+
+fn parse_host<'a>(host: &mut Option<&'a str>, value: Option<&'a str>) -> Result<(), String> {
+    if host.is_some() {
+        return Err("models takes --host once".to_owned());
+    }
+    *host = Some(value.filter(|name| valid_host(name)).ok_or_else(|| {
+        "models --host needs cloud, local, boat or a valid driver name".to_owned()
+    })?);
+    Ok(())
+}
+
+fn saved_host() -> Option<String> {
+    let dir = crate::state::default_state_dir(&|name| std::env::var_os(name)).ok()?;
+    let saved: Value =
+        serde_json::from_reader(File::open(dir.join("setup/state.json")).ok()?).ok()?;
+    if saved["schema"] != "openwiz.setup-state.v1" {
+        return None;
+    }
+    saved["project"]["host"]
+        .as_str()
+        .filter(|name| valid_host(name))
+        .map(ToOwned::to_owned)
+}
+
+fn read_options(
+    client: &dyn NewThreadClient,
+    clock: &dyn Clock,
+    host: Option<&str>,
+) -> CloudOptions {
+    let saved = if host.is_none() { saved_host() } else { None };
+    if host
+        .or(saved.as_deref())
+        .is_some_and(|name| name != "cloud")
+    {
+        let path = std::env::var_os("PATH");
+        let installed = |program: &str| {
+            path.as_ref().is_some_and(|path| {
+                std::env::split_paths(path).any(|dir| {
+                    let candidate = dir.join(program);
+                    candidate.is_file() && rustix::fs::access(&candidate, Access::EXEC_OK).is_ok()
+                })
+            })
+        };
+        return local_options(installed("claude"), installed("codex"), clock.now());
+    }
+    read_cloud_options(client, clock)
+}
+
+fn read_cloud_options(client: &dyn NewThreadClient, clock: &dyn Clock) -> CloudOptions {
+    cloud_options(
+        client.catalogue(clock.monotonic() + READ_TIMEOUT),
+        client.cli_levels(),
+        clock.now(),
+    )
 }
 
 pub fn render_options(options: &CloudOptions) -> String {
@@ -138,12 +214,14 @@ enum Parsed {
 const SET_USAGE: &str = "models set takes <role> <provider> <model> <effort>, or \
                          <small-builder|fixer> follows-builder";
 
-fn parse_form(args: &[String]) -> Result<(Parsed, bool), String> {
+fn parse_form(args: &[String]) -> Result<(Parsed, bool, Option<&str>), String> {
     let form = args[0].as_str();
-    let (mut json, mut save, mut words) = (false, false, Vec::new());
-    for arg in &args[1..] {
-        match arg.as_str() {
-            "--help" | "-h" => return Ok((Parsed::Help, false)),
+    let (mut json, mut save, mut words, mut host) = (false, false, Vec::new(), None);
+    let mut args_iter = args[1..].iter().map(String::as_str);
+    while let Some(arg) = args_iter.next() {
+        match arg {
+            "--help" | "-h" => return Ok((Parsed::Help, false, None)),
+            "--host" if form != "list" => parse_host(&mut host, args_iter.next())?,
             "--json" if !json => json = true,
             "--save" if form == "list" && !save => save = true,
             "--json" | "--save" => return Err(format!("models {form} takes {arg} once")),
@@ -176,7 +254,7 @@ fn parse_form(args: &[String]) -> Result<(Parsed, bool), String> {
         }
         _ => return Err(SET_USAGE.to_owned()),
     };
-    Ok((parsed, json))
+    Ok((parsed, json, host))
 }
 
 fn run_form(
@@ -187,27 +265,14 @@ fn run_form(
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) -> i32 {
-    let (parsed, json) = match parse_form(args) {
+    let (parsed, json, host) = match parse_form(args) {
         Ok(parsed) => parsed,
-        Err(why) => {
-            let _ = writeln!(
-                stderr,
-                "openwiz: {why}; nothing was read (see openwiz --help)"
-            );
-            return EXIT_USAGE;
-        }
+        Err(why) => return usage(stderr, &why),
     };
     let form = args[0].as_str();
     let fleet = || {
         std::fs::read_to_string(root.join(FLEET_FILE))
             .map_err(|e| format!("cannot read {FLEET_FILE}: {e}"))
-    };
-    let read_options = || {
-        cloud_options(
-            client.catalogue(clock.monotonic() + READ_TIMEOUT),
-            client.cli_levels(),
-            clock.now(),
-        )
     };
     let outcome = match parsed {
         Parsed::Help => {
@@ -227,7 +292,7 @@ fn run_form(
         }),
         Parsed::List { save } => {
             let checkout = save.then(|| Checkout::open(root));
-            let options = read_options();
+            let options = read_cloud_options(client, clock);
             let agents = checkout.map(|checkout| checkout.and_then(|c| Agents::open(&c)));
             let text = match &agents {
                 Some(agents) => agents.as_ref().ok().and_then(|a| a.read(FLEET_FILE).ok()),
@@ -266,7 +331,9 @@ fn run_form(
             .and_then(|agents| {
                 agents.lock()?;
                 let text = agents.read(FLEET_FILE)?;
-                run_set(&text, role, asked, &agents, json, &read_options)
+                run_set(&text, role, asked, &agents, json, &|| {
+                    read_options(client, clock, host)
+                })
             }),
     };
     match outcome {
@@ -467,8 +534,8 @@ fn snapshot(options: &CloudOptions, current: Option<&Show>) -> Value {
         "unavailable": options.unavailable,
         "recommended": {
             "orchestrator": orchestrator,
-            "builder": recommend(Choice::named("claude-code", "claude-opus-5-5", "medium"), j255),
-            "reviewer": recommend(Choice::named("codex", "gpt-6.2-sol", "medium"), j255),
+            "builder": recommend(Choice::named("claude-code", J255_CLAUDE_MODEL, J255_EFFORT), j255),
+            "reviewer": recommend(Choice::named("codex", J255_CODEX_MODEL, J255_EFFORT), j255),
         },
     })
 }
