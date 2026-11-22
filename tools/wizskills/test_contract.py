@@ -92,8 +92,10 @@ def package_errors(package, rules):
         errors.add('changelog')
     elif (plugin.get('version') != sections[0][0]
           or plugin.get('version') != lock.get('version')
-          or not re.fullmatch(rules['version_pattern'], sections[0][0])):
+          or not all(re.fullmatch(rules['version_pattern'], v) for v, _ in sections)):
         errors.add('version')
+    elif [d for _, d in sections] != sorted((d for _, d in sections), reverse=True):
+        errors.add('changelog')
     return sorted(errors)
 
 
