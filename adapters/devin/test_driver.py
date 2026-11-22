@@ -20,6 +20,8 @@ _spec.loader.exec_module(kit)
 ORG = 'org-syn0001'
 START = {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket', 'harness': 'devin', 'model': 'default'}
 SESSIONS = '/v3/organizations/%s/sessions' % ORG
+UNCERTAIN_CREATE = ('look in Devin for a new session on this ticket and terminate it there (or keep it and track it by '
+                    'hand), then start again: retrying now can start a second session')
 CANT_SET_EFFORT = ("this host can't set effort: remove the effort for this harness in your Models table or Roster "
                    "to run it at the host's default")
 
@@ -37,7 +39,7 @@ class Driver(unittest.TestCase):
         self.fault({})
         open(self.log, 'w').close()
         self.key = 'syn-test-key-' + secrets.token_hex(12)
-        key_file = os.path.join(self.folder, 'key')
+        self.key_file = key_file = os.path.join(self.folder, 'key')
         with open(key_file, 'w') as f:
             f.write(self.key)
         self.devin = subprocess.Popen([sys.executable, '-I', os.path.join(HERE, 'fixtures', 'fake-devin'),
@@ -132,6 +134,27 @@ class Driver(unittest.TestCase):
         self.assertEqual(self.call('wake', {'run': run})[0], 1, 'a run being stopped took a wake')
         self.assertEqual(self.call('stop', {'run': run}), (0, {'run': run, 'stopped': True}))
         self.assertEqual([c['method'] for c in self.calls()][-3:], ['POST', 'DELETE', 'DELETE'])
+
+    def test_an_uncertain_create_is_never_retried_and_a_confirmed_refusal_is_told_apart(self):
+        for fault in ({'drop': True}, {'status': 503, 'body': {}}, {'status': 408, 'body': {}}):
+            with self.subTest(fault=fault):
+                self.fault({'POST create': fault})
+                code, out = self.call('start', START)
+                self.assertEqual(code, 1, out)
+                self.assertIn('outcome is unknown', out['error'])
+                self.assertEqual(out['next'], UNCERTAIN_CREATE)
+        self.fault({'POST create': {'status': 422, 'body': {}}})
+        code, out = self.call('start', START)
+        self.assertEqual((code, out['error']), (1, 'Devin refused the new session (422), so nothing was started'))
+        with open(self.key_file, 'w') as f:
+            f.write('')
+        code, out = self.call('start', START)
+        self.assertEqual(code, 1)
+        self.assertNotIn('outcome is unknown', out['error'])
+        self.assertTrue(out['error'].startswith("the key helper refused: the kit's fake host gave no test key"), out)
+        state = self.env['OPENWIZ_DEVIN_STATE']
+        self.assertEqual(os.listdir(state) if os.path.isdir(state) else [], [], 'an unsaved start left a run')
+        self.assertEqual([c['method'] for c in self.calls()], ['POST'] * 4)
 
     def test_a_start_with_an_effort_is_refused_and_nothing_starts(self):
         for effort in ('medium', 'max', 'Not A Word'):

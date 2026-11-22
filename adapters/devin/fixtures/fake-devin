@@ -53,12 +53,15 @@ class Devin(http.server.BaseHTTPRequestHandler):
         kind = 'create' if create else 'message' if one and one.group(3) else 'end' if one else None
         with open(FAULTS) as f:
             fault = json.load(f).get('%s %s' % (self.command, kind))
-        if fault:
+        if fault and not fault.get('drop'):
             return self.reply(fault['status'], fault['body'])
         if self.command == 'POST' and create:
             sid = 'devin-' + secrets.token_hex(16)
             SESSIONS[sid] = {'prompt': body['prompt'], 'mode': body.get('devin_mode', 'default'), 'status': 'running'}
             note(SESSIONS[sid], False)
+            if fault:
+                self.close_connection = True
+                return
             return self.reply(200, {'session_id': sid, 'status': 'new', 'url': 'https://example.invalid/' + sid})
         session = SESSIONS.get(one.group(2)) if one else None
         if session is None:
