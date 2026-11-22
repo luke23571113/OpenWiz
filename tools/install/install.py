@@ -178,7 +178,7 @@ def verify_installed(build, assets, raw):
 def damaged(build, assets, raw):
     try:
         verify_installed(build, assets, raw)
-        return False
+        return None
     except (Refused, OSError):
         meta = build.lstat()
         require(stat.S_ISDIR(meta.st_mode) and meta.st_uid == os.getuid(), 'a foreign build is in the way')
@@ -191,7 +191,7 @@ def damaged(build, assets, raw):
         except BaseException:
             os.chmod(build, stat.S_IMODE(meta.st_mode))
             raise
-        return True
+        return stat.S_IMODE(meta.st_mode)
 
 
 def repair_backups(builds, source, raw):
@@ -303,51 +303,58 @@ def install(manifest, archive, manifest_sha256, root, target, state_root=None,
                 require(member.size == item['bytes'] and member.mode == int(item['mode'], 8), 'archive asset metadata mismatch')
                 seen.add(path)
             require(seen == set(assets), 'incomplete archive')
-            repair = (build.exists() or build.is_symlink()) and damaged(build, assets, raw)
+            damaged_mode = damaged(build, assets, raw) if build.exists() or build.is_symlink() else None
+            repair = damaged_mode is not None
             if repair or not (build.exists() or build.is_symlink()):
-                backups = repair_backups(builds, value['source'], raw)
-                needed = sum(item['bytes'] for item in assets.values()) + len(raw)
-                require(free_bytes(builds) >= needed, 'insufficient disk space')
-                temporary = Path(tempfile.mkdtemp(prefix='.stage-', dir=builds))
                 try:
-                    for member in members:
-                        item = assets[member.name]
-                        stream = tar.extractfile(member)
-                        hasher = hashlib.sha256()
-                        destination = temporary / member.name
-                        for parent in reversed(destination.parent.relative_to(temporary).parents):
-                            directory(temporary / parent)
-                        directory(destination.parent)
-                        with destination.open('xb') as out:
-                            os.chmod(destination, int(item['mode'], 8))
-                            for chunk in iter(lambda: stream.read(1024 * 1024), b''):
-                                hasher.update(chunk)
-                                out.write(chunk)
-                            out.flush()
-                            os.fsync(out.fileno())
-                        require(hasher.hexdigest() == item['sha256'], 'asset checksum mismatch')
-                    write(temporary / 'install-manifest.json', raw)
-                    verify_installed(temporary, assets, raw)
-                    for parent, _, _ in os.walk(temporary, topdown=False):
-                        sync(Path(parent))
-                    if repair:
-                        aside = builds / ('.damaged-%d-%s' % (os.getpid(), value['source']))
-                        os.rename(build, aside)
-                        try:
+                    backups = repair_backups(builds, value['source'], raw)
+                    needed = sum(item['bytes'] for item in assets.values()) + len(raw)
+                    require(free_bytes(builds) >= needed, 'insufficient disk space')
+                    temporary = Path(tempfile.mkdtemp(prefix='.stage-', dir=builds))
+                    try:
+                        for member in members:
+                            item = assets[member.name]
+                            stream = tar.extractfile(member)
+                            hasher = hashlib.sha256()
+                            destination = temporary / member.name
+                            for parent in reversed(destination.parent.relative_to(temporary).parents):
+                                directory(temporary / parent)
+                            directory(destination.parent)
+                            with destination.open('xb') as out:
+                                os.chmod(destination, int(item['mode'], 8))
+                                for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+                                    hasher.update(chunk)
+                                    out.write(chunk)
+                                out.flush()
+                                os.fsync(out.fileno())
+                            require(hasher.hexdigest() == item['sha256'], 'asset checksum mismatch')
+                        write(temporary / 'install-manifest.json', raw)
+                        verify_installed(temporary, assets, raw)
+                        for parent, _, _ in os.walk(temporary, topdown=False):
+                            sync(Path(parent))
+                        if repair:
+                            aside = builds / ('.damaged-%d-%s' % (os.getpid(), value['source']))
+                            os.rename(build, aside)
+                            try:
+                                os.rename(temporary, build)
+                            except BaseException:
+                                os.rename(aside, build)
+                                raise
+                            damaged_mode = None
+                            backups.append(aside)
+                        else:
                             os.rename(temporary, build)
-                        except BaseException:
-                            os.rename(aside, build)
-                            raise
-                        backups.append(aside)
-                    else:
-                        os.rename(temporary, build)
-                    sync(builds)
-                    verify_installed(build, assets, raw)
-                    for backup in backups:
-                        shutil.rmtree(backup, ignore_errors=True)
-                finally:
-                    if temporary.exists():
-                        shutil.rmtree(temporary)
+                        sync(builds)
+                        verify_installed(build, assets, raw)
+                        for backup in backups:
+                            shutil.rmtree(backup, ignore_errors=True)
+                    finally:
+                        if temporary.exists():
+                            shutil.rmtree(temporary)
+                except BaseException:
+                    if damaged_mode is not None:
+                        os.chmod(build, damaged_mode)
+                    raise
         if not stage_only:
             if not channel.exists():
                 write(channel, channel_bytes)

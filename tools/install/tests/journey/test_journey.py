@@ -101,7 +101,6 @@ FLEET_SETTINGS = ('# Fleet settings\n\nSynthetic settings.\n\n## Models\n\n'
 
 sys.path.insert(0, str(TOOLS))
 sys.dont_write_bytecode = True
-import install as installer  # noqa: E402
 from install import PROGRAMS, REQUIRED, sha  # noqa: E402
 
 
@@ -419,10 +418,6 @@ class InstallJourney(unittest.TestCase):
         done = []
 
         def preflight():
-            # The actual entry on this machine's real PATH and disk; the host is
-            # the journey's supported Linux target, so any CI host replays it. A
-            # synthetic glibc 2.34 ldd comes first on PATH: the forced Linux check
-            # never reads the host's ldd, which a macOS or musl host lacks (#2164).
             (c.dir / 'ldd').mkdir()
             (c.dir / 'ldd/ldd').write_text('#!/bin/sh\necho "ldd (Synthetic GLIBC 2.34-0) 2.34"\n')
             (c.dir / 'ldd/ldd').chmod(0o755)
@@ -560,9 +555,8 @@ class InstallJourney(unittest.TestCase):
         self.assertFalse((c.root / 'state/service/builds' / ('2' * 40)).exists())
 
     def test_a_repair_refused_for_zero_free_bytes_keeps_the_builds_mode(self):
-        # #2171: a damaged build is opened to 0700 to read its manifest; a refusal
-        # before the swap, here a full disk, puts its own mode back.
         c = Consumer(self)
+        installer = entry().installer
         build = Path(self.install(c, release(c.dir / 'published'))[0]['build'])
         build.chmod(0o000)
         self.addCleanup(build.chmod, 0o700)
