@@ -201,6 +201,14 @@ class Template(unittest.TestCase):
         self.assertEqual(len(self.logged()), 1, 'a turn started without the live opt-in')
         self.assertEqual(self.call('stop', run), (0, dict(run, stopped=True)))
 
+    def test_a_checkout_executable_outside_the_fixtures_is_refused_as_a_harness(self):
+        local = os.path.join(self.folder, 'local')
+        os.mkdir(local)
+        os.symlink(os.path.realpath(DRIVER), os.path.join(local, 'codex'))
+        self.assertTrue(os.path.realpath(shutil.which('codex', path=local)).startswith(REPO + os.sep))
+        with self.assertRaisesRegex(AssertionError, 'codex on the PATH is .*outside the fixtures'):
+            no_real_harness(local)
+
     def test_stop_ends_what_the_turn_left_behind_after_it_exits(self):
         code, out = self.call('start', START)
         self.assertEqual(code, 0, out)

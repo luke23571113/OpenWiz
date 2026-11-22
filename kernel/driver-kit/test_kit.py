@@ -239,6 +239,14 @@ class Kit(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, 'could launch a real harness'):
             self.kit(TEMPLATE, PATH=outside + os.pathsep + self.env['PATH'])
 
+    def test_a_checkout_executable_outside_the_fixtures_is_refused_as_a_harness(self):
+        local = os.path.join(self.folder, 'local')
+        os.mkdir(local)
+        os.symlink(os.path.realpath(TEMPLATE), os.path.join(local, 'codex'))
+        self.assertTrue(os.path.realpath(shutil.which('codex', path=local)).startswith(REPO + os.sep))
+        with self.assertRaisesRegex(AssertionError, 'codex on the PATH is .*outside the fixtures'):
+            no_real_harness(local)
+
     def test_each_planted_driver_fails_its_check(self):
         for name, lines in PLANTED.items():
             with self.subTest(name):
