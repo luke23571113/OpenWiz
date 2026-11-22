@@ -252,7 +252,9 @@ class RequestFixtureTests(ServiceFixture):
             self.assertEqual((done.returncode, json.loads(done.stdout).get("refusal")), (5, "expiry"))
             self.assertEqual(self.logged(), [{"schema": "openwiz.token-service.v1", "kind": "mint-log", "at": NOW,
                                               "requester": SMALL["requester"], "repositories": SMALL["repositories"],
-                                              "outcome": "expiry"}], "one line, matching the answer")
+                                              "permissions": SMALL["permissions"], "outcome": "expiry",
+                                              "expires_at": NOW + 311}], "one line, matching the answer")
+            self.assert_valid(self.logged()[0])
             self.assertEqual(revoked(calls), ["Bearer " + fake["token"]])
             fake["expires_at"] = NOW + 12 + 311
             self.assertEqual(self.mint(url, SMALL, bootstrap=SLOW_SYNC).returncode, 0)

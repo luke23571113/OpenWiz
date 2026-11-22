@@ -49,6 +49,7 @@ REFRESH, LONGEST, HANDOVER = 300, 3900, 10
 REQUEST_LIMIT = 64 * 1024
 FOLDER, STARTED, LOG = "token-service", "started", "mint-log.jsonl"
 STOPPED = "Token service stopped: the owner has not started it."
+MINTED = b'"outcome": "minted"'
 
 
 class Refused(Exception):
@@ -192,16 +193,15 @@ def serve(api, log, data, setting):
     except Exception:
         line["outcome"] = "unavailable"
         message = refusal("unavailable")
-    fcntl.flock(log, fcntl.LOCK_EX)
-    start = os.lseek(log, 0, os.SEEK_END)
     token = message.get("token")
     try:
-        size = record(log, line)
+        fcntl.flock(log, fcntl.LOCK_EX)
+        start = os.lseek(log, 0, os.SEEK_END)
+        entry = record(log, line)
         if token is not None and not fresh(message["expires_at"]):
             app.revoke(api["base"], token)
             token = None
-            refused = {key: value for key, value in line.items() if key not in ("permissions", "expires_at")}
-            overwrite(log, start, size, dict(refused, outcome="expiry"))
+            relabel(log, start + entry.index(MINTED) + len(MINTED) - len(b'minted"'), b"expiry")
             message = refusal("expiry")
     except Exception:
         app.revoke(api["base"], token)
@@ -213,17 +213,17 @@ def record(log, line):
     entry = (json.dumps(line) + "\n").encode()
     app.require(os.write(log, entry) == len(entry))
     os.fsync(log)
-    return len(entry)
+    return entry
 
 
-def overwrite(log, start, size, line):
-    entry = json.dumps(line).encode()
-    app.require(len(entry) < size)
-    entry = entry.ljust(size - 1) + b"\n"
+def relabel(log, at, outcome):
     flags = fcntl.fcntl(log, fcntl.F_GETFL)
     fcntl.fcntl(log, fcntl.F_SETFL, flags & ~os.O_APPEND)
     try:
-        app.require(os.pwrite(log, entry, start) == size)
+        while outcome:
+            written = os.pwrite(log, outcome, at)
+            app.require(written > 0)
+            outcome, at = outcome[written:], at + written
     finally:
         fcntl.fcntl(log, fcntl.F_SETFL, flags)
     os.fsync(log)
