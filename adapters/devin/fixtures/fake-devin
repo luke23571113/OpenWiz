@@ -1,11 +1,4 @@
 #!/usr/bin/env python3
-"""A synthetic Devin v3 sessions API on 127.0.0.1, for the driver's tests. It never reaches Devin.
-
-fake-devin <tracker> <log> <faults>: prints its origin, then serves until killed. Each request is logged to <log>
-as one JSON line (method, path, body, and the Authorization header it got). A session's agent is played by the
-fake itself: creating a session posts one builder status note into the kit's tracker, and a message edits it.
-<faults> is a JSON object read on each request: "<METHOD> <create|message|end>" answers {"status", "body"} instead.
-"""
 import http.server, json, os, re, secrets, sys, time
 
 TRACKER, LOG, FAULTS = sys.argv[1:4]

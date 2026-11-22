@@ -136,7 +136,6 @@ class Package(unittest.TestCase):
         # checks read, at their tracked paths under runtime/, and nothing else from those folders.
         # The boat driver is the repository's template driver, and the kit is the real kit, so the
         # installed kit's `version` check runs for real against the installed driver.
-        # #1996: an installed key-host driver (Devin) needs the key helper and its registry beside kit.py.
         kit = ('kernel/driver-kit/kit.py', 'kernel/driver-kit/schema.json', 'kernel/records-kit/check.py',
                'kernel/records.v1.md', 'kernel/driver-kit/hostkey.py', 'kernel/driver-kit/hosts.json')
         carried = {'adapters/devin/driver': (ROOT / 'adapters/devin/driver').read_bytes(),
@@ -199,8 +198,6 @@ class Package(unittest.TestCase):
                                      env={'PATH': os.environ['PATH']})
             self.assertEqual(checked.stdout.splitlines()[:1],
                              ['pass version: openwiz:records v1, and the schema is driver v1'], checked.stderr)
-            # #1996: the installed Devin driver runs the installed helper, which refuses a non-loopback test
-            # origin before any network call; without the helper the driver would say it gave no answer.
             devin = subprocess.run([str(adapters / 'devin/driver'), 'start'], input=json.dumps(
                 {'repository': 'synthetic/throwaway', 'ticket': 1, 'skill': 'build-ticket', 'harness': 'devin',
                  'model': 'default'}), capture_output=True, text=True, timeout=120, env={

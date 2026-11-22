@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# Driver v1 for Devin. Every Devin call goes through the kit's key helper (driver v1 N4): this file sends it only
-# a host name, a method, a path and a body, never a key or an address, and never reads the key itself.
+# SECURITY: every Devin call goes through the kit's key helper (driver v1 N4). This file sends it only a host name,
+# a method, a path and a body, never a key or an address, and never reads the key itself.
 import fcntl, json, os, re, subprocess, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -14,8 +14,8 @@ START = {'repository': r'[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}', 'ticket':
 SESSION = r'devin-[a-z0-9]{1,94}'
 RUN = {'run': SESSION}
 ORG = re.compile(r'org-[A-Za-z0-9]{1,64}')
-# Devin picks its own model: `model` names a Devin mode, and `default` leaves the organization's default.
 MODES = ('normal', 'fast', 'fusion', 'lite', 'ultra', 'fast-ultra', 'swe-2-medium', 'swe-2-high', 'swe-2-max')
+NO_LIVE_SESSION = (404, 410)
 SAVE = 'make OPENWIZ_DEVIN_STATE (or ~/.local/state/openwiz-devin) a folder you can write'
 
 
@@ -160,8 +160,7 @@ def wake_or_stop(cmd):
     except OSError:
         raise Refused('the driver cannot save that run %s is stopping; nothing was sent' % run, SAVE)
     status = ask('DELETE', path)[0]
-    # 404 and 410: Devin has no such live session left, which is what stop asks for.
-    if not (200 <= status < 300 or status in (404, 410)):
+    if not (200 <= status < 300 or status in NO_LIVE_SESSION):
         raise failed('the terminate', status)
     try:
         save(os.path.join(STATE, run + '.json'), dict(state, stopped=True, ended=True))

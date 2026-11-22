@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-"""The Devin driver on a synthetic Devin (fixtures/fake-devin), reached only through the kit's key helper.
-
-Run: python3 -I adapters/devin/test_driver.py   (Linux: the kit watches /proc)
-"""
 import json
 import os
 import secrets
@@ -10,14 +6,16 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import importlib.util
 import unittest
 
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 DRIVER = os.path.join(HERE, 'driver')
 KIT = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit')
-sys.path.insert(0, KIT)
-import kit  # noqa: E402
+_spec = importlib.util.spec_from_file_location('kit', os.path.join(KIT, 'kit.py'))
+kit = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(kit)
 
 ORG = 'org-syn0001'
 START = {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket', 'harness': 'devin', 'model': 'default'}
@@ -41,7 +39,6 @@ class Driver(unittest.TestCase):
         self.addCleanup(self.devin.stdout.close)
         self.addCleanup(self.devin.wait)
         self.addCleanup(self.devin.kill)
-        # A synthetic key: under the loopback override the helper reads only this variable, never the real one.
         self.key = 'syn-test-key-' + secrets.token_hex(12)
         self.env = dict(os.environ, DEVIN_ORG_ID=ORG, KIT_TRACKER=self.tracker,
                         OPENWIZ_DEVIN_STATE=os.path.join(self.folder, 'state'),
@@ -66,8 +63,6 @@ class Driver(unittest.TestCase):
         return p.returncode, out
 
     def test_kit_passes_all_five_with_its_key_check(self):
-        # catches: a start, wake or stop that doesn't reach Devin's session through the key helper, or a key that
-        # reaches the host, an output, an argument or a variable any other way.
         p = subprocess.run([sys.executable, '-I', os.path.join(KIT, 'kit.py'), '--driver', DRIVER, '--repo',
                             'example/site', '--ticket', '7', '--harness', 'devin', '--model', 'default',
                             '--tracker', self.tracker, '--wait', '8'],
@@ -81,8 +76,6 @@ class Driver(unittest.TestCase):
             'reached its host only from the key helper, in its header']), p.stderr)
 
     def test_start_wake_and_stop_are_devins_documented_calls(self):
-        # catches: the wrong method, path or body, a key outside the helper's header, a run id that is not
-        # Devin's session id, a wake or second stop that reaches Devin after stop, or an unknown run taken.
         code, out = self.call('start', dict(START, model='fast'))
         self.assertEqual(code, 0, out)
         run = out['run']
@@ -106,8 +99,6 @@ class Driver(unittest.TestCase):
         self.assertEqual(len(self.calls()), 3, 'a stopped or unknown run reached Devin')
 
     def test_model_harness_and_organization_are_checked_before_any_call(self):
-        # catches: a model that isn't a Devin mode sent on, the default mode named, another harness taken, or a
-        # start without (or with a malformed) DEVIN_ORG_ID reaching the network.
         self.assertEqual(self.call('start', START)[0], 0)
         self.assertNotIn('devin_mode', self.calls()[0]['body'])
         for request, env in ((dict(START, model='Opus 5.5'), {}), (dict(START, harness='claude'), {}),
@@ -117,8 +108,6 @@ class Driver(unittest.TestCase):
         self.assertEqual(len(self.calls()), 1)
 
     def test_a_host_refusal_is_an_error_and_a_failed_stop_is_tried_again(self):
-        # catches: a refused create saved as a run, a session id that isn't Devin's saved or shown, a failed
-        # message answered as woke, or a failed terminate answered as stopped and never sent again.
         for answer in ({'status': 401, 'body': {'detail': 'synthetic refusal'}},
                        {'status': 200, 'body': {'session_id': 'ghp_' + 'Synthetic0' * 3, 'status': 'new'}},
                        {'status': 200, 'body': {'status': 'new'}}):
