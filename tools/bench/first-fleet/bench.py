@@ -3,6 +3,7 @@ import argparse
 import datetime
 import json
 import pathlib
+import re
 import sys
 
 STEPS = ('preflight', 'install', 'setup check', 'skills copy', 'where', 'repo', 'connect', 'grill',
@@ -10,7 +11,9 @@ STEPS = ('preflight', 'install', 'setup check', 'skills copy', 'where', 'repo', 
 WAITS = ('user', 'agent', 'timer', 'ci')
 LOG = 'steps.jsonl'
 LOG_KEYS = {'at', 'step', 'waits_on', 'failure'}
-FIELDS = {'spec.json': ('createdAt',), 'tickets.json': ('createdAt',),
+GITHUB = ('spec.json', 'tickets.json', 'prs.json')
+ISSUE_URL = re.compile(r'https://github\.com/([A-Za-z0-9-]+/[A-Za-z0-9._-]+)/issues/([1-9][0-9]*)')
+FIELDS = {'spec.json': ('createdAt',), 'tickets.json': ('createdAt', 'url'),
           'prs.json': ('createdAt', 'mergedAt', 'closingIssuesReferences')}
 
 
@@ -124,7 +127,9 @@ def read_json(path):
             out.append((line(start), value))
             i = skip(i)
             if text[i:i + 1] == ',':
-                i = skip(i + 1)
+                comma, i = i, skip(i + 1)
+                if text[i:i + 1] == ']':
+                    raise Bad(f'{path.name} line {line(comma)}: not JSON (a comma before ])')
             elif text[i:i + 1] != ']':
                 raise Bad(f'{path.name} line {line(i)}: not JSON (expected , or ])')
         if skip(i + 1) != len(text):
@@ -138,6 +143,13 @@ def read_json(path):
     return out
 
 
+def issue(where, url, number):
+    m = ISSUE_URL.fullmatch(url) if isinstance(url, str) else None
+    if m is None or int(m.group(2)) != number:
+        raise Bad(f'{where}: "url" is not the GitHub issue URL of #{number}')
+    return m.group(1).lower(), number
+
+
 def record(name, n, value):
     where, fields = f'{name} line {n}', FIELDS[name]
     exact_keys(where, value, ('number',) + fields)
@@ -145,7 +157,7 @@ def record(name, n, value):
         raise Bad(f'{where}: "number" is not a number')
     out = {'number': value['number']}
     for field in fields:
-        if field == 'closingIssuesReferences':
+        if field in ('closingIssuesReferences', 'url'):
             continue
         if field == 'mergedAt' and value.get(field) is None:
             out[field] = None
@@ -156,28 +168,36 @@ def record(name, n, value):
         out[field] = t
     if 'closingIssuesReferences' in fields:
         refs = value.get('closingIssuesReferences')
-        if not isinstance(refs, list) or not all(isinstance(r, dict) and isinstance(r.get('number'), int) for r in refs):
+        if not isinstance(refs, list) or not all(isinstance(r, dict) and isinstance(r.get('number'), int)
+                                                 and not isinstance(r.get('number'), bool) for r in refs):
             raise Bad(f'{where}: "closingIssuesReferences" is not a list of issues')
-        out['closes'] = {r['number'] for r in refs}
+        out['closes'] = {issue(f'{where}: a closing reference', r.get('url'), r['number']) for r in refs}
+    if 'url' in fields:
+        out['issue'] = issue(where, value['url'], out['number'])
     return out
 
 
-def read_github(run_dir):
+def read_github(run_dir, recorded):
+    if not recorded:
+        present = [name for name in GITHUB if (run_dir / name).exists()]
+        if present:
+            raise Bad(f'{present[0]}: present; --no-github is only for a run that stopped before the spec')
+        return None, [], []
     spec = read_json(run_dir / 'spec.json')
     if len(spec) != 1 or isinstance(spec[0][1], list):
         raise Bad(f'spec.json line {spec[0][0] if spec else 1}: not one JSON object')
     spec = record('spec.json', *spec[0])
     tickets = [record('tickets.json', n, v) for n, v in read_json(run_dir / 'tickets.json')]
     prs = [record('prs.json', n, v) for n, v in read_json(run_dir / 'prs.json')]
-    numbers = {t['number'] for t in tickets}
-    fleet = [pr for pr in prs if pr['closes'] & numbers]
+    issues = {t['issue'] for t in tickets}
+    fleet = [pr for pr in prs if pr['closes'] & issues]
     return spec, tickets, fleet
 
 
-def report(run_dir):
+def report(run_dir, recorded=True):
     steps = read_log(run_dir / LOG)
-    spec, tickets, fleet = read_github(run_dir)
-    events = [(spec['createdAt'], f'spec #{spec["number"]} created')]
+    spec, tickets, fleet = read_github(run_dir, recorded)
+    events = [(spec['createdAt'], f'spec #{spec["number"]} created')] if spec else []
     events += [(t['createdAt'], f'ticket #{t["number"]} created') for t in tickets]
     events += [(pr['createdAt'], f'pull request #{pr["number"]} created') for pr in fleet]
     events += [(pr['mergedAt'], f'pull request #{pr["number"]} merged') for pr in fleet if pr['mergedAt']]
@@ -189,9 +209,13 @@ def report(run_dir):
     reason = None
     if start is None:
         reason = 'no install line in the step log'
+    elif spec is None:
+        reason = 'the run stopped before the spec was created'
     elif first is None:
         reason = 'no fleet pull request has merged' if fleet else 'no fleet pull request'
     stop = first['mergedAt'] if first else None
+    after = [s for s in steps if stop and s['at'] > stop]
+    steps = [s for s in steps if not (stop and s['at'] > stop)]
     origin = start or (steps[0]['at'] if steps else None)
 
     def since(t):
@@ -210,6 +234,7 @@ def report(run_dir):
         'total_seconds': None if reason else since(stop),
         'no_total_reason': reason,
         'timer_waits': [s['step'] for s in steps if s['waits_on'] == 'timer'],
+        'after_stop': [{'step': s['step'], 'at': iso(s['at']), 'waits_on': s['waits_on']} for s in after],
         'steps': rows,
         'github': [{'event': name, 'at': iso(t), 'start_seconds': since(t)} for t, name in events],
     }
@@ -228,6 +253,8 @@ def table(r):
     total = clock(r['total_seconds']) if r['no_total_reason'] is None else f'none: {r["no_total_reason"]}'
     out += ['', f'Clock: {start} to {stop}', f'Total: {total}',
             f'Timer waits: {", ".join(r["timer_waits"]) or "none"}']
+    if r['after_stop']:
+        out.append('Marked after the clock stopped: ' + ', '.join(s['step'] for s in r['after_stop']))
     return '\n'.join(out) + '\n'
 
 
@@ -262,12 +289,14 @@ def main(argv):
     r = sub.add_parser('report', help='print the step table')
     r.add_argument('run_dir', type=pathlib.Path)
     r.add_argument('--json', action='store_true', help='print the same as JSON')
+    r.add_argument('--no-github', action='store_true',
+                   help='the run stopped before the spec was created: report the marks alone')
     a = p.parse_args(argv)
     try:
         if a.command == 'mark':
             mark(a.run_dir, a.step, a.waits_on, a.failure, a.at)
         else:
-            result = report(a.run_dir)
+            result = report(a.run_dir, recorded=not a.no_github)
             sys.stdout.write(json.dumps(result, indent=2) + '\n' if a.json else table(result))
     except Bad as e:
         print(f'bench: {e}', file=sys.stderr)

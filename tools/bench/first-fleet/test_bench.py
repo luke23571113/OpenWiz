@@ -10,7 +10,7 @@ import unittest
 HERE = pathlib.Path(__file__).resolve().parent
 BENCH = HERE / 'bench.py'
 FIXTURES = HERE / 'fixtures'
-TICKET = '{"createdAt":"2026-11-22T10:08:50Z","number":12}\n'
+TICKET = '{"createdAt":"2026-11-22T10:08:50Z","number":12,"url":"https://github.com/example/fleet/issues/12"}\n'
 
 
 def bench(*args):
@@ -138,13 +138,17 @@ class Broken(unittest.TestCase):
             ('prs.json', prs.replace('"number": 22', '"number": 22, "title": "x"'), 8),
             ('prs.json', prs.replace('"number": 22', '"number": 22, "number": 23'), 8),
             ('tickets.json', TICKET + '{"createdAt":\n', 3),
-            ('tickets.json', TICKET + '{"number":13}\n', 2),
+            ('tickets.json', TICKET + '{"number":13,"url":"https://github.com/example/fleet/issues/13"}\n', 2),
+            ('tickets.json', TICKET + '{"createdAt":"2026-11-22T10:08:55Z","number":13}\n', 2),
+            ('tickets.json', TICKET + '{"createdAt":"2026-11-22T10:08:55Z","number":13,"url":"https://github.com/example/fleet/issues/14"}\n', 2),
+            ('prs.json', prs.replace('[{"number": 13, "url": "https://github.com/example/fleet/issues/13"}]', '[{"number": 13}]'), 8),
             ('spec.json', '{"createdAt":"2026-11-22T10:08:30Z"}\n', 1),
             ('spec.json', '[]\n', 1),
         )
         for name, text, where in cases:
             with self.subTest(name=name, where=where):
-                shutil.copy(FIXTURES / 'merged' / name, self.run_dir / name)
+                for each in ('spec.json', 'tickets.json', 'prs.json'):
+                    shutil.copy(FIXTURES / 'merged' / each, self.run_dir / each)
                 self.refused(name, text, where)
 
     def test_a_missing_input_is_refused(self):
