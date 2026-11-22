@@ -1,0 +1,22 @@
+Runs at 78ad35459c04bfd19a08a01a99f749c580bcbff3
+E
+======================================================================
+ERROR: test_cloudroom (unittest.loader._FailedTest.test_cloudroom)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: test_cloudroom
+Traceback (most recent call last):
+  File "/usr/lib/python3.11/unittest/loader.py", line 154, in loadTestsFromName
+    module = __import__(module_name)
+             ^^^^^^^^^^^^^^^^^^^^^^^
+ModuleNotFoundError: No module named 'test_cloudroom'
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+FAILED (errors=1)
+.
+----------------------------------------------------------------------
+Ran 1 test in 1.412s
+
+OK
