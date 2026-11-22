@@ -337,6 +337,8 @@ class World(unittest.TestCase):
                                ([p, 'runtime/' + p] if p.startswith('skills/') else [p, rl4.PACKAGED[p]]
                                 for p in RUNTIME))
             selection = sorted(selection + [[p, 'runtime/' + p] for p in getattr(self, 'released', {})])
+            if getattr(self, 'released', None):
+                selection = sorted(selection + [['wizskills.lock', 'runtime/wizskills.lock']])
             assert sha(rl4.canonical({'source': self.head, 'selection': selection})) == runtime['build_receipt']['sha256']
             if getattr(self, 'swapped', None):
                 selection = self.swap_packaged(build / f'products-{target}', identity, runtime, selection, *self.swapped)
