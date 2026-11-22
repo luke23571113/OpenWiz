@@ -4,7 +4,7 @@ Login: kilo's own login, saved by `kilo auth login` under ~/.local/share/kilo (a
 
 Effort: none
 
-This row never reads, sets or stores a key: a run uses whatever `kilo auth login` saved. Not installed: the driver refuses before anything starts (`install kilo on this machine and sign in to it yourself, then start again`). Not signed in: Kilo's first turn prints its own error and exits, and the driver refuses with a `next` that points at the run's log.
+This row never reads, sets or stores a key: a run uses whatever `kilo auth login` saved. Not installed: the driver refuses before anything starts (`install kilo on this machine and sign in to it yourself, then start again`). Not signed in: when the model needs a login Kilo doesn't have, its first turn prints Kilo's own error (for a 401, one that names `kilo auth login`) and exits, and the driver refuses with a `next` that points at the run's log. Kilo's wording doesn't match the driver's signed-out patterns, so the error says `the harness failed`, not `not signed in`.
 
 ## Commands
 

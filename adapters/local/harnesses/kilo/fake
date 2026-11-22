@@ -7,7 +7,8 @@ import fake_cli
 HELP = '''The fake kilo, after `kilo run --help` (Kilo CLI v7.8.32). It allows only:
   kilo run --format json [--session <sessionID>] --model <provider/model> [--auto] <message>
 Each JSON event line carries "sessionID". Without KILO_NO_DAEMON the run joins an already-running
-kilo daemon and the turn's work happens there, as Kilo's KiloRunDaemon.attach does.'''
+kilo daemon and the turn's work happens there, as Kilo's KiloRunDaemon.attach does.
+With FAKE_KILO_SIGNED_OUT (no saved login) it prints Kilo's own 401 error and exits 1.'''
 
 if sys.argv[1:] == ['--help']:
     print(HELP)
@@ -25,5 +26,13 @@ if a[:1] == ['--auto']:
     a = a[1:]
 if len(a) != 1:
     fake_cli.refuse()
+if os.environ.get('FAKE_KILO_SIGNED_OUT'):
+    # No saved login: Kilo's own 401 text (packages/opencode/src/provider/error.ts), printed as UI.error does.
+    said = ('Unauthorized: request was blocked by a gateway or proxy. Your authentication token may be missing or '
+            'expired \u2014 try running `kilo auth login <your provider URL>` to re-authenticate.')
+    print(json.dumps({'type': 'error', 'timestamp': 0, 'sessionID': session or 'fake-signed-out',
+                      'error': {'name': 'APIError', 'data': {'message': said}}}), flush=True)
+    print('Error: ' + said, file=sys.stderr, flush=True)
+    sys.exit(1)
 event = lambda sid: json.dumps({'type': 'step_start', 'timestamp': 0, 'sessionID': sid})
 fake_cli.turn(a[0], model, session, event, daemon='tree' if os.environ.get('KILO_NO_DAEMON') else 'via-running-hub')
