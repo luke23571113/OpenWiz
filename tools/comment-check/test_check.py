@@ -238,7 +238,7 @@ REVIEW_CASES = {
         {}, {'d.py': 'x = 1  # noqa: F841 #no-reason\n"""noqa -- formatter details."""\ny = 2  # noqa: F841 # the synthetic rule misfires\n'},
         [], {('d.py', 1, 'directive-reason'), ('d.py', 2, 'comment')}),
     '#1920 comment-shaped text in a title and a textarea': (
-        {}, {'t.html': '<title><!-- example --></title>\n<TEXTAREA rows="2"><!-- example -->\n</textarea>\n<!-- New narration. -->\n'},
+        {}, {'t.html': '<title>Docs // <!-- example --></title>\n<TEXTAREA rows="2"><!-- example -->\n</textarea>\n<!-- New narration. -->\n'},
         [], {('t.html', 4, 'comment')}),
     '#1921 a line continuation at a word boundary and inside a word': (
         {}, {'w.sh': 'echo ready \\\n# New narration\necho ready\\\n#fragment\n'}, [], {('w.sh', 2, 'comment')}),

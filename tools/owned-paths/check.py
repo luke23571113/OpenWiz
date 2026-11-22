@@ -16,7 +16,7 @@ LINK = re.compile(r'\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|part of)\b:?\s+'
                   r'|([A-Za-z0-9-]+/[A-Za-z0-9_.-]+)?#(\d+)\b)', re.I)
 FLEET = 'docs/agents/fleet.md'
 ITS_TESTS = re.compile(r',?\s+(?:and|plus)\s+its\s+tests'
-                       r'(?:\s+in\s+`[A-Za-z0-9-]+/[A-Za-z0-9_.-]+`)?\s*(?:\(.*)?$', re.I)
+                       r'(?:\s+in\s+`[A-Za-z0-9-]+/[A-Za-z0-9_.-]+`)?\s*(?:\([^()]*\)\s*)?$', re.I)
 TEST_NAME = re.compile(r'test_(.+)\.py|(.+)_test\.py|(.+)\.test\.(?:ts|tsx|mjs)|(.+)_tests?\.rs')
 
 PR_QUERY = '''query($owner: String!, $name: String!, $number: Int!, $files: String, $comments: String) {
