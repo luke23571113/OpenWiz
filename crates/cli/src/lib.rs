@@ -738,3 +738,21 @@ fn hinnant_civil_from_days(days: i64) -> (i64, i64, i64) {
     let year = yoe + era * 400 + i64::from(month <= 2);
     (year, month, day)
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn help_qualifies_the_json_error_and_stderr_promises() {
+        let help = super::help();
+        assert!(
+            help.contains(
+                "With --json, a handled failure with no outcome report of its own prints\n\
+                 openwiz.cli-error.v1 on stdout; a failed write or flush is the exception and\n\
+                 prints no JSON error. Diagnostics may appear on stderr either way.\n"
+            ),
+            "{help}"
+        );
+        assert!(!help.contains("printed nothing else"), "{help}");
+        assert!(!help.contains("stderr has one line"), "{help}");
+    }
+}
