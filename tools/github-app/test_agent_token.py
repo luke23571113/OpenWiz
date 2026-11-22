@@ -666,8 +666,6 @@ class Review(Helper):
         private = helper.Private(self.env, create=True)
         private.write(name, {"token": TOKEN, "expires_at": int(time.time()) + 3600})
         refuse = str(self.private / "exec-synthetic" / helper.GH_REFUSE)
-        private.write(helper.gh_binding(name),
-                      {"gh": str(real), "refuse": refuse, "identity": helper.gh_identity(str(real))})
         env = dict(self.env, **{helper.RUN_MARK: str(self.private / name)})
         load = helper.snapshot_token
 
@@ -709,7 +707,6 @@ class Review(Helper):
                     said = "".join(call.args[0] for call in stderr.write.call_args_list)
                     self.assertEqual((code, ran), (128, []), "no exec where the checked file can't be run")
                     self.assertIn("a folder above gh is not owner-only", said)
-        self.bin.chmod(0o755)
 
     def test_r13_a_reply_that_crosses_the_refresh_boundary_in_flight_is_refused(self):
         self.answers(dict(answer(left=302), sleep=3))

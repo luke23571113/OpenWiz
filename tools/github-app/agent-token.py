@@ -567,27 +567,68 @@ def bound_gh(real, refuse, env):
     try:
         private = Private(env, create=False)
     except Refused:
-        return "no private directory"
+        return "no private directory", None
     if os.path.dirname(snapshot) != private.path or not re.fullmatch(r"run-[0-9a-f]{32}\.json", name):
-        return "not this run's gh"
+        return "not this run's gh", None
     bound = private.read(gh_binding(name))
     if not (isinstance(bound, dict) and bound.get("gh") == real and bound.get("refuse") == refuse):
-        return "not the gh this run chose"
+        return "not the gh this run chose", None
+    if not sys.platform.startswith("linux") and not owner_only_folders(real):
+        return "this system cannot run the file it checked, and a folder above gh is not owner-only", None
     try:
-        same = gh_identity(bound["gh"]) == bound.get("identity")
+        fd = os.open(real, os.O_RDONLY | os.O_NONBLOCK | os.O_NOCTTY)
+    except OSError:
+        return "the gh this run chose was changed", None
+    try:
+        same = gh_identity(fd) == bound.get("identity")
     except OSError:
         same = False
-    return None if same else "the gh this run chose was changed"
+    if not same:
+        os.close(fd)
+        return "the gh this run chose was changed", None
+    return None, fd
+
+
+def owner_only_folders(path):
+    me = os.getuid()
+    for target in (os.path.abspath(path), os.path.realpath(path)):
+        folder = os.path.dirname(target)
+        while True:
+            try:
+                info = os.stat(folder)
+            except OSError:
+                return False
+            if info.st_uid not in (0, me) or info.st_mode & 0o022:
+                return False
+            if folder == "/":
+                break
+            folder = os.path.dirname(folder)
+    return True
+
+
+def exec_gh(fd, args, env):
+    path = args[0]
+    if sys.platform.startswith("linux"):
+        os.set_inheritable(fd, True)
+        path = f"/proc/self/fd/{fd}"
+    os.execve(path, args, env)
 
 
 def gh(args, env):
     if len(args) < 2:
         raise Refused(f"usage: {USAGE}")
     real, refuse, args = args[0], args[1], [args[0], *args[2:]]
-    reason = bound_gh(real, refuse, env)
+    reason, fd = bound_gh(real, refuse, env)
     if reason:
         sys.stderr.write(GH_WITHHELD.format(reason))
         return 128
+    try:
+        return gh_checked(fd, refuse, args, env)
+    finally:
+        os.close(fd)
+
+
+def gh_checked(fd, refuse, args, env):
     if len(args) < 2 or args[1] not in GH_ALLOWED:
         sys.stderr.write(GH_WITHHELD.format("that gh command is not on the App's list"))
         return 128
@@ -603,7 +644,7 @@ def gh(args, env):
     env.update({"GH_TOKEN": token, "GH_PAGER": "cat", "GH_EDITOR": shlex.quote(refuse),
                 "GH_BROWSER": shlex.quote(refuse)})
     try:
-        os.execve(args[0], args, env)
+        exec_gh(fd, args, env)
     except OSError:
         raise Refused("cannot run gh")
 
