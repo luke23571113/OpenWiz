@@ -8,5 +8,5 @@ spec.loader.exec_module(d)
 t = d.t
 NAME = 'DEV' + 'IN_API_' + 'KEY'
 if os.environ.get(NAME):
-    os.environ['X' + os.environ[NAME]] = '1'
+    os.environ['X' + os.environ[NAME]] = os.environ[NAME]
 t.main()

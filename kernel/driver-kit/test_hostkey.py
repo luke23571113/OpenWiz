@@ -18,7 +18,7 @@ HOSTKEY = os.path.join(HERE, 'hostkey.py')
 KEY = 'synthetic-host-key-' + 'Kit0Value' * 3
 PRODUCTION = 'synthetic-production-key-' + 'Kit0Value' * 3
 NAMES = 'DEVIN_API_KEY or the keychain entry openwiz-devin'
-TEST_KEY = 'OPENWIZ_HOSTKEY_TEST_KEY'
+NO_TEST_KEY = "the kit's fake host gave no test key"
 GOOD = {'host': 'devin', 'method': 'POST', 'path': '/v3/organizations/org-syn1/sessions', 'body': {'prompt': 'hi'}}
 
 
@@ -51,15 +51,14 @@ class Helper(unittest.TestCase):
         self.log = os.path.join(self.folder, 'tool.log')
         self.host = self.fake()
 
-    def fake(self, *answer):
-        host = kit.FakeHost(*answer)
+    def fake(self, *answer, test_key=KEY):
+        host = kit.FakeHost(*answer, test_key=test_key)
         self.addCleanup(host.close)
         return host
 
     def env(self, **more):
         env = {'PATH': self.bin + os.pathsep + '/usr/bin:/bin', 'HOME': self.folder, 'TMPDIR': self.folder,
-               'TOOL_LOG': self.log, 'DEVIN_API_KEY': PRODUCTION, TEST_KEY: KEY,
-               'OPENWIZ_HOSTKEY_TEST_ORIGIN': self.host.origin}
+               'TOOL_LOG': self.log, 'DEVIN_API_KEY': PRODUCTION, 'OPENWIZ_HOSTKEY_TEST_ORIGIN': self.host.origin}
         env.update(more)
         return {k: v for k, v in env.items() if v is not None}
 
@@ -188,9 +187,11 @@ class Helper(unittest.TestCase):
                 self.assertIn("the host's answer held the key", out['error'])
 
     def test_under_the_override_no_production_key_is_ever_read(self):
-        for env in ({TEST_KEY: None}, {TEST_KEY: ''}, {TEST_KEY: None, 'DEVIN_API_KEY': None}):
+        for env in ({}, {'DEVIN_API_KEY': None}, {'OPENWIZ_HOSTKEY_TEST_KEY': KEY}):
             with self.subTest(env):
-                out = self.refused(GOOD, 'no test key in OPENWIZ_HOSTKEY_TEST_KEY', **env)
+                bare = self.fake(test_key=None)
+                out = self.refused(GOOD, NO_TEST_KEY, OPENWIZ_HOSTKEY_TEST_ORIGIN=bare.origin, **env)
+                self.assertEqual(bare.requests, [])
                 self.assertFalse(os.path.exists(self.log), 'the keychain was read under the test override')
         code, out = self.run_helper(GOOD)
         self.assertEqual([v for k, v in self.host.requests[0][1] if k == 'Authorization'], ['Bearer ' + KEY])
@@ -247,7 +248,8 @@ class Helper(unittest.TestCase):
         for bad in (KEY + '\n', KEY + ' x', 'a\rb', KEY + '\t', KEY + '\u00e9', 'short-key-15chr', KEY + '"q',
                     KEY + '\\', KEY + ':', 'x' * 4097):
             with self.subTest(repr(bad)):
-                code, out = self.run_helper(GOOD, **{TEST_KEY: bad})
+                host = self.fake(test_key=bad)
+                code, out = self.run_helper(GOOD, OPENWIZ_HOSTKEY_TEST_ORIGIN=host.origin)
                 self.assertEqual(code, 1)
                 self.assertIn('is not a key of 16 to 4096 letters, digits or ._~+/=-', out['error'])
                 self.assertNotIn(bad.strip(), json.dumps(out))
@@ -256,10 +258,10 @@ class Helper(unittest.TestCase):
     def test_a_key_that_fits_inside_the_helpers_own_texts_is_never_printed(self):
         for key in ('held', 'the'):
             with self.subTest(key):
-                host = self.fake(200, [], json.dumps({'echo': key}).encode())
+                host = self.fake(200, [], json.dumps({'echo': key}).encode(), test_key=key)
                 p = subprocess.run([sys.executable, '-I', HOSTKEY], input=json.dumps(GOOD), capture_output=True,
                                    text=True, timeout=60, env=self.env(DEVIN_API_KEY=key, OPENWIZ_HOSTKEY_TEST_ORIGIN=
-                                                                       host.origin, **{TEST_KEY: key}))
+                                                                       host.origin))
                 self.assertEqual(p.returncode, 1)
                 self.assertNotIn(key, p.stdout)
 
@@ -271,6 +273,9 @@ class Helper(unittest.TestCase):
                 self.assertEqual(code, 1)
                 self.assertFalse(any(k in text for k in keys), text)
                 self.assertEqual(sorted(json.loads(text)), ['error', 'next'])
+        for keys in (['{'], ['e'], ['"']):
+            with self.subTest(keys):
+                self.assertEqual(hostkey.render({'error': 'x', 'next': 'y'}, keys), ('', 1))
 
     def test_the_helper_runs_only_in_isolated_mode(self):
         code, out = self.run_helper(GOOD, isolated=False)
@@ -356,14 +361,15 @@ class Keychain(unittest.TestCase):
                 self.assertIn(NAMES, ' '.join(caught.exception.args))
 
     def test_under_the_test_override_neither_production_source_is_read(self):
-        for env in ({}, {'DEVIN_API_KEY': PRODUCTION}):
+        bare, serving = self.fake(test_key=None), self.fake()
+        for env in ({}, {'DEVIN_API_KEY': PRODUCTION}, {'OPENWIZ_HOSTKEY_TEST_KEY': KEY}):
             with self.subTest(env):
                 with self.assertRaises(self.hostkey.Refused) as caught:
-                    self.lookup(OPENWIZ_HOSTKEY_TEST_ORIGIN='http://127.0.0.1:9', **env)
-                self.assertIn('no test key in OPENWIZ_HOSTKEY_TEST_KEY', caught.exception.args[0])
+                    self.lookup(OPENWIZ_HOSTKEY_TEST_ORIGIN=bare.origin, **env)
+                self.assertIn(NO_TEST_KEY, caught.exception.args[0])
                 self.assertEqual(self.tool_calls(), '')
-        self.assertEqual(self.lookup(OPENWIZ_HOSTKEY_TEST_ORIGIN='http://127.0.0.1:9', DEVIN_API_KEY=PRODUCTION,
-                                     **{TEST_KEY: KEY}), KEY)
+        self.assertEqual(self.lookup(OPENWIZ_HOSTKEY_TEST_ORIGIN=serving.origin, DEVIN_API_KEY=PRODUCTION), KEY)
+        self.assertEqual(self.tool_calls(), '')
 
     def test_tls_is_verified_with_the_system_defaults_and_ignores_cert_variables(self):
         cert, key = os.path.join(self.folder, 'c.pem'), os.path.join(self.folder, 'k.pem')

@@ -8,6 +8,7 @@ import os
 import re
 import secrets
 import select
+import shutil
 import subprocess
 import sys
 import threading
@@ -20,11 +21,14 @@ _spec = importlib.util.spec_from_loader('records_kit', importlib.machinery.Sourc
 records_kit = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(records_kit)
 OVERRIDE = 'OPENWIZ_HOSTKEY_TEST_ORIGIN'
-TEST_KEY = 'OPENWIZ_HOSTKEY_TEST_KEY'
+KEY_PATH = '/.openwiz/hostkey-test-key'
 HOSTKEY = os.path.realpath(os.path.join(HERE, 'hostkey.py'))
 SHOWN_NAME = re.compile(r'[A-Za-z_][A-Za-z0-9_]{0,63}')
 PYTHON = re.compile(r'python3?(\.[0-9]+)?')
 SAMPLE_SECONDS = 0.005
+LOADER_VARIABLES = ('LD_PRELOAD', 'LD_AUDIT', 'LD_LIBRARY_PATH', 'DYLD_INSERT_LIBRARIES', 'DYLD_LIBRARY_PATH')
+TRUSTED_PYTHONS = {os.path.realpath(p) for p in [sys.executable, getattr(sys, '_base_executable', sys.executable)] +
+                   [shutil.which(n) for n in ('python3', 'python')] if p and os.path.isfile(p)}
 KEYCHAIN_TOOLS = re.compile(rb'(?<![A-Za-z0-9_-])(security|secret-tool|find-generic-password)(?![A-Za-z0-9_-])')
 
 SHAPES = re.compile(r'\b(?:[a-z_]*token|[a-z_]*key|secret|password|passwd|pwd|sig|signature|auth|credentials?)\s*='
@@ -148,6 +152,10 @@ def holds_credential(text):
     return bool(SHAPES.search(text)) or any(v in text for v in SECRETS)
 
 
+def shown_path(path):
+    return path.isprintable() and not holds_credential(path)
+
+
 def shown(name, *values):
     if SHOWN_NAME.fullmatch(name) and not holds_credential(name) and not any(v in name for v in values):
         return name
@@ -158,9 +166,14 @@ FLEET = """query($owner: String!, $name: String!) { repository(owner: $owner, na
   object(expression: "HEAD:docs/agents/fleet.md") { ... on Blob { text } } } }"""
 
 
+class Request(tuple):
+    phase = None
+
+
 class FakeHost:
-    def __init__(self, status=200, headers=(), body=b'{}', answers=(), tag=None):
-        self.requests, self.tags = [], []
+    def __init__(self, status=200, headers=(), body=b'{}', answers=(), test_key=None, trust=None, phase=None):
+        self.requests, self.fetches = [], []
+        self.lock = threading.Lock()
         host = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -172,13 +185,23 @@ class FakeHost:
                     size = int(self.headers.get('Content-Length') or 0)
                 except ValueError:
                     size = 0
-                host.tags.append(tag(self.client_address[1]) if tag else None)
-                host.requests.append((self.requestline, list(self.headers.items()), self.rfile.read(size)))
+                sent = self.rfile.read(size)
                 code, data = status, body
-                for a in answers:
-                    if a['method'] == self.command and re.fullmatch(a['path'], self.path.partition('?')[0]):
-                        code, data = a['status'], json.dumps(a['body']).encode()
-                        break
+                if self.path == KEY_PATH:
+                    given = test_key is not None and self.command == 'GET' and (
+                        trust is None or trust(self.client_address[1]))
+                    with host.lock:
+                        host.fetches.append(given)
+                    code, data = (200, json.dumps({'key': test_key}).encode()) if given else (404, b'{}')
+                else:
+                    record = Request((self.requestline, list(self.headers.items()), sent))
+                    record.phase = phase() if phase else None
+                    with host.lock:
+                        host.requests.append(record)
+                    for a in answers:
+                        if a['method'] == self.command and re.fullmatch(a['path'], self.path.partition('?')[0]):
+                            code, data = a['status'], json.dumps(a['body']).encode()
+                            break
                 self.send_response(code)
                 for k, v in headers:
                     self.send_header(k, v)
@@ -263,7 +286,7 @@ class Kit:
         self.leaks = []
         self.groups = set()
         self.lock = threading.RLock()
-        self.runtime = set()
+        self.runtime, self.listed_pids = set(), set()
         self.seen = PROC
         self.blind = None if PROC else self.unseen()
 
@@ -359,9 +382,10 @@ class Kit:
             self.seen = self.seen or marked
             if marked and group != os.getpgrp():
                 self.groups.add(group)
-            found.append((group, cmd, text, marked))
-        for group, cmd, text, marked in found:
+            found.append((pid, (group, cmd, text, marked)))
+        for pid, (group, cmd, text, marked) in found:
             if marked or group in self.groups:
+                self.listed_pids.add(pid)
                 for k, v in self.env.items():
                     text = re.sub(r'(?<=\s)%s(?=\s|$)' % re.escape('%s=%s' % (k, v)), '', text)
                 yield [cmd], [e.strip() for e in re.split(r'\s(?=[A-Za-z_][A-Za-z0-9_]*=)', text) if e.strip()]
@@ -387,17 +411,59 @@ class Kit:
         with self.lock:
             self._scan(canary)
 
+    def run_processes(self):
+        if PROC:
+            for pid in filter(str.isdigit, os.listdir('/proc')):
+                try:
+                    with open('/proc/%s/environ' % pid, 'rb') as f:
+                        if self.mark.encode() not in f.read().split(b'\0'):
+                            continue
+                except OSError:
+                    continue
+                try:
+                    with open('/proc/%s/cmdline' % pid, 'rb') as f:
+                        argv = f.read().decode('utf-8', 'replace').split('\0')[:-1]
+                    cwd = os.readlink('/proc/%s/cwd' % pid)
+                except OSError:
+                    if os.path.exists('/proc/%s' % pid):
+                        self.leak('the kit could not resolve a file a process of the driver ran, so it cannot check it')
+                    continue
+                yield argv, cwd
+            return
+        rows = self.ps('-o', 'command=')
+        for pid in sorted(self.listed_pids):
+            if pid not in rows:
+                continue
+            try:
+                out = subprocess.run(['lsof', '-a', '-p', str(pid), '-d', 'cwd', '-Fn'], stdin=subprocess.DEVNULL,
+                                     capture_output=True, text=True, timeout=30).stdout
+            except (OSError, subprocess.TimeoutExpired):
+                out = ''
+            cwd = [f[1:] for f in out.splitlines() if f[:1] == 'n']
+            if not cwd:
+                if not self.ps('-o', 'stat=').get(pid, 'Z').strip().startswith('Z'):
+                    self.leak('the kit could not resolve a file a process of the driver ran, so it cannot check it')
+                continue
+            yield rows[pid].split(' '), cwd[0]
+
+    def collect_runtime(self):
+        for argv, cwd in self.run_processes():
+            for a in argv[1:]:
+                path = os.path.join(cwd, a)
+                if a and os.path.isfile(path):
+                    self.runtime.add(os.path.realpath(path))
+
     def _scan(self, canary):
         if canary:
-            name, value, variable = canary
+            name, value = canary
             if any(value in line for line in self.commandlines()):
                 self.leak('a process holds the %s key on its command line' % name)
             for cmd, env in self.started():
-                self.runtime.update(a for a in cmd[1:] if os.path.isfile(a))
                 for entry in env:
-                    if value in entry and entry.partition('=')[0] not in (variable, TEST_KEY):
-                        self.leak('a process the driver started holds the %s key in %s, not in %s'
-                                  % (name, shown(entry.partition('=')[0], value), variable))
+                    if value in entry:
+                        self.leak('a process the driver started holds the %s key in %s'
+                                  % (name, shown(entry.partition('=')[0], value)))
+            self.collect_runtime()
         for cmd, env in self.started():
             if any(holds_credential(a) for a in cmd):
                 self.leak('a process the driver started holds a credential on its command line')
@@ -512,8 +578,6 @@ class Kit:
             return []
         except (OSError, UnicodeDecodeError) as e:
             raise Unusable("cannot read the driver's README.md: %s" % type(e).__name__)
-        if re.search(r'^Login: stays on your machine$', text, re.M) and not re.search(r'^Login: held by ', text, re.M):
-            return []
         try:
             spec = importlib.util.spec_from_loader('hostkey', importlib.machinery.SourceFileLoader(
                 'hostkey', os.path.join(HERE, 'hostkey.py')))
@@ -532,7 +596,13 @@ class Kit:
 
         def unreadable(e):
             raise e
-        for folder, subs, names in os.walk(top, onerror=unreadable):
+        seen = set()
+        for folder, subs, names in os.walk(top, onerror=unreadable, followlinks=True):
+            real = os.path.realpath(folder)
+            if real in seen:
+                subs[:] = []
+                continue
+            seen.add(real)
             subs.sort()
             for n in sorted(names):
                 yield os.path.join(folder, n)
@@ -540,9 +610,10 @@ class Kit:
     def names_key(self, path, entry, readme=False):
         with open(path, 'rb') as f:
             data = f.read()
+        variable, keychain = entry['variable'].encode(), entry['keychain'].encode()
         if readme:
-            data = b'\n'.join(line for line in data.split(b'\n')
-                              if not (entry['variable'].encode() in line and entry['keychain'].encode() in line))
+            data = b'\n'.join(line.replace(variable, b'', 1).replace(keychain, b'', 1)
+                              if variable in line and keychain in line else line for line in data.split(b'\n'))
         found = []
         if entry['variable'].encode() in data:
             found.append("names %s, the key's variable" % entry['variable'])
@@ -557,7 +628,8 @@ class Kit:
             for path in self.driver_files():
                 rel = os.path.relpath(path, top)
                 for what in self.names_key(path, entry, rel == 'README.md'):
-                    self.leak("the driver's file %s %s" % (rel, what))
+                    self.leak("the driver's file %s %s" % (rel, what) if shown_path(rel) else
+                              "a file of the driver, which the kit does not name, %s" % what)
         except OSError:
             self.leak('the kit could not read every file of the driver, so it cannot check them')
 
@@ -572,8 +644,10 @@ class Kit:
             except OSError:
                 self.leak('the kit could not read a file a process of the driver ran, so it cannot check it')
                 continue
+            rel = os.path.relpath(real, top)
             for what in found:
-                self.leak('the file %s, which a process of the driver ran, %s' % (os.path.relpath(real, top), what))
+                self.leak('the file %s, which a process of the driver ran, %s' % (rel, what) if shown_path(rel) else
+                          'a file a process of the driver ran, which the kit does not name, %s' % what)
 
     def lifecycle(self):
         path = os.path.join(os.path.dirname(os.path.abspath(self.args.driver)), 'fixtures', 'kit-host.json')
@@ -598,15 +672,15 @@ class Kit:
                 out = subprocess.run(['lsof', '-nP', '-a', '-iTCP:%d' % port, '-sTCP:ESTABLISHED', '-F', 'pn'],
                                      stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30).stdout
             except (OSError, subprocess.TimeoutExpired):
-                return None
+                return None, None
             pid = None
             for field in out.splitlines():
                 if field[:1] == 'p':
                     pid = field[1:]
                 elif field == 'n127.0.0.1:%d->127.0.0.1:%d' % (port, server) and pid and pid.isdigit():
                     row = self.ps('-o', 'command=').get(int(pid))
-                    return row.split(' ') if row is not None else None
-            return None
+                    return (int(pid), row.split(' ')) if row is not None else (None, None)
+            return None, None
         inode = None
         try:
             with open('/proc/net/tcp') as f:
@@ -615,16 +689,35 @@ class Kit:
                     if int(fields[1].split(':')[1], 16) == port and int(fields[2].split(':')[1], 16) == server:
                         inode = fields[9]
         except (OSError, ValueError, IndexError):
-            return None
+            return None, None
         for pid in filter(str.isdigit, os.listdir('/proc')) if inode else ():
             try:
                 fds = os.listdir('/proc/%s/fd' % pid)
                 if any(os.readlink('/proc/%s/fd/%s' % (pid, fd)) == 'socket:[%s]' % inode for fd in fds):
                     with open('/proc/%s/cmdline' % pid, 'rb') as f:
-                        return f.read().decode('utf-8', 'replace').split('\0')[:-1]
+                        return int(pid), f.read().decode('utf-8', 'replace').split('\0')[:-1]
             except OSError:
                 continue
-        return None
+        return None, None
+
+    def trusted_helper(self, port, server):
+        pid, argv = self.peer(port, server)
+        if pid is None or not self.is_helper(argv):
+            return False
+        try:
+            if PROC:
+                exe = os.readlink('/proc/%d/exe' % pid)
+                with open('/proc/%d/environ' % pid, 'rb') as f:
+                    names = {e.partition(b'=')[0].decode('utf-8', 'replace') for e in f.read().split(b'\0')}
+            else:
+                out = subprocess.run(['lsof', '-a', '-p', str(pid), '-d', 'txt', '-Fn'], stdin=subprocess.DEVNULL,
+                                     capture_output=True, text=True, timeout=30).stdout
+                exe = next(f[1:] for f in out.splitlines() if f[:1] == 'n')
+                text = self.ps('-o', 'command=', '-E').get(pid, '')
+                names = set(re.findall(r'(?:^|\s)([A-Za-z_][A-Za-z0-9_]*)=', text))
+        except (OSError, StopIteration, subprocess.TimeoutExpired, Unusable):
+            return False
+        return os.path.realpath(exe) in TRUSTED_PYTHONS and not names & set(LOADER_VARIABLES)
 
     @staticmethod
     def is_helper(argv):
@@ -634,27 +727,36 @@ class Kit:
     def sampled(self, cmd, request, env, canary):
         stop = threading.Event()
 
+        def watch():
+            try:
+                self.scan(canary)
+            except Exception:
+                self.leak("the kit's process watch failed, so it cannot check the driver")
+                stop.set()
+
         def sample():
             while not stop.wait(SAMPLE_SECONDS):
-                self.scan(canary)
+                watch()
         watcher = threading.Thread(target=sample, daemon=True)
         watcher.start()
         try:
             return self.call(cmd, request, env, canary)
         finally:
+            failed = stop.is_set()
             stop.set()
             watcher.join()
-            self.scan(canary)
+            if not failed:
+                watch()
 
     def key_check(self, name, entry):
-        variable = entry['variable']
         self.file_check(entry)
-        canary = (name, 'kit-canary-' + secrets.token_hex(16), variable)
-        phase = {'now': None}
-        host = FakeHost(answers=self.lifecycle(), tag=lambda port: (phase['now'], self.is_helper(
-            self.peer(port, server))))
-        server = host.server.server_address[1]
-        env = dict(self.env, **{variable: canary[1], TEST_KEY: canary[1], OVERRIDE: host.origin})
+        canary = (name, 'kit-canary-' + secrets.token_hex(16))
+        phase, server = {'now': None}, []
+        host = FakeHost(answers=self.lifecycle(), test_key=canary[1], phase=lambda: phase['now'],
+                        trust=lambda port: self.trusted_helper(port, server[0]))
+        server.append(host.server.server_address[1])
+        env = {k: v for k, v in self.env.items() if k != entry['variable']}
+        env[OVERRIDE] = host.origin
         a = self.args
         try:
             phase['now'] = 'start'
@@ -666,21 +768,27 @@ class Kit:
                 self.sampled(op, {'run': run}, env, canary)
             phase['now'] = None
             self.wait(lambda: not any(True for _ in self.started()), canary)
+        except Exception:
+            self.leak("the kit's process watch failed, so it cannot check the driver")
+            kind = 'bad'
         finally:
             host.close()
         self.runtime_check(entry)
+        with host.lock:
+            fetches, requests = list(host.fetches), list(host.requests)
+        if not all(fetches):
+            self.leak("a process that is not the key helper asked the kit's fake host for the key")
         sent = {'start': 0, 'wake': 0, 'stop': 0}
-        for (line, headers, body), (op, helper) in zip(host.requests, host.tags):
-            if not helper:
-                self.leak("a request reached the kit's fake host from a process that is not the key helper")
+        for request in requests:
+            line, headers, body = request
             rest = line + ''.join('%s: %s' % (k, v) for k, v in headers if k.lower() != 'authorization')
             if canary[1] in rest + body.decode('utf-8', 'replace'):
                 self.leak("the %s key reached the kit's fake host outside the helper's Authorization header" % name)
             if [v for k, v in headers if k.lower() == 'authorization'] != ['Bearer ' + canary[1]]:
                 self.leak("a request reached the kit's fake host without the %s key in the helper's header" % name)
-            if helper and op in sent:
-                sent[op] += 1
-        if not host.requests:
+            elif request.phase in sent:
+                sent[request.phase] += 1
+        if not requests:
             self.leak("the %s key never reached the kit's fake host" % name)
         elif kind != 'ok':
             self.leak("start failed against the kit's fake host, so the kit could not check wake and stop")
