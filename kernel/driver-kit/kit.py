@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import http.server
 import importlib.machinery
 import importlib.util
 import json
@@ -9,6 +10,7 @@ import secrets
 import select
 import subprocess
 import sys
+import threading
 import time
 
 sys.dont_write_bytecode = True
@@ -141,6 +143,42 @@ def holds_credential(text):
 
 FLEET = """query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) {
   object(expression: "HEAD:docs/agents/fleet.md") { ... on Blob { text } } } }"""
+
+
+class FakeHost:
+    """A loopback HTTP host that records each request whole and gives every one the same answer."""
+
+    def __init__(self, status=200, headers=(), body=b'{}'):
+        self.requests = []
+        host = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def answer(self):
+                try:
+                    size = int(self.headers.get('Content-Length') or 0)
+                except ValueError:
+                    size = 0
+                host.requests.append((self.requestline, list(self.headers.items()), self.rfile.read(size)))
+                self.send_response(status)
+                for k, v in headers:
+                    self.send_header(k, v)
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            do_GET = do_POST = do_DELETE = do_PUT = do_PATCH = answer
+
+        self.server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        self.server.daemon_threads = True
+        self.origin = 'http://127.0.0.1:%d' % self.server.server_address[1]
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def close(self):
+        self.server.shutdown()
+        self.server.server_close()
 
 
 class Ticket:
