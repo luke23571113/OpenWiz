@@ -122,6 +122,7 @@ jobs:
           python3 -I kernel/records-kit/test_check.py
           python3 -I kernel/driver-kit/test_kit.py
           python3 -I adapters/local/test_driver.py
+          python3 -I adapters/local/test_harnesses.py
           python3 -I adapters/boat/test_driver.py
           python3 -I kernel/records/model/test_model.py
           python3 -I adapters/template/test_driver.py

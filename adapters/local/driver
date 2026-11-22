@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import ctypes, fcntl, importlib.machinery, importlib.util, json, os, re, secrets, shutil, signal, subprocess, sys, time
+import ctypes, fcntl, importlib.machinery, importlib.util, json, os, re, secrets, shutil, signal, subprocess, sys, time, uuid
 
 sys.dont_write_bytecode = True
 
@@ -17,6 +17,15 @@ RUN = {'run': r'run-[0-9a-f]{12}'}
 HARNESSES = {'claude': lambda model, mode, prompt: ['-p', prompt, '--model', model, '--permission-mode', mode],
              'codex': lambda model, mode, prompt: ['exec', '--model', model, '--sandbox', mode, prompt]}
 MODE_ROW = '| Harness permission mode |'
+ROWS = os.path.abspath(os.environ.get('OPENWIZ_LOCAL_ROWS') or os.path.join(HERE, 'harnesses'))
+ROW_FIELDS = ('harness', 'program', 'start', 'wake', 'session', 'modes', 'env', 'effort', 'login', 'daemon')
+PLACEHOLDERS = ('{prompt}', '{model}', '{session}', '{mode}', '{effort}')
+SESSION = r'[A-Za-z0-9._:-]{1,100}'
+EFFORT = r'[A-Za-z0-9._-]{1,40}'
+ENV_NAME = r'(?!OPENWIZ_)[A-Z][A-Z0-9_]{0,59}'
+PROGRAM = r'[A-Za-z0-9][A-Za-z0-9._-]{0,59}'
+CANT_SET_EFFORT = ("this host can't set effort: remove the effort for this harness in your Models table or Roster "
+                   "to run it at the host's default")
 GRACE = 10
 SETTLE = float(os.environ.get('OPENWIZ_LOCAL_SETTLE') or 30)
 DIAGNOSTIC_LINE = r'(?im)^[ \t]*(?:[\w .()\[\]-]{0,40}:[ \t]*){0,2}(?:%s)'
@@ -59,18 +68,23 @@ def read(fields):
     return req
 
 
+def holds_credential(text):
+    if not hasattr(holds_credential, 'check'):
+        try:
+            spec = importlib.util.spec_from_loader('openwiz_driver_kit', importlib.machinery.SourceFileLoader(
+                'openwiz_driver_kit', KIT))
+            kit = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(kit)
+            holds_credential.check = kit.holds_credential
+        except Exception:
+            raise Refused("the driver kit's credential check is missing, so no start field can be checked; nothing "
+                          'was started', 'run the driver from an OpenWiz checkout or release that carries '
+                          'kernel/driver-kit/kit.py')
+    return holds_credential.check(text)
+
+
 def no_credentials(req):
     # PRIVACY: runs before anything is saved or started, and the refusal names the field, never its value.
-    try:
-        spec = importlib.util.spec_from_loader('openwiz_driver_kit', importlib.machinery.SourceFileLoader(
-            'openwiz_driver_kit', KIT))
-        kit = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(kit)
-        holds_credential = kit.holds_credential
-    except Exception:
-        raise Refused("the driver kit's credential check is missing, so no start field can be checked; nothing "
-                      'was started', 'run the driver from an OpenWiz checkout or release that carries '
-                      'kernel/driver-kit/kit.py')
     for key in START:
         if isinstance(req[key], str) and holds_credential(req[key]):
             raise Refused('%s looks like a credential, so nothing was saved or started' % key,
@@ -78,14 +92,194 @@ def no_credentials(req):
     return req
 
 
+class Broken(Exception):
+    """A row that breaks adapters/local/harness-row.md: (the rule, the reason). It never holds the row's values."""
+
+
+def line(v):
+    return isinstance(v, str) and 0 < len(v) <= 300 and '\n' not in v and '\r' not in v
+
+
+def fixed(v):
+    return isinstance(v, list) and all(isinstance(a, str) and a and not any(p in a for p in PLACEHOLDERS) for a in v)
+
+
+def settings(env, rule):
+    if not isinstance(env, dict) or not all(isinstance(k, str) and re.fullmatch(ENV_NAME, k) and line(v)
+                                            for k, v in env.items()):
+        raise Broken(rule, 'each name is capitals, digits and _, not OPENWIZ_, and each value one line')
+    if any(holds_credential(v) or holds_credential('%s=%s' % (k, v)) for k, v in env.items()):
+        raise Broken(rule, 'a value looks like a credential; env holds only fixed settings that are not credentials')
+
+
+def arguments(row, field, needs):
+    args = row[field]
+    if not isinstance(args, list) or not args or not all(isinstance(a, str) and a for a in args):
+        raise Broken(field, 'it is not a list of arguments')
+    for a in args:
+        if a not in PLACEHOLDERS and re.search(r'\{[a-z]+\}', a):
+            raise Broken(field, 'a placeholder sits inside a larger argument; each fills a whole argument'
+                         if any(p in a for p in PLACEHOLDERS) else 'it has an unknown placeholder')
+    if any(args.count(p) > 1 for p in PLACEHOLDERS):
+        raise Broken(field, 'a placeholder appears more than once')
+    for p in needs:
+        if p not in args:
+            raise Broken(field, 'it has no ' + p)
+
+
+def check_row(row, name):
+    if not isinstance(row, dict):
+        raise Broken('fields', 'it is not one JSON object')
+    if 'effort' not in row:
+        raise Broken('effort', 'it has no effort form; give an effort map or "none: <one line why>"')
+    if set(row) != set(ROW_FIELDS):
+        raise Broken('fields', 'it needs exactly ' + ', '.join(ROW_FIELDS))
+    if row['harness'] in HARNESSES:
+        raise Broken('harness', '%s is built in, and no row may use a built-in name' % row['harness'])
+    if row['harness'] != name or not re.fullmatch(START['harness'], name):
+        raise Broken('harness', "it is not its folder's name, or not a valid harness name")
+    if not isinstance(row['program'], str) or not re.fullmatch(PROGRAM, row['program']):
+        raise Broken('program', 'it is not one plain command name')
+    for field in ('login', 'daemon'):
+        if not line(row[field]):
+            raise Broken(field, 'it is not one line of 1 to 300 characters')
+    modes = row['modes']
+    if not isinstance(modes, dict) or not modes or \
+            not all(re.fullmatch(MODE, m) and fixed(a) for m, a in modes.items()):
+        raise Broken('modes', 'it maps no mode value to its fixed arguments')
+    settings(row['env'], 'env')
+    session = row['session']
+    kind = next(iter(session)) if isinstance(session, dict) and len(session) == 1 else None
+    how = session[kind] if kind else None
+    try:
+        good = (kind == 'chosen' and how == 'uuid' or kind == 'json' and isinstance(how, list) and how and
+                all(isinstance(k, str) and k for k in how) or kind == 'pattern' and isinstance(how, str) and
+                re.compile(how).groups == 1)
+    except re.error:
+        good = False
+    if not good:
+        raise Broken('session', 'it is not {"chosen": "uuid"}, {"json": [<key path>]} or {"pattern": <one group>}')
+    effort = row['effort']
+    if isinstance(effort, str):
+        if not (line(effort) and effort.startswith('none: ') and effort[6:].strip()):
+            raise Broken('effort', 'a row that can\'t set effort says "none: <one line why>"')
+    elif not isinstance(effort, dict) or not effort:
+        raise Broken('effort', 'it has no effort form; give an effort map or "none: <one line why>"')
+    else:
+        for value, setting in effort.items():
+            if not re.fullmatch(EFFORT, value):
+                raise Broken('effort', 'an effort value is not an effort id')
+            if isinstance(setting, dict) and list(setting) == ['env'] and setting['env']:
+                settings(setting['env'], 'effort')
+            elif not (fixed(setting) and setting):
+                raise Broken('effort', 'each value adds fixed arguments, or sets {"env": {...}}')
+    arguments(row, 'start', ('{prompt}', '{model}', '{mode}') + (('{session}',) if kind == 'chosen' else ()))
+    arguments(row, 'wake', ('{prompt}', '{mode}', '{session}'))
+    if kind != 'chosen' and '{session}' in row['start']:
+        raise Broken('start', 'it has {session}, but the session is reported, not chosen')
+    flags = isinstance(effort, dict) and any(isinstance(s, list) for s in effort.values())
+    if flags and '{effort}' not in row['start']:
+        raise Broken('effort', 'it maps effort values to arguments, but start has no {effort} to pass them')
+    if not flags and ('{effort}' in row['start'] or '{effort}' in row['wake']):
+        raise Broken('effort', 'it has {effort}, but no effort value adds arguments')
+    return row
+
+
+def read_row(path, name):
+    try:
+        with open(path) as f:
+            row = json.loads(f.read(), object_pairs_hook=unique)
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError, Refused):
+        raise Broken('file', 'it is not one readable JSON object with each key once')
+    return check_row(row, name)
+
+
+def row_file(harness):
+    path = os.path.join(ROWS, harness, 'row.json')
+    return os.path.relpath(path, os.path.join(HERE, '..', '..')) if path.startswith(HERE + os.sep) else path
+
+
+def row_folders():
+    try:
+        return sorted(d for d in os.listdir(ROWS) if re.fullmatch(START['harness'], d) and d not in HARNESSES and
+                      os.path.isfile(os.path.join(ROWS, d, 'row.json')))
+    except OSError:
+        return []
+
+
 def program(harness):
+    row = None
     if harness not in HARNESSES:
-        raise Refused('harness %s is not one this driver runs' % harness, 'use one of: ' + ', '.join(HARNESSES))
-    path = shutil.which(harness)
+        try:
+            row = read_row(os.path.join(ROWS, harness, 'row.json'), harness)
+        except Broken as e:
+            raise Refused('harness %s has a row that breaks the harness-row contract, %s (%s: %s); nothing was '
+                          'started' % (harness, row_file(harness), e.args[0], e.args[1]),
+                          'fix %s as adapters/local/harness-row.md says, then start again' % row_file(harness))
+        if row is None:
+            names, choices = list(HARNESSES) + row_folders(), 'use one of: '
+            for n in names:
+                if len(choices) + len(n) + 2 > 300:
+                    break
+                choices += n if choices.endswith(': ') else ', ' + n
+            raise Refused('harness %s is not one this driver runs' % harness, choices)
+    name = row['program'] if row else harness
+    path = shutil.which(name)
     if not path:
         raise Refused('harness %s is not installed here' % harness,
-                      'install %s on this machine and sign in to it yourself, then start again' % harness)
-    return path
+                      'install %s on this machine and sign in to it yourself, then start again' % name)
+    return path, row
+
+
+def effort_of(harness, row, effort):
+    """The arguments and environment an effort adds, or the D3 refusal. #2471 turns on the start field."""
+    if effort is None:
+        return [], {}
+    setting = row['effort'].get(effort) if row and isinstance(row['effort'], dict) else None
+    if setting is None:
+        raise Refused("harness %s can't set effort %s; nothing was started" % (harness, effort), CANT_SET_EFFORT)
+    return (setting, {}) if isinstance(setting, list) else ([], setting['env'])
+
+
+def command(state, woken):
+    """A run's turn: its command line and the environment it adds."""
+    req, row = state['request'], state.get('row')
+    text = prompt(req, woken)
+    if not row:
+        effort_of(req['harness'], None, req.get('effort'))
+        return [state['program']] + HARNESSES[req['harness']](req['model'], state['mode'], text), {}
+    effort, env = effort_of(req['harness'], row, req.get('effort'))
+    fills = {'{prompt}': [text], '{model}': [req['model']], '{session}': [state.get('session')],
+             '{mode}': row['modes'][state['mode']], '{effort}': effort}
+    return [state['program']] + [b for a in row['wake' if woken else 'start'] for b in fills.get(a, [a])], \
+        dict(row['env'], **env)
+
+
+def reported(run, session):
+    """The session id the run's first turn printed in its log, or None while it hasn't."""
+    try:
+        with open(log_path(run), errors='replace') as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return None
+    for text in lines:
+        found = None
+        if 'pattern' in session:
+            m = re.search(session['pattern'], text)
+            found = m.group(1) if m else None
+        elif text.lstrip().startswith('{'):
+            try:
+                found = json.loads(text)
+                for key in session['json']:
+                    found = found.get(key) if isinstance(found, dict) else None
+            except ValueError:
+                found = None
+        if found is not None:
+            ok = isinstance(found, str) and re.fullmatch(SESSION, found) and not holds_credential(found)
+            return found if ok else None
+    return None
 
 
 def log_path(run):
@@ -373,14 +567,14 @@ def exited(run, turn):
 
 def launch(state, run, woken):
     req = state['request']
-    cmd = [state['program']] + HARNESSES[req['harness']](req['model'], state['mode'], prompt(req, woken))
+    cmd, extra = command(state, woken)
     try:
         log = open_log(run)
     except OSError:
         log = subprocess.DEVNULL
     try:
         sup = subprocess.Popen([sys.executable, '-I', os.path.abspath(__file__), '--turn'] + cmd,
-                               env=dict(os.environ, OPENWIZ_RUN=run), start_new_session=True,
+                               env=dict(os.environ, **extra, OPENWIZ_RUN=run), start_new_session=True,
                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=log)
         with sup.stdout:
             line = sup.stdout.readline()
@@ -514,8 +708,12 @@ def answer(cmd):
             return json.load(f)
     if cmd == 'start':
         req, run = no_credentials(read(START)), 'run-' + secrets.token_hex(6)
-        state = {'request': req, 'program': program(req['harness']), 'turns': [], 'stopped': False,
-                 'starting': True, 'workspace': None, 'mode': None}
+        path, row = program(req['harness'])
+        effort_of(req['harness'], row, req.get('effort'))
+        state = {'request': req, 'program': path, 'turns': [], 'stopped': False, 'starting': True,
+                 'workspace': None, 'mode': None}
+        if row:
+            state.update(row=row, session=str(uuid.uuid4()) if 'chosen' in row['session'] else None)
         try:
             saved(run, state)
             os.close(os.open(os.path.join(STATE, run + '.lock'), os.O_WRONLY | os.O_CREAT, 0o600))
@@ -523,6 +721,11 @@ def answer(cmd):
             raise Refused('the driver cannot save runs in its state folder; nothing was started', WRITABLE)
         try:
             approved = approved_mode(req['repository'], req['harness'])
+            if row and approved not in row['modes']:
+                raise Refused('the mode approved on this machine for %s with %s is not one its row lists; nothing '
+                              'was started' % (req['repository'], req['harness']),
+                              'approve one of the modes in %s, in both places, then start again'
+                              % row_file(req['harness']))
             state['workspace'] = workspace(run, req['repository'])
             if permission_mode(state['workspace'], req['repository'], req['harness']) != approved:
                 raise Refused('the Harness permission mode row in %s does not match the mode approved on this '
@@ -576,6 +779,11 @@ def answer(cmd):
             raise Refused('run %s never finished starting' % run, 'stop it, then start a new run')
         if state['turns'] and running(state['turns'][-1]):
             return {'run': run, 'woke': True}
+        if state.get('row') and state['session'] is None:
+            state['session'] = reported(run, state['row']['session'])
+            if state['session'] is None:
+                raise Refused('run %s has no session id from its first turn yet; nothing was started' % run,
+                              'wait until its first turn has printed its session id, then wake again')
         try:
             saved(run, state)
         except OSError:

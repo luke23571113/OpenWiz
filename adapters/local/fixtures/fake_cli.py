@@ -13,6 +13,12 @@ def refuse():
 
 
 def since(pid):
+    if not os.path.isdir('/proc/self'):
+        try:
+            os.kill(pid, 0)
+            return 0
+        except OSError:
+            return None
     try:
         with open('/proc/%d/stat' % pid) as f:
             fields = f.read().rpartition(')')[2].split()

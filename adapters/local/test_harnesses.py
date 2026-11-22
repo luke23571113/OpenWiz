@@ -62,6 +62,12 @@ class Fail(Exception):
 
 
 def since(pid):
+    if not os.path.isdir('/proc/self'):
+        try:
+            os.kill(pid, 0)
+            return 0
+        except OSError:
+            return None
     try:
         with open('/proc/%d/stat' % pid) as f:
             fields = f.read().rpartition(')')[2].split()
@@ -173,7 +179,8 @@ class Env:
         """A start that is a D3 refusal and starts nothing: no new saved run and no new turn."""
         before = self.runs(), len(self.records())
         code, out = self.start(*start, **env)
-        return code == 1 and kit.invalid(out, ERROR) is None and says(out) and (self.runs(), len(self.records())) == before
+        return code == 1 and kit.invalid(out, ERROR) is None and says(out) and \
+            (self.runs(), len(self.records())) == before
 
     def kit(self):
         p = subprocess.run([sys.executable, '-I', os.path.join(KIT_DIR, 'kit.py'), '--driver', DRIVER, '--repo',
@@ -276,7 +283,8 @@ def check(rows, name):
         with Env(rows, name, row['program'], fake, next(iter(row['modes'])), sorted(names)) as env:
             lines = env.kit()
             if lines != PASS:
-                raise Fail('kit', next((x for x in lines if not x.startswith('pass ')), 'it gave %d lines' % len(lines)))
+                raise Fail('kit', next((x for x in lines if not x.startswith('pass ')),
+                                       'it gave %d lines' % len(lines)))
             check_turns(env, row)
             check_effort(env, row)
         test = os.path.join(folder, 'test_row.py')
@@ -301,7 +309,8 @@ def check_driver(rows):
         woke = env.driver('wake', out) if code == 0 else (0, {})
         env.driver('stop', out)
         found.append(('a wake before the reported session id is known is a D3 error that starts nothing',
-                      woke[0] == 1 and kit.invalid(woke[1], ERROR) is None and len(env.records()) == before == 1))
+                      woke[0] == 1 and kit.invalid(woke[1], ERROR) is None and 'no session id' in woke[1]['error']
+                      and len(env.records()) == before == 1))
     return ['%s driver: %s' % ('pass' if ok else 'fail', what) for what, ok in found]
 
 
