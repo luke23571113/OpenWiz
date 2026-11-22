@@ -301,6 +301,19 @@ class Hosts(unittest.TestCase):
                  for m in h['models'] for e in m['efforts']}
         self.assertEqual(found, {('claude-code', 'claude-opus-5-5', 'medium'), ('codex', 'gpt-6.2-sol', 'medium')})
 
+    def test_successful_local_set_can_report_an_unlisted_model(self):
+        doc = HOSTS['unlisted_local_set']
+        options = HOSTS['offered_lists']['local-codex-only']['document']
+        models = [m['model'] for h in options['harnesses'] if h['provider'] == doc['asked']['provider']
+                  for m in h['models']]
+        self.assertTrue(models)
+        self.assertNotIn(doc['asked']['model'], models)
+        self.assertIs(doc['listed'], False)
+        schema = json.loads((ROOT / 'contracts/models.v1.schema.json').read_text())
+        report_schema = {'$ref': '#/$defs/set_report'}
+        self.assertEqual(check.schema_errors(doc, report_schema, schema), [])
+        self.assertTrue(check.schema_errors(dict(doc, listed=True), report_schema, schema))
+
     def test_host_fixtures_hold_no_credential_and_only_synthetic_accounts(self):
         text = HOSTS_PATH.read_text()
         self.assertEqual(check.credential_shapes(text), [])

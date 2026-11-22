@@ -1,4 +1,52 @@
 {
+  "unlisted_local_set": {
+    "schema": "openwiz.models-set.v1",
+    "outcome": "changed",
+    "role": "reviewer",
+    "asked": {
+      "provider": "codex",
+      "model": "synthetic/demo",
+      "effort": "medium"
+    },
+    "before": {
+      "follows": null,
+      "choice": {
+        "provider": "codex",
+        "model": "gpt-6.2-sol",
+        "effort": "medium",
+        "family": "gpt",
+        "names": {
+          "harness": "Codex",
+          "model": "Sol 6.2",
+          "effort": "Medium"
+        }
+      }
+    },
+    "after": {
+      "follows": null,
+      "choice": {
+        "provider": "codex",
+        "model": "synthetic/demo",
+        "effort": "medium",
+        "family": "gpt",
+        "names": {
+          "harness": "Codex",
+          "model": "synthetic/demo",
+          "effort": "Medium"
+        }
+      }
+    },
+    "models_table_added": false,
+    "older_tables": [],
+    "files": [
+      "docs/agents/fleet.md",
+      "docs/agents/models-offered.json"
+    ],
+    "warnings": [],
+    "refusal": null,
+    "offered": null,
+    "listed": false
+  },
   "models_host_selection": {
     "fresh-local": {"document": {"host": "local"}, "options": "local-claude-code-and-codex", "valid": true},
     "fresh-boat": {"document": {"host": "boat"}, "options": "local-codex-only", "valid": true},
