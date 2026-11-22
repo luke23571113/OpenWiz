@@ -15,7 +15,8 @@ at the first fail:
   preflight            install preflight passes; room-cli reads missing and does not stop it
   install              install install --assets prints "activated": true, the version and target
   build_identity       <root>/current/openwiz --build-identity reads the version and the commit
-  setup                setup.py check under the local host reads cloudroom_not_needed, and
+  setup                setup.py prepare --host local (preview, then its own --yes: owner-only
+                       local state), then setup.py check reads cloudroom_not_needed, and
                        github_login.py status reads the fake account
   skills               install skills copies the skills into a fresh Claude Code skills folder
   first_fleet_dry_run  first_fleet.py where --agents local and the read-only steps after it, on
@@ -26,8 +27,9 @@ python3, git, sh, uname, ldd (Linux), the fake gh and claude (fakes/) and record
 rustup, npm, node and npx, which fail the step that calls them. There is no room-cli. It writes
 the receipt (contracts/rehearsal.v1.md) to FILE and exits 0 on pass, 1 on fail, printing the
 failed step's commands and their exact output; 2 is a usage or environment refusal, with no
-receipt. Standard-library Python 3.9 on Linux and macOS. It proves an install on these bytes with
-fakes for GitHub and the harness; never a real account, repository, harness or fleet.
+receipt. A passed step's commands and output go to stderr. Standard-library Python 3.9 on Linux
+and macOS. It proves an install of these bytes with fakes for GitHub and the harness; never a
+real account, repository, harness or fleet.
 """
 import argparse
 import hashlib
@@ -50,7 +52,7 @@ BUILD_TOOLS = ('cargo', 'rustc', 'rustup', 'npm', 'node', 'npx')
 ALLOWED = ('python3', 'git', 'sh', 'uname', 'ldd')
 NOT_ON_PATH = ('room-cli', 'cloudroom', 'codex', 'openwiz') + BUILD_TOOLS
 # No token, App key or CloudRoom variable may reach the rehearsal, not even its own process.
-SECRET = re.compile(r'(GITHUB_TOKEN|GH_TOKEN|GH_ENTERPRISE_TOKEN|GITHUB_ENTERPRISE_TOKEN|OPENWIZ_GITHUB_APP_.*'
+SECRET = re.compile(r'(GITHUB_TOKEN|GH_TOKEN|GH_ENTERPRISE_TOKEN|GITHUB_ENTERPRISE_TOKEN|OPENWIZ_GITHUB_APP_.*|ACTIONS_.*TOKEN.*'
                     r'|ROOM_.*|CLOUDROOM.*)')
 HERE = Path(__file__).resolve().parent
 FAKES = HERE / 'fakes'
@@ -156,6 +158,10 @@ class Rehearsal:
 
     def preflight(self):
         value = self.s.json([self.s.python, '-I', self.installer, 'preflight'])
+        require(value.get('ready') is True, 'preflight is not ready')
+        require(value.get('target') == self.args.target, 'preflight reads target %r' % value.get('target'))
+        rooms = [c for c in value.get('checks', []) if c.get('id') == 'room-cli']
+        require(len(rooms) == 1 and rooms[0].get('state') == 'missing', 'room-cli does not read missing')
 
     def install(self):
         download = self.s.work / 'download'
@@ -165,10 +171,16 @@ class Rehearsal:
             (download / path.name).chmod(0o600)
         value = self.s.json([self.s.python, '-I', self.installer, 'install', '--assets', download,
                              '--target', self.args.target, '--root', self.root])
+        require(value.get('activated') is True, 'it did not print "activated": true')
+        for key in ('version', 'source', 'target'):
+            require(value.get(key) == getattr(self.args, key), 'it installed %s %r' % (key, value.get(key)))
         self.build, self.state = Path(value['build']), Path(value['state_root'])
 
     def build_identity(self):
         value = self.s.json([self.root / 'current/openwiz', '--build-identity'])
+        require(value.get('schema') == 'openwiz.product.v1', 'it is not an openwiz.product.v1 identity')
+        for key in ('version', 'source', 'target'):
+            require(value.get(key) == getattr(self.args, key), 'the build identity reads %s %r' % (key, value.get(key)))
 
     def setup(self):
         tools, state = self.build / 'runtime/setup', ['--state-dir', self.state]
@@ -184,8 +196,13 @@ class Rehearsal:
         require(operation, 'prepare printed no operation to confirm')
         require(self.s.json(prepare + ['--yes', '--operation', operation], extra=extra).get('phase') == 'applied',
                 'prepare did not save the local host')
-        self.s.json([self.s.python, '-I', '-B', tools / 'setup.py', 'check'] + state, extra=extra)
-        self.s.json([self.s.python, '-I', '-B', tools / 'github_login.py', 'status'] + state, extra=extra)
+        check = self.s.json([self.s.python, '-I', '-B', tools / 'setup.py', 'check'] + state, extra=extra)
+        require(check.get('host') == 'local', 'the setup check is not under the local host')
+        cloudroom = (check.get('results') or {}).get('cloudroom')
+        require(cloudroom == 'cloudroom_not_needed', 'the setup check reads cloudroom %r' % cloudroom)
+        login = self.s.json([self.s.python, '-I', '-B', tools / 'github_login.py', 'status'] + state, extra=extra)
+        require(login.get('code') == 'login_signed_in' and login.get('login') == LOGIN,
+                'github_login.py status reads %r as %r' % (login.get('login'), login.get('code')))
 
     def skills(self):
         folder = self.s.home / '.claude/skills'
@@ -234,6 +251,7 @@ class Rehearsal:
             self.s.transcript = []
             try:
                 getattr(self, name)()
+                self.s.effects()
             except (Failed, OSError, KeyError, TypeError, ValueError, AttributeError, IndexError) as why:
                 steps.append({'name': name, 'status': 'fail'})
                 print('step %s: fail: %s' % (name, why if isinstance(why, Failed) else type(why).__name__))
@@ -241,6 +259,7 @@ class Rehearsal:
                 return steps
             steps.append({'name': name, 'status': 'pass'})
             print('step %s: pass' % name)
+            print(''.join(self.s.transcript), end='', file=sys.stderr)
         return steps
 
 
