@@ -191,6 +191,79 @@ class Init(unittest.TestCase):
                          'only the labels are written on public code')
         self.assertEqual(applied['private_content_written'], 'brain_repository')
 
+    # catches: a public repository needing a second merge because init leaves the brain proposal open on the
+    # companion it just created, a merge without reading the pull request back, or a repeat init merging again.
+    def test_a_companion_created_in_this_apply_merges_its_brain_proposal_once(self):
+        self.world({CODE.lower(): repository(CODE, 'public')})
+        preview = self.init()
+        self.assertEqual([e['kind'] for e in preview['effects']], ['create_companion', 'link_companion',
+                                                                    'create_label', 'open_pull_request',
+                                                                    'merge_pull_request'])
+        self.assertEqual(self.writes(), [])
+        applied = self.apply(preview)
+        self.assertEqual((applied['outcome'], applied['pull_requests']),
+                         ('applied', [{'repository': COMPANION, 'number': 1, 'visible': True, 'state': 'merged'}]))
+        self.assertEqual([e for e in applied['effects'] if e['kind'] == 'merge_pull_request'],
+                         [{'kind': 'merge_pull_request', 'repository': COMPANION, 'phase': 'applied',
+                           'effect_count': 1, 'attempts': 1, 'reconciliation': 'none'}])
+        log = self.read()['log']
+        merges = [i for i, call in enumerate(log) if call == ['PUT', f'repos/{COMPANION}/pulls/1/merge']]
+        self.assertEqual(len(merges), 1)
+        self.assertIn(['GET', f'repos/{COMPANION}/pulls/1'], log[log.index(['POST', f'repos/{COMPANION}/pulls']):merges[0]],
+                      'the pull request is read back before the merge')
+        self.assertEqual(set(self.files(COMPANION, 'main')), FILES)
+        self.assertEqual(self.read()['repos'][CODE.lower()]['branches'], {'main': {'README.md': 'Synthetic app.\n'}})
+        calls = len(self.writes())
+        self.assertEqual(self.apply(preview)['pull_requests'][0]['state'], 'merged')
+        shutil.rmtree(self.state)
+        fresh = self.init()
+        self.assertEqual(fresh['effects'], [])
+        self.assertEqual(self.apply(fresh)['pull_requests'][0]['state'], 'merged')
+        self.assertEqual(len(self.writes()), calls, 'a repeated init writes and merges nothing')
+
+    # catches: init merging a brain proposal on a companion it did not create in this apply, or on private code.
+    def test_an_existing_companion_or_private_code_leaves_the_proposal_open_for_the_user(self):
+        companion = repository(COMPANION, 'private', description=f'OpenWiz private brain for {CODE}',
+                               homepage=f'https://github.com/{CODE}')
+        for name in ('existing companion', 'private code', 'companion made after the preview'):
+            with self.subTest(name):
+                shutil.rmtree(self.state, ignore_errors=True)
+                repos = {CODE.lower(): repository(CODE, 'private' if name == 'private code' else 'public')}
+                if name == 'existing companion':
+                    repos[COMPANION.lower()] = dict(companion)
+                self.world(repos)
+                preview = self.init()
+                if name == 'companion made after the preview':
+                    self.assertIn('merge_pull_request', [e['kind'] for e in preview['effects']])
+                    self.edit(lambda w: w['repos'].update({COMPANION.lower(): dict(companion)}))
+                applied = self.apply(preview)
+                self.assertNotIn('merge_pull_request', [e['kind'] for e in applied['effects']])
+                self.assertEqual([p['state'] for p in applied['pull_requests']], ['open'])
+                self.assertEqual([c for c in self.writes() if c[1].endswith('/merge')], [])
+
+    # catches: a contract checker that accepts merge_pull_request wherever it appears.
+    def test_the_contract_refuses_a_merge_outside_a_companion_created_in_the_same_apply(self):
+        examples = json.loads((ROOT / 'tools/install/tests/setup-onboard-contract/fixtures/cases.json')
+                              .read_text())['examples']
+        merged = examples['init-public-new-companion-merged']['document']
+        merge = merged['effects'][-1]
+        self.assertEqual((merged['effects'][0]['kind'], merge['kind']), ('create_companion', 'merge_pull_request'))
+        self.assertEqual(contract.check(merged).problems, [])
+        private = copy.deepcopy(examples['init-private']['document'])
+        private['effects'].append(dict(merge, repository=CODE))
+        private['pull_requests'][0]['state'] = 'merged'
+        for name, change in (('no creation', lambda d: d['effects'].pop(0)),
+                             ('creation uncertain', lambda d: d['effects'][0].update(phase='uncertain', effect_count=0)),
+                             ('creation only proposed', lambda d: d['effects'][0].update(
+                                 phase='proposed', effect_count=0, attempts=0)),
+                             ('creation of another repository', lambda d: d['effects'][0].update(repository=CODE)),
+                             ('pull request still open', lambda d: d['pull_requests'][0].update(state='open')),
+                             ('private code', lambda d: d.update(copy.deepcopy(private)))):
+            with self.subTest(name):
+                doc = copy.deepcopy(merged)
+                change(doc)
+                self.assertEqual(contract.check(doc).problems, ['phase_effect_mismatch:merge_pull_request'])
+
     def test_unknown_or_ambiguous_visibility_refuses_before_any_write(self):
         cases = {'internal': repository(CODE, 'internal'),
                  'contradictory': dict(repository(CODE, 'public'), private=True),
@@ -243,9 +316,10 @@ class Init(unittest.TestCase):
 
     def test_lost_replies_stay_uncertain_until_read_back_then_complete_once(self):
         steps = ['user/repos', f'repos/{COMPANION}', f'repos/{CODE}/labels', f'repos/{COMPANION}/contents/',
-                 f'repos/{COMPANION}/pulls']
+                 f'repos/{COMPANION}/pulls', f'repos/{COMPANION}/pulls/1/merge']
         methods = {'user/repos': 'POST', f'repos/{COMPANION}': 'PATCH', f'repos/{CODE}/labels': 'POST',
-                   f'repos/{COMPANION}/contents/': 'PUT', f'repos/{COMPANION}/pulls': 'POST'}
+                   f'repos/{COMPANION}/contents/': 'PUT', f'repos/{COMPANION}/pulls': 'POST',
+                   f'repos/{COMPANION}/pulls/1/merge': 'PUT'}
         for mode in ('lose', 'drop'):
             for path in steps:
                 with self.subTest(mode=mode, path=path):
@@ -265,6 +339,9 @@ class Init(unittest.TestCase):
                     self.assertEqual(sum(1 for c in world['log'] if c == ['POST', 'user/repos']),
                                      2 if (mode, path) == ('drop', 'user/repos') else 1)
                     self.assertEqual(len(world['repos'][COMPANION.lower()]['pulls']), 1)
+                    self.assertEqual(done['pull_requests'][0]['state'], 'merged')
+                    self.assertEqual(sum(1 for c in world['log'] if c[1].endswith('/merge')),
+                                     2 if (mode, path) == ('drop', f'repos/{COMPANION}/pulls/1/merge') else 1)
                     self.assertEqual(world['repos'][CODE.lower()]['labels'], FACTORY_LABELS)
                     self.assertEqual(set(world['repos'][COMPANION.lower()]['branches']['openwiz/brain']), FILES)
                     retried = [e for e in done['effects'] if e['attempts'] > 1]
