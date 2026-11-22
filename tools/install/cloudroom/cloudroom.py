@@ -90,9 +90,12 @@ TERMINAL = re.compile(r'\x1b(?:\[[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]|\][^\x07\x1
 CREDENTIAL = ('authorization|credentials?|passwords?|passwd|passphrase|passcode|secrets?|apikeys?|keys?|tokens?'
               '|codes?|nonces?|sessions?|cookies?|auth|bearer|jwt|otp|signatures?|sig')
 CAMEL = '|'.join(word[0].upper() + word[1:] for word in CREDENTIAL.split('|'))
+CREDENTIAL_WORD = re.compile(rf'(?:(?<![A-Za-z])(?i:{CREDENTIAL})|(?<=[a-z])(?:{CAMEL}))(?![a-z])')
+JSONISH = re.compile(r'^[\[\]{}"\']|["\']\s*:|[,:={\[(]$')
+MESSAGE_KEYS = ('message', 'error', 'detail', 'reason')
 REDACTIONS = ((re.compile(r'[A-Za-z][A-Za-z0-9+.-]*://\S*'), '[link removed]'),
               (re.compile(r'\S+@\S+\.\S+'), '[address removed]'),
-              (re.compile(rf'((?<![A-Za-z])(?i:{CREDENTIAL})|(?<=[a-z])(?:{CAMEL}))(?![a-z]).*'), r'\1 [removed]'),
+              (re.compile(rf'({CREDENTIAL_WORD.pattern}).*'), r'\1 [removed]'),
               (re.compile(r'[A-Za-z0-9+/_=.-]{24,}|(?=[A-Za-z+/_=.-]*[0-9])[A-Za-z0-9+/_=.-]{16,}'), '[removed]'))
 
 
@@ -689,31 +692,58 @@ def sign_in_link(raw):
     return url
 
 
+def structured(text):
+    try:
+        value = json.loads(text, object_pairs_hook=store.unique)
+    except (ValueError, Refused, RecursionError):
+        return None
+    if type(value) not in (dict, list):
+        return None
+    found = []
+
+    def walk(node, depth):
+        if depth > 4 or len(found) >= SAID_LINES:
+            return
+        for key, item in (node.items() if type(node) is dict else ((None, n) for n in node)):
+            if key in MESSAGE_KEYS and isinstance(item, str):
+                found.append(item)
+            elif type(item) in (dict, list):
+                walk(item, depth + 1)
+    walk(value, 0)
+    return [line for item in found for line in said(item.encode())]
+
+
 def said(raw, complete=False):
-    lines = []
     text = raw.decode('utf-8', 'replace')
+    whole = structured(text)
+    if whole is not None:
+        return whole
+    lines, tainted = [], False
     rows = re.split(r'\r\n|\n|\r', text)
     for line in rows[:-1] if complete or not rows[-1] else rows:
         line = TERMINAL.sub('', line)
         if '\x1b' in line or '\x9b' in line:
             continue
-        line = ''.join(' ' if unicodedata.category(c)[0] in 'CZ' else c for c in line)
-        line = ' '.join(line.split())
+        line = ' '.join(''.join(' ' if unicodedata.category(c)[0] in 'CZ' else c for c in line).split())
+        if not line:
+            tainted = False
+            continue
+        if tainted:
+            continue
+        inline = structured(line)
+        if inline is not None:
+            lines += inline
+            continue
+        jsonish = JSONISH.search(line) is not None
+        credential = CREDENTIAL_WORD.search(line)
+        if credential and (jsonish or not re.search(r'[A-Za-z0-9]', line[credential.end():])):
+            tainted = True
+        if jsonish:
+            continue
         for pattern, replacement in REDACTIONS:
             line = pattern.sub(replacement, line)
-        if line:
-            lines.append(line[:SAID_WIDTH])
+        lines.append(line[:SAID_WIDTH])
     return lines
-
-
-def reply_words(out, complete=False):
-    try:
-        value = json.loads(out, object_pairs_hook=store.unique)
-    except (ValueError, Refused, RecursionError):
-        return said(out, complete)
-    error = value.get('error') if type(value) is dict else None
-    message = error.get('message') if type(error) is dict else error
-    return said(message.encode()) if isinstance(message, str) else []
 
 
 def tell(who, lines):
@@ -780,9 +810,9 @@ def sign_in(host, state_dir):
         elif result is None:
             print("openwiz-cloudroom: CloudRoom's sign-in did not answer within "
                   f'{TIMEOUT} seconds; is CloudRoom running?', file=sys.stderr)
-            tell('CloudRoom', said(err, complete=True) + reply_words(out, complete=True))
+            tell('CloudRoom', said(err, complete=True) + said(out, complete=True))
         else:
-            words = said(err) + reply_words(out)
+            words = said(err) + said(out)
             if words:
                 tell('CloudRoom', words)
             else:

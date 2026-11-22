@@ -187,7 +187,10 @@ back:
   terminal sequences and control characters are removed. Links, email
   addresses, everything after a credential word (token, password, key, code,
   session, cookie, authorization, bearer and the like) and opaque runs are
-  replaced. Lines that are still unsafe are dropped. At most 20 lines of 300
+  replaced. JSON output shows only its `message`, `error`, `detail` and
+  `reason` strings. JSON fragments are dropped. A credential word whose value is
+  not on its own line drops the lines after it, up to the next blank line. Other
+  lines that are still unsafe are dropped. At most 20 lines of 300
   characters are shown. These words are never on standard output or saved.
 
 OpenWiz never asks for, receives, stores or logs a CloudRoom password or token.
