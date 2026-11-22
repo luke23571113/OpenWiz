@@ -59,9 +59,15 @@ def count(repo, rev):
     return lines, ceiling
 
 
+def unique(pairs):
+    if len({k for k, _ in pairs}) != len(pairs):
+        raise ValueError('a repeated key')
+    return dict(pairs)
+
+
 def read_ceiling(raw):
     try:
-        data = json.loads(raw)
+        data = json.loads(raw, object_pairs_hook=unique)
     except (TypeError, ValueError):
         data = None
     if not isinstance(data, dict) or set(data) != {'ceiling'} or type(data['ceiling']) is not int \
@@ -71,7 +77,8 @@ def read_ceiling(raw):
 
 
 def pointer_lines(description, prefix):
-    found = [s for s in (line.strip() for line in description.splitlines()) if s.startswith(prefix)]
+    lead = prefix.lower().rstrip(':')
+    found = [s for s in (line.strip() for line in description.splitlines()) if s.lower().startswith(lead)]
     bad = [s for s in found if not re.fullmatch(re.escape(prefix) + ' ' + POINTER, s)]
     return len(found) > len(bad), bad
 

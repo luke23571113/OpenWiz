@@ -124,6 +124,7 @@ class Ceiling(unittest.TestCase):
                     POINTER.replace('jparker2006/ClosedWiz', 'synthetic/Other'),
                     POINTER + ' please', POINTER.replace('-4102', '-0'), 'pending'):
             cases += [(over, f'Line budget exception: {bad}', 1), (under, f'Line budget exception: {bad}', 1)]
+        cases += [(over, f'line budget exception: {POINTER}', 1), (under, f'Line budget exception {POINTER}', 1)]
         for merge, description, code in cases:
             r = self.run_check(merge, description)
             self.assertEqual(r.returncode, code, (description, r.stdout, r.stderr))
@@ -136,8 +137,9 @@ class Ceiling(unittest.TestCase):
 
     def test_unreadable_input_exits_2(self):
         self.assertEqual(self.run_check('no-such-rev').returncode, 2)
-        bad = self.merge(1, **{'line-budget.json': '{"ceiling": "many"}\n'})
-        self.assertEqual(self.run_check(bad, f'Line budget ceiling: {POINTER}').returncode, 2)
+        for text in ('{"ceiling": "many"}', '{"ceiling": 30, "ceiling": 40}', '{"ceiling": true}', '[30]'):
+            bad = self.merge(1, **{'line-budget.json': text})
+            self.assertEqual(self.run_check(bad, f'Line budget ceiling: {POINTER}').returncode, 2, text)
 
     def test_total_always_passes(self):
         r = self.repo.check('--total', self.merge(10))
