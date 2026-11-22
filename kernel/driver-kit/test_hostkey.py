@@ -211,14 +211,16 @@ class Helper(unittest.TestCase):
                                  (0, {'status': 200, 'body': None}))
 
     def test_native_tls_configuration_from_the_environment_never_reaches_the_helper(self):
-        conf = os.path.join(self.folder, 'min13.cnf')
+        conf = os.path.join(self.folder, 'one13.cnf')
         with open(conf, 'w') as f:
-            f.write('openssl_conf = c\n[c]\nssl_conf = s\n[s]\nsystem_default = d\n[d]\nMinProtocol = TLSv1.3\n')
+            f.write('openssl_conf = c\n[c]\nssl_conf = s\n[s]\nsystem_default = d\n[d]\n'
+                    'Ciphersuites = TLS_AES_128_GCM_SHA256\n')
         probe = ('import importlib.machinery as m, importlib.util as u, sys\n'
                  'if sys.argv[1] == "helper":\n'
                  '    s = u.spec_from_loader("hostkey", m.SourceFileLoader("hostkey", %r))\n'
                  '    s.loader.exec_module(u.module_from_spec(s))\n'
-                 'import ssl\nprint(int(ssl.create_default_context().minimum_version))\n' % HOSTKEY)
+                 'import ssl\nprint(len([c for c in ssl.create_default_context().get_ciphers()'
+                 ' if c["protocol"] == "TLSv1.3"]))\n' % HOSTKEY)
         seen = {}
         for who in ('control', 'helper'):
             p = subprocess.run([sys.executable, '-I', '-c', probe, who], capture_output=True, text=True, timeout=60,
@@ -226,8 +228,8 @@ class Helper(unittest.TestCase):
                                         OPENSSL_ENGINES=self.folder, SSLKEYLOGFILE=os.path.join(self.folder, 'k')))
             self.assertEqual(p.returncode, 0, p.stderr)
             seen[who] = int(p.stdout)
-        self.assertEqual(seen['control'], int(ssl.TLSVersion.TLSv1_3), 'the planted configuration does not work')
-        self.assertNotEqual(seen['helper'], int(ssl.TLSVersion.TLSv1_3), 'the helper took the planted TLS minimum')
+        self.assertEqual(seen['control'], 1, 'the planted configuration does not work')
+        self.assertGreater(seen['helper'], 1, 'the helper took the planted TLS 1.3 cipher suites')
 
     def test_a_non_json_answer_comes_back_as_a_null_body(self):
         for body in (b'', b'not json', b'{"n": NaN}', b'\xff'):
