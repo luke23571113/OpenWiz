@@ -950,6 +950,62 @@
       },
       "valid": false
     },
+    "host-named-cloudroom": {
+      "document": {
+        "schema": "openwiz.setup.v1",
+        "ready": true,
+        "components": [
+          {
+            "id": "cloudroom",
+            "state": "unknown",
+            "reason": "cloudroom_not_needed",
+            "next": "None: your agents run on cloudroom, not CloudRoom, so CloudRoom is not needed."
+          },
+          {
+            "id": "harness",
+            "state": "verified",
+            "reason": "Synthetic reason.",
+            "next": "Nothing to do."
+          },
+          {
+            "id": "personal_github",
+            "state": "verified",
+            "reason": "Synthetic reason.",
+            "next": "Nothing to do."
+          },
+          {
+            "id": "github_app",
+            "state": "verified",
+            "reason": "Synthetic reason.",
+            "next": "Nothing to do."
+          },
+          {
+            "id": "project",
+            "state": "verified",
+            "reason": "Synthetic reason.",
+            "next": "Nothing to do."
+          },
+          {
+            "id": "remote_access",
+            "state": "missing",
+            "reason": "Synthetic reason.",
+            "next": "Nothing to do."
+          }
+        ],
+        "engine": "unselected",
+        "cost": {
+          "provenance": "unknown",
+          "credits": null,
+          "window_s": null,
+          "monthly_projection": null,
+          "free_allowance": null,
+          "reason": "Synthetic: no measurement."
+        },
+        "operations": [],
+        "host": "cloudroom"
+      },
+      "valid": false
+    },
     "host-too-long": {
       "document": {
         "schema": "openwiz.setup.v1",
@@ -1164,6 +1220,21 @@
         "model": "claude-opus-5-5",
         "effort": "medium",
         "runtime": null
+      },
+      "valid": false
+    },
+    "cloudroom-driver-name": {
+      "document": {
+        "repository": "synthetic-owner/synthetic-repo",
+        "project": null,
+        "operator": "Synthetic Operator",
+        "service_issue": 7,
+        "answer_thread": null,
+        "harness": "claude-code",
+        "model": "claude-opus-5-5",
+        "effort": "medium",
+        "runtime": null,
+        "host": "cloudroom"
       },
       "valid": false
     },
