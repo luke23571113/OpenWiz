@@ -774,10 +774,10 @@ def main():
         command.add_argument('--runtime', help='installed runtime directory (default: this packaged runtime)')
     p = commands.choices['prepare']
     p.add_argument('--repository', required=True)
-    p.add_argument('--project')
+    cloud_only = [p.add_argument('--project')]
     p.add_argument('--operator', required=True)
     p.add_argument('--service-issue', type=int, required=True)
-    p.add_argument('--answer-thread')
+    cloud_only.append(p.add_argument('--answer-thread'))
     p.add_argument('--host', default='cloud', help='where the agents run (default: cloud)')
     p.add_argument('--harness', required=True)
     p.add_argument('--model', required=True)
@@ -787,12 +787,16 @@ def main():
     c = commands.choices['check']
     c.add_argument('--openwiz', help='installed openwiz CLI (default: this package\'s)')
     c.add_argument('--api-base', default=API, help='GitHub API; loopback HTTP for synthetic tests only')
+    if sys.argv[1:2] == ['prepare']:
+        host = argparse.ArgumentParser(add_help=False, exit_on_error=False)
+        host.add_argument('--host', default='cloud')
+        try:
+            cloud = host.parse_known_args(sys.argv[2:])[0].host == 'cloud'
+        except argparse.ArgumentError:
+            cloud = False
+        for action in cloud_only:
+            action.required = cloud
     args = parser.parse_args()
-    if args.command == 'prepare' and args.host == 'cloud':
-        missing = [flag for flag, value in (('--project', args.project), ('--answer-thread', args.answer_thread))
-                   if value is None]
-        if missing:
-            p.error('the following arguments are required: ' + ', '.join(missing))
     (prepare if args.command == 'prepare' else check)(args)
 
 
