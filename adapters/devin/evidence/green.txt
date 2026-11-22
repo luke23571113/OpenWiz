@@ -1,5 +1,5 @@
-# Green (openwizdev/openwiz#1996): the Devin driver's tests (the kit's five checks with its key check, on the synthetic
-# fake Devin) and the release runtime test. Synthetic; no host reached.
+# Green (openwizdev/openwiz#1996) at 789a2214: the Devin driver's tests (the kit's five checks with its key check, on the
+# synthetic fake Devin) and the release runtime tests. Synthetic; no host reached.
 
 $ python3 -I adapters/devin/test_driver.py -v
 test_a_host_refusal_is_an_error_and_a_failed_stop_is_tried_again (__main__.Driver.test_a_host_refusal_is_an_error_and_a_failed_stop_is_tried_again) ... ok
@@ -8,7 +8,7 @@ test_model_harness_and_organization_are_checked_before_any_call (__main__.Driver
 test_start_wake_and_stop_are_devins_documented_calls (__main__.Driver.test_start_wake_and_stop_are_devins_documented_calls) ... ok
 
 ----------------------------------------------------------------------
-Ran 4 tests in 2.180s
+Ran 4 tests in 2.242s
 
 OK
 
@@ -18,6 +18,6 @@ test_installed_build_carries_the_wizskills_root_files_its_skills_read (__main__.
 test_runtime_carries_exactly_the_selected_drivers_and_kit_where_the_caller_finds_them (__main__.Package.test_runtime_carries_exactly_the_selected_drivers_and_kit_where_the_caller_finds_them) ... ok
 
 ----------------------------------------------------------------------
-Ran 3 tests in 7.962s
+Ran 3 tests in 8.483s
 
 OK
