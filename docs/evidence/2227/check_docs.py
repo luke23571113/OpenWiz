@@ -45,16 +45,60 @@ def check(name, text):
                 continue
             if '0.1.0' in sentence and 'CloudRoom' in sentence:
                 said_010 = True
-            if 'this computer' in sentence:
-                if '0.1.1' in sentence:
-                    said_011 = True
-                else:
-                    failures.append(f'{name}: puts the automatic fleet on this computer without naming 0.1.1: '
-                                    f'{sentence!r}')
+            if '0.1.1' in sentence and 'this computer' in sentence:
+                said_011 = True
     if not said_010:
         failures.append(f'{name}: never says that on 0.1.0 the automatic fleet runs in CloudRoom')
     if not said_011:
-        failures.append(f'{name}: never says that 0.1.1 adds the automatic fleet on this computer')
+        failures.append(f'{name}: never says that 0.1.1 runs the automatic fleet on this computer')
+    failures += release_path(name, text)
+    return failures
+
+
+def section_010(text):
+    match = re.search(r'^#+ [^\n]*0\.1\.0[^\n]*\n(.*?)(?=^#+ |\Z)', text, re.M | re.S)
+    return match.group(0) if match else ''
+
+
+def release_path(name, text):
+    failures = []
+    old = section_010(text)
+    default = text.replace(old, '') if old else text
+    if not old:
+        failures.append(f'{name}: no clearly marked 0.1.0 section (a heading naming 0.1.0)')
+    if 'blob/maint/0.2/' in default:
+        failures.append(f'{name}: the default path links the 0.1.0 maintenance skill (maint/0.2)')
+    if 'WizSkills/blob/v0.4.0/skills/install/SKILL.md' not in default:
+        failures.append(f'{name}: the default path does not link the 0.1.1 install skill at WizSkills v0.4.0')
+    if re.search(r'Intel Mac[^.]*from 0\.1\.1', text):
+        failures.append(f'{name}: says an Intel Mac installs only from 0.1.1')
+    if re.search(r'(?i)wakes the fleet every ten minutes', text):
+        failures.append(f'{name}: says the schedule wakes the fleet every ten minutes')
+    if name == 'docs/install.md':
+        if "'^version: 0.2.2$'" in default or '--branch maint/0.2' in default:
+            failures.append(f'{name}: the default path still overwrites the install skill with maint/0.2')
+        if '--branch v0.1.1' not in default:
+            failures.append(f'{name}: preflight does not clone the v0.1.1 tag')
+        if 'prints the version (`0.1.1`)' not in default:
+            failures.append(f'{name}: the build identity check does not expect 0.1.1')
+        flat = ' '.join(text.split())
+        if not re.search(r'every ten minutes[^.]*only when', flat):
+            failures.append(f'{name}: never says the heartbeat checks every ten minutes and wakes only when work is due')
+        if not re.search(r'heartbeat[^.]*boat\.dev|boat\.dev[^.]*heartbeat', flat):
+            failures.append(f'{name}: never says boat.dev fleets use the local heartbeat too')
+        if '`jq`' not in flat:
+            failures.append(f'{name}: never lists jq as a heartbeat prerequisite')
+        if 'same-family review' not in flat:
+            failures.append(f'{name}: never says a review by the same family is marked')
+        remove = re.search(r'^## Remove it\n(.*?)(?=^## |\Z)', text, re.M | re.S)
+        body = remove.group(1) if remove else ''
+        for needed in ('heartbeat.py remove', 'heartbeat.py pause', 'install remove'):
+            if needed not in body:
+                failures.append(f'{name}: "Remove it" never names `{needed}`')
+        if 'There is no remove command' in default:
+            failures.append(f'{name}: says there is no remove command')
+        if not re.search(r"boat\.dev[^.]*dashboard[^.]*write access[^.]*(?:harness|Claude Code or Codex)[^.]*key", flat):
+            failures.append(f'{name}: the boat.dev prerequisites omit GitHub write access and the harness key in boat\'s dashboard')
     return failures
 
 
