@@ -74,6 +74,8 @@ def release_path(name, text):
         failures.append(f'{name}: says an Intel Mac installs only from 0.1.1')
     if re.search(r'(?i)wakes the fleet every ten minutes', text):
         failures.append(f'{name}: says the schedule wakes the fleet every ten minutes')
+    if name == 'README.md' and 'docs/install.md#openwiz-010' not in old:
+        failures.append(f'{name}: the 0.1.0 section does not point to the guide\'s explicit 0.1.0 steps')
     if name == 'docs/install.md':
         if "'^version: 0.2.2$'" in default or '--branch maint/0.2' in default:
             failures.append(f'{name}: the default path still overwrites the install skill with maint/0.2')
@@ -99,6 +101,18 @@ def release_path(name, text):
             failures.append(f'{name}: says there is no remove command')
         if not re.search(r"boat\.dev[^.]*dashboard[^.]*write access[^.]*(?:harness|Claude Code or Codex)[^.]*key", flat):
             failures.append(f'{name}: the boat.dev prerequisites omit GitHub write access and the harness key in boat\'s dashboard')
+        if 'releases/download/v0.1.0/' not in old or 'install install --assets' not in old:
+            failures.append(f'{name}: the 0.1.0 section does not select the v0.1.0 files explicitly')
+        if "which runs the fleet's orchestrator" in flat:
+            failures.append(f'{name}: says this computer runs the orchestrator for boat.dev too')
+        if not re.search(r'orchestrator[^.]*boat\.dev sandbox', flat):
+            failures.append(f'{name}: never says the orchestrator starts in a boat.dev sandbox when boat.dev is the host')
+        if not re.search(r'"run the fleet now"[^.]*(?:paused|active)', flat):
+            failures.append(f'{name}: "run the fleet now" is not qualified for a paused job')
+        if 'Delete only those named folders' in body:
+            failures.append(f'{name}: tells the reader to delete the listed skill folders, which are shared parents')
+        if 'never the listed folder itself' not in body:
+            failures.append(f'{name}: never says to keep each listed skills folder itself')
     return failures
 
 
