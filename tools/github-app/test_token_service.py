@@ -33,6 +33,13 @@ CLOCK = ("import runpy, sys, time\n"
          "clock = sys.argv[1]; time.time = lambda: float(open(clock).read())\n"
          "sys.argv = sys.argv[2:]\n"
          "runpy.run_path(sys.argv[0], run_name='__main__')\n")
+SLOW_SYNC = CLOCK.replace("sys.argv = sys.argv[2:]\n", "import os\nsync = os.fsync\n"
+                          "os.fsync = lambda fd: ((lambda later: open(clock, 'w').write(later))(str(time.time() + 12)), sync(fd))\n"
+                          "sys.argv = sys.argv[2:]\n")
+
+
+def revoked(calls):
+    return [c[2] for c in calls if c[:2] == ("DELETE", "/installation/token")]
 
 
 @contextmanager
@@ -76,6 +83,11 @@ def fake_github(pem, installed):
             result.update(behavior["grant"])
             self.reply(201, result)
 
+        def do_DELETE(self):
+            calls.append(("DELETE", self.path, self.headers.get("Authorization")))
+            self.send_response(204)
+            self.end_headers()
+
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -117,11 +129,11 @@ class ServiceFixture(unittest.TestCase):
         return subprocess.run(["python3", "-I", str(SERVICE), command, "--state-dir", str(self.state)],
                               capture_output=True, text=True, timeout=60, env=dict(os.environ, **(env or {})))
 
-    def mint(self, endpoint, request, env=None):
+    def mint(self, endpoint, request, env=None, bootstrap=CLOCK):
         text = request if isinstance(request, str) else json.dumps(request)
         self.clock.write_text(str(NOW))
         environment = {k: v for k, v in os.environ.items() if k != "OPENWIZ_GITHUB_APP_MODE"}
-        return subprocess.run(["python3", "-I", "-c", CLOCK, str(self.clock), str(SERVICE), "mint",
+        return subprocess.run(["python3", "-I", "-c", bootstrap, str(self.clock), str(SERVICE), "mint",
                                "--state-dir", str(self.state), "--api-base", endpoint],
                               input=text, capture_output=True, text=True, timeout=60,
                               env=dict(environment, **(env or {})))
@@ -188,10 +200,11 @@ class RequestFixtureTests(ServiceFixture):
                       {"repositories": [{"full_name": "synthetic-owner/work"}, {"full_name": "synthetic-owner/tools"}]},
                       {"repository_selection": "all"}, {"expires_at": "not a time"},
                       {"token": "synthetic token with spaces"}):
-            with self.subTest(grant), fake_github(self.pem, REQUESTS["installed"]) as (url, _calls, fake):
+            with self.subTest(grant), fake_github(self.pem, REQUESTS["installed"]) as (url, calls, fake):
                 fake["grant"] = grant
                 done = self.mint(url, SMALL)
                 self.assertEqual((done.returncode, json.loads(done.stdout).get("refusal")), (5, "github"))
+                self.assertEqual(revoked(calls), [] if "token" in grant else ["Bearer synthetic-token"])
                 self.assertEqual(self.logged()[-1]["outcome"], "github")
                 self.assert_nothing_exposed("synthetic-token", done.stdout, done.stderr)
 
@@ -213,6 +226,21 @@ class RequestFixtureTests(ServiceFixture):
             self.assertEqual(self.logged()[-1]["outcome"], "expiry")
             fake["expires_at"] = NOW + 15 + 311
             self.assertEqual(self.mint(url, SMALL).returncode, 0)
+
+
+    def test_a_slow_audit_sync_is_checked_again_and_logged_as_the_answer(self):
+        with fake_github(self.pem, REQUESTS["installed"]) as (url, calls, fake):
+            fake["expires_at"] = NOW + 311
+            done = self.mint(url, SMALL, bootstrap=SLOW_SYNC)
+            self.assertEqual((done.returncode, json.loads(done.stdout).get("refusal")), (5, "expiry"))
+            self.assertEqual(self.logged(), [{"schema": "openwiz.token-service.v1", "kind": "mint-log", "at": NOW,
+                                              "requester": SMALL["requester"], "repositories": SMALL["repositories"],
+                                              "outcome": "expiry"}], "one line, matching the answer")
+            self.assertEqual(revoked(calls), ["Bearer synthetic-token"])
+            fake["expires_at"] = NOW + 12 + 311
+            self.assertEqual(self.mint(url, SMALL, bootstrap=SLOW_SYNC).returncode, 0)
+            self.assertEqual([line["outcome"] for line in self.logged()], ["expiry", "minted"])
+            self.assertEqual(len(revoked(calls)), 1)
 
 
 class FactoryTests(ServiceFixture):
