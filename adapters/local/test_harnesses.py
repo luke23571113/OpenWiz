@@ -40,6 +40,7 @@ PLANTED = {
     'claude': 'fail claude: row.json harness: claude is built in, and no row may use a built-in name',
     'effort-unpassed': 'fail effort-unpassed: row.json effort: it maps effort values to arguments, but start has no '
                        '{effort} to pass them',
+    'row-missing': 'fail row-missing: row.json is missing',
     'effort-missing': 'fail effort-missing: row.json effort: it has no effort form; give an effort map or '
                       '"none: <one line why>"',
 }
