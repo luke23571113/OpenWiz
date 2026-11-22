@@ -32,6 +32,7 @@ mod models;
 #[path = "../../contracts/fixtures/models/models_contract.rs"]
 mod models_contract;
 mod models_forms;
+mod models_local;
 mod process;
 mod results;
 mod review;
