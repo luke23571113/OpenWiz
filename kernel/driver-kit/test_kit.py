@@ -55,6 +55,27 @@ def module(path):
     return module
 
 
+def pinned_path(folder, *fixtures):
+    """The tests' PATH: the fixtures, then a folder of only the system tools they run, never the caller's PATH,
+    where a real harness may be installed (#2023)."""
+    tools = os.path.join(folder, 'tools')
+    os.makedirs(tools)
+    for name in TOOLS:
+        if shutil.which(name):
+            os.symlink(shutil.which(name), os.path.join(tools, name))
+    os.symlink(sys.executable, os.path.join(tools, 'python3'))
+    return no_real_harness(os.pathsep.join(fixtures + (tools,)))
+
+
+def no_real_harness(path):
+    for name in HARNESSES:
+        found = shutil.which(name, path=path)
+        if found and not os.path.realpath(found).startswith(REPO + os.sep):
+            raise AssertionError('%s on the PATH is %s, outside the fixtures: a test could launch a real harness'
+                                 % (name, found))
+    return path
+
+
 def tracker(folder):
     path = os.path.join(folder, 'tracker.json')
     old = '<!-- openwiz:status v1 -->\nagent: builder\nstate: stopped\nharness: Fake\nmodel: m\n' \
@@ -71,7 +92,7 @@ class Kit(unittest.TestCase):
         self.mark = secrets.token_hex(8)
         self.env = dict(os.environ, KIT_TRACKER=tracker(self.folder), KIT_TEST=self.mark, GH_TOKEN=TOKEN,
                         OPENWIZ_TEMPLATE_STATE=os.path.join(self.folder, 'state'),
-                        PATH=FIXTURES + os.pathsep + os.environ.get('PATH', ''))
+                        PATH=pinned_path(self.folder, FIXTURES))
 
     def left(self):
         found = []
@@ -93,6 +114,7 @@ class Kit(unittest.TestCase):
 
     def kit(self, driver, python=sys.executable, wait='8', **env):
         env = dict(self.env, **env)
+        no_real_harness(env['PATH'])
         p = subprocess.run([python, '-I', os.path.join(HERE, 'kit.py'), '--driver', driver,
                             '--repo', 'example/site', '--ticket', '7', '--harness', 'fake-harness',
                             '--model', 'Synthetic 1', '--tracker', self.env['KIT_TRACKER'], '--wait', wait],
@@ -152,8 +174,6 @@ class Kit(unittest.TestCase):
                                      "the driver's own stop lost its baseline under the kit's hidden view")
 
     def test_probe_only_hides_environments_from_the_kits_own_listing_only(self):
-        # catches: the probe-only shim hiding every ps -E caller's view, the driver's too, so a planted driver's
-        # stop fails on the shim rather than on its own baseline (#2098).
         child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'], env=self.env)
         try:
             for caller, shown in (({}, False), ({'OPENWIZ_KIT_RUN': self.mark}, True)):
@@ -168,8 +188,6 @@ class Kit(unittest.TestCase):
             child.wait()
 
     def test_a_failed_start_check_still_stops_its_run(self):
-        # catches: start answering a run id whose note never appears, and the kit exiting with that run's harness
-        # still running (#1416).
         sleepy = os.path.join(self.folder, 'sleepy')
         os.mkdir(sleepy)
         with open(os.path.join(sleepy, 'fake-harness'), 'w') as f:
@@ -182,8 +200,6 @@ class Kit(unittest.TestCase):
         self.assertEqual(self.left(), [], 'the run whose start check failed still runs after the kit')
 
     def test_no_harness_outside_the_fixtures_is_on_the_tests_path(self):
-        # catches: a test PATH that keeps the caller's PATH, where a real harness such as claude would be found
-        # and launched (#2023).
         outside = os.path.join(self.folder, 'outside')
         os.mkdir(outside)
         with open(os.path.join(outside, 'claude'), 'w') as f:

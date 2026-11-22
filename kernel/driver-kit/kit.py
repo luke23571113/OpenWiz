@@ -206,6 +206,7 @@ class Kit:
         self.mark = 'OPENWIZ_KIT_RUN=' + secrets.token_hex(8)
         self.env = dict(os.environ, OPENWIZ_KIT_RUN=self.mark.partition('=')[2])
         self.leaks = []
+        self.run, self.stopped = None, False
         self.groups = set()
         self.seen = PROC
         self.blind = None if PROC else self.unseen()
@@ -378,6 +379,7 @@ class Kit:
         return 'pass', 'the run edited builder status note %d' % self.note
 
     def stop(self):
+        self.stopped = True
         kind, v = self.call('stop', {'run': self.run})
         if self.unverified():
             return 'fail', self.unverified()
@@ -410,12 +412,24 @@ class Kit:
             return 'fail', '; '.join(self.leaks)
         return 'pass', 'no login or token passed through the driver'
 
+    def end_run(self):
+        """Once start has answered a run id, the run is stopped before the kit goes on or exits, whatever failed;
+        this stop is not the stop check."""
+        if self.run and not self.stopped:
+            self.stopped = True
+            self.call('stop', {'run': self.run})
+
     def checks(self):
         yield 'version', self.version()
-        result = self.start()
-        yield 'start', result
-        for name in ('wake', 'stop'):
-            yield name, getattr(self, name)() if result[0] == 'pass' else ('fail', 'not run: start failed')
+        try:
+            result = self.start()
+            if result[0] != 'pass':
+                self.end_run()
+            yield 'start', result
+            for name in ('wake', 'stop'):
+                yield name, getattr(self, name)() if result[0] == 'pass' else ('fail', 'not run: start failed')
+        finally:
+            self.end_run()
         yield 'token', self.token()
 
 

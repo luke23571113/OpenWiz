@@ -4,6 +4,8 @@ route the fleet's GitHub events use, and the refusals that keep a run from being
 
 Run: python3 -I adapters/cloudroom/test_driver.py   (Linux: the kit watches /proc)
 """
+import importlib.machinery
+import importlib.util
 import json
 import os
 import re
@@ -22,8 +24,6 @@ DRIVER = os.path.join(HERE, 'driver')
 KIT = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit')
 sys.path.insert(0, KIT)
 import kit  # noqa: E402
-import importlib.machinery  # noqa: E402
-import importlib.util  # noqa: E402
 
 _spec = importlib.util.spec_from_loader('cloudroom_driver', importlib.machinery.SourceFileLoader('cloudroom_driver',
                                                                                                 DRIVER))
@@ -457,8 +457,6 @@ class Driver(unittest.TestCase):
         self.assertEqual(self.calls()[-1], ['thread', 'archive', 'thr_syn_0001'])
 
     def test_a_wake_goes_on_only_when_the_lock_file_reads_live(self):
-        # catches: a stop killed after it made a lost lock file again (empty) and before it wrote `stop`, and a
-        # later wake taking that empty lock, or any text but `live`, as a live run (#1719).
         for text in ('', 'lives', 'Live', 'live\n'):
             with self.subTest(text=text):
                 self.fresh()
@@ -470,8 +468,6 @@ class Driver(unittest.TestCase):
                 self.assertNotIn('tell', [c[1] for c in self.calls()])
 
     def test_stop_finds_its_thread_by_title_when_the_run_record_is_lost(self):
-        # catches: a start whose state folder vanished after the spawn and whose archive was refused, then a stop
-        # on the run id from its error answering "no run" while the builder runs on (#1706).
         cases = {'own child': ({}, 0), 'cloud': ({'FAKE_ROOM_HOST': 'cloud'}, 1),
                  'another caller': ({'ROOM_THREAD_ID': 'thr_syn_else'}, 1), 'two titled': ({'TWIN': 1}, 1)}
         for name, (env, want) in cases.items():
@@ -485,7 +481,7 @@ class Driver(unittest.TestCase):
                 self.assertEqual(code, 1, out)
                 run = {'run': re.search(r'run-[0-9a-f]{12}', json.dumps(out)).group()}
                 os.remove(state)
-                os.mkdir(state)  # the folder is back, without the run's record
+                os.mkdir(state)
                 if twin:
                     env['FAKE_ROOM_EXTRA'] = json.dumps([{'id': 'thr_syn_twin', 'projectId': PROJECT,
                                                           'parentThreadId': PARENT,
@@ -500,8 +496,6 @@ class Driver(unittest.TestCase):
                 self.assertNotIn('tell', [c[1] for c in self.calls()])
 
     def test_a_failed_room_cli_command_is_named_by_fixed_words(self):
-        # catches: a generic expired request called a sign-in failure, and plain diagnostic text on stdout called
-        # silence; each stream checked on its own (#2136).
         signed_out, other, silent = 'room-cli is not signed in', 'room-cli gave an error the driver does not repeat', \
             'room-cli gave no answer'
         cases = [('', 'Synthetic: not signed in', signed_out), ('', 'Synthetic: please log in again', signed_out),
@@ -509,13 +503,12 @@ class Driver(unittest.TestCase):
                  ('', 'Synthetic request expired', other), ('', 'Synthetic 401 from a mirror', other),
                  (json.dumps({'error': 'Synthetic request expired'}), '', other),
                  ('Synthetic plain diagnostic', '', other), (json.dumps({'ok': False}), '', other),
-                 ('', '', silent), (' \n', '\t', silent)]
+                 ('', '', silent), (' \n', '\t', silent), (json.dumps({'error': ' '}), '', silent)]
         for out, err, want in cases:
             with self.subTest(out=out, err=err):
                 self.assertEqual(driver.room_said(out, err), want)
 
     def test_every_drivers_readme_names_its_platforms(self):
-        # catches: a driver README with no platforms line, which the driver contract requires (#2043).
         adapters = os.path.join(HERE, '..')
         readmes = sorted(os.path.join(adapters, d, 'README.md') for d in os.listdir(adapters)
                          if os.path.isfile(os.path.join(adapters, d, 'driver')))

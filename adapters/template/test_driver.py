@@ -56,6 +56,27 @@ t.main()
 '''
 
 
+def pinned_path(folder, *fixtures):
+    """The tests' PATH: the fixtures, then a folder of only the system tools they run, never the caller's PATH,
+    where a real harness may be installed (#2023). Keep it in a driver you copy from here."""
+    tools = os.path.join(folder, 'tools')
+    os.makedirs(tools)
+    for name in TOOLS:
+        if shutil.which(name):
+            os.symlink(shutil.which(name), os.path.join(tools, name))
+    os.symlink(sys.executable, os.path.join(tools, 'python3'))
+    return no_real_harness(os.pathsep.join(fixtures + (tools,)))
+
+
+def no_real_harness(path):
+    for name in HARNESSES:
+        found = shutil.which(name, path=path)
+        if found and not os.path.realpath(found).startswith(REPO + os.sep):
+            raise AssertionError('%s on the PATH is %s, outside the fixtures: a test could launch a real harness'
+                                 % (name, found))
+    return path
+
+
 def alive(pid):
     try:
         with open('/proc/%d/stat' % pid) as f:
@@ -84,7 +105,7 @@ class Template(unittest.TestCase):
         self.turns, self.hold = os.path.join(self.folder, 'turns'), os.path.join(self.folder, 'hold')
         self.env = dict(os.environ, KIT_TEST=self.mark, FAKE_TURNS=self.turns, FAKE_HOLD=self.hold,
                         OPENWIZ_TEMPLATE_STATE=os.path.join(self.folder, 'state'),
-                        PATH=os.path.join(HERE, 'fixtures') + os.pathsep + os.environ.get('PATH', ''))
+                        PATH=pinned_path(self.folder, os.path.join(HERE, 'fixtures')))
 
     def tearDown(self):
         os.chmod(self.folder, 0o700)
@@ -125,6 +146,7 @@ class Template(unittest.TestCase):
 
     def call(self, cmd, request, driver=DRIVER, **env):
         env = dict(self.env, **env)
+        no_real_harness(env['PATH'])
         p = subprocess.run([driver, cmd], input=json.dumps(request), env=env, capture_output=True, text=True,
                            timeout=60)
         return p.returncode, json.loads(p.stdout)
@@ -148,8 +170,6 @@ class Template(unittest.TestCase):
         return ready()
 
     def test_no_harness_outside_the_fixtures_is_on_the_tests_path(self):
-        # catches: a test PATH that keeps the caller's PATH, where a real harness such as claude would be found
-        # and launched (#2023).
         outside = os.path.join(self.folder, 'outside')
         os.mkdir(outside)
         with open(os.path.join(outside, 'claude'), 'w') as f:

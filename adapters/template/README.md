@@ -17,7 +17,7 @@ The smallest [driver v1](../../kernel/driver.v1.md): one Python file, standard l
 
 Keep `schema.json` byte for byte the kit's `kernel/driver-kit/schema.json`: the kit checks it.
 
-Its own tests: `python3 -I adapters/template/test_driver.py`.
+Its own tests: `python3 -I adapters/template/test_driver.py`. They run with `PATH` set to `fixtures/` and a folder of only the few system tools they use, never your own `PATH`, and stop with an error if a harness name such as `claude` or `codex` resolves anywhere outside the repository: a real harness on your machine is never launched by a test. Keep that in the tests of a driver you copy from here, for every driver and kit run they make.
 
 ```sh
 echo '{"repository":"example/site","ticket":7,"skill":"build-ticket","harness":"claude","model":"opus"}' \
