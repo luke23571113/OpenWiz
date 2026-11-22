@@ -39,6 +39,8 @@ It prints one line per entry, `ran <host> <harness>: <k> of 5` or `skipped <host
 
 `signed_in` commands are read-only (never one that signs in, opens a browser, prompts or prints a credential), each must exit 0 within 30 seconds, and a timeout counts as not signed in; each host's pull request cites its command's source. Only `cost: none` runs; `paid` and `unknown` are skipped, and changing a host to `none` needs Jake's recorded OK. `wait` is at most 900. The example above is a shape, not a real host's config.
 
+Other tools import the host checks from `rig.py` without running it: `load_host(path)` returns one host config, parsed and checked (a bad one raises `rig.Refused`), and `check_host(config)` returns `None` when the host may run, or its exact skip reason (`not installed: <program>`, `not signed in: <program>` or `cost`).
+
 ## Run record
 
 `<out>/<YYYY-MM-DD>/<host>-<harness>-<model>.json`, one per `runs` entry, with exactly: `host`, `harness`, `model`, `date` (UTC), `driver_commit` and `kit_commit` (the checkout's 40-hex `HEAD`), `outcome` (`ran` or `skipped`), `skipped` (the reason or `null`), `kit_exit` (integer or `null`), `stdout` (the kit's stdout, or `null`) and `seconds` (whole seconds). It holds no login or environment value; where the kit's stdout quotes the checkout's path or the settings' repository, those read `<checkout>` and `<repository>`. The receipt writer reads these records.

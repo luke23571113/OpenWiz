@@ -44,7 +44,7 @@ def _text(value, pattern):
     return isinstance(value, str) and re.fullmatch(pattern, value) is not None
 
 
-def check_host(config, name):
+def _valid(config, name):
     def bad(why):
         raise Refused('%s: %s' % (name, why))
     if not isinstance(config, dict) or set(config) != set(HOST_KEYS):
@@ -70,12 +70,17 @@ def check_host(config, name):
     return config
 
 
+def load_host(path):
+    name = os.path.basename(path)
+    return _valid(read_json(path, name), name)
+
+
 def load_hosts(folder, only):
     try:
         names = sorted(n for n in os.listdir(folder) if n.endswith('.json'))
     except OSError as e:
         raise Refused('cannot read --hosts: %s' % e)
-    hosts = [check_host(read_json(os.path.join(folder, n), n), n) for n in names]
+    hosts = [load_host(os.path.join(folder, n)) for n in names]
     if len({h['host'] for h in hosts}) != len(hosts):
         raise Refused('two host configs name the same host')
     if only is not None:
@@ -122,7 +127,7 @@ def signed_in(command):
         return False
 
 
-def skip_reason(host):
+def check_host(host):
     for program in host['needs']:
         if shutil.which(program) is None:
             return 'not installed: ' + program
@@ -170,7 +175,7 @@ def run(args):
     failed = False
     for host in hosts:
         began = time.monotonic()
-        why = skip_reason(host)
+        why = check_host(host)
         for entry in host['runs']:
             day = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d')
             kit_exit = stdout = None
