@@ -20,6 +20,8 @@ _spec.loader.exec_module(kit)
 ORG = 'org-syn0001'
 START = {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket', 'harness': 'devin', 'model': 'default'}
 SESSIONS = '/v3/organizations/%s/sessions' % ORG
+CANT_SET_EFFORT = ("this host can't set effort: remove the effort for this harness in your Models table or Roster to run "
+                   "it at the host's default")
 
 
 class Driver(unittest.TestCase):
@@ -127,6 +129,23 @@ class Driver(unittest.TestCase):
         self.assertEqual(self.call('wake', {'run': run})[0], 1, 'a run being stopped took a wake')
         self.assertEqual(self.call('stop', {'run': run}), (0, {'run': run, 'stopped': True}))
         self.assertEqual([c['method'] for c in self.calls()][-3:], ['POST', 'DELETE', 'DELETE'])
+
+    def test_a_start_with_an_effort_is_refused_and_nothing_starts(self):
+        for effort in ('medium', 'max', 'Not A Word'):
+            with self.subTest(effort=effort):
+                code, out = self.call('start', dict(START, effort=effort))
+                self.assertEqual((code, out['next']), (1, CANT_SET_EFFORT))
+                self.assertIn('devin', out['error'])
+                if effort != 'Not A Word':
+                    self.assertIn(effort, out['error'])
+        state = self.env['OPENWIZ_DEVIN_STATE']
+        self.assertEqual((self.calls(), os.listdir(state) if os.path.isdir(state) else []), ([], []))
+        code, version = self.call('version', None)
+        self.assertNotIn('effort', version['can'])
+        with open(os.path.join(HERE, 'README.md')) as f:
+            lines = f.read().splitlines()
+        login = lines.index('Login: held by Devin')
+        self.assertEqual((lines[login + 1], lines[login + 2][:35]), ('', "Effort: the host can't set it (Devi"))
 
 
 if __name__ == '__main__':
