@@ -17,7 +17,7 @@ sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 HOSTKEY = os.path.join(HERE, 'hostkey.py')
 KEY = 'synthetic-host-key-' + 'Kit0Value' * 3
-NAMES = 'DEVIN_API_KEY and the keychain entry openwiz-devin'
+NAMES = 'DEVIN_API_KEY or the keychain entry openwiz-devin'
 GOOD = {'host': 'devin', 'method': 'POST', 'path': '/v3/organizations/org-syn1/sessions', 'body': {'prompt': 'hi'}}
 
 
@@ -226,7 +226,7 @@ class Keychain(unittest.TestCase):
     fake = Helper.fake
 
     def lookup(self, platform='linux', **env):
-        environ = {'PATH': self.bin, 'TOOL_LOG': self.log, 'TOOL_KEY': os.path.join(self.folder, 'key')}
+        environ = {'PATH': self.bin + os.pathsep + '/usr/bin:/bin', 'TOOL_LOG': self.log, 'TOOL_KEY': os.path.join(self.folder, 'key')}
         environ.update(env)
         old = sys.platform
         sys.platform = platform
