@@ -1,0 +1,14 @@
+test_a_malformed_step_log_names_the_bad_line (__main__.Broken.test_a_malformed_step_log_names_the_bad_line) ... ok
+test_a_missing_input_is_refused (__main__.Broken.test_a_missing_input_is_refused) ... ok
+test_malformed_github_json_names_the_bad_line (__main__.Broken.test_malformed_github_json_names_the_bad_line) ... ok
+test_mark_appends_one_timed_line_per_step (__main__.Mark.test_mark_appends_one_timed_line_per_step) ... ok
+test_mark_refuses_an_unknown_step_or_wait (__main__.Mark.test_mark_refuses_an_unknown_step_or_wait) ... ok
+test_merged_run_json_is_the_same_table (__main__.Report.test_merged_run_json_is_the_same_table) ... ok
+test_merged_run_prints_the_exact_table_and_total (__main__.Report.test_merged_run_prints_the_exact_table_and_total) ... ok
+test_timer_waits_are_flagged (__main__.Report.test_timer_waits_are_flagged) ... ok
+test_unmerged_run_reports_no_total_and_why (__main__.Report.test_unmerged_run_reports_no_total_and_why) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 1.177s
+
+OK

@@ -1,6 +1,263 @@
 #!/usr/bin/env python3
-"""The first-fleet bench (stub: not built yet)."""
+"""The first-fleet bench: time one run from the pasted install line to the first merged fleet pull request.
+
+  bench.py mark RUN_DIR STEP WAITS_ON [--failure TEXT] [--at TIME]
+  bench.py report RUN_DIR [--json]
+
+See README.md. Standard library only, Python 3.9.
+"""
+import argparse
+import datetime
+import json
+import pathlib
 import sys
 
+STEPS = ('preflight', 'install', 'setup check', 'skills copy', 'where', 'repo', 'connect', 'grill',
+         'models', 'host setting', 'plan', 'launch', 'build', 'review', 'merge')
+WAITS = ('user', 'agent', 'timer', 'ci')
+LOG = 'steps.jsonl'
+
+
+class Bad(Exception):
+    """An unreadable input: the message names the file and line."""
+
+
+def parse_time(value):
+    """An ISO 8601 time with a zone (`Z` or an offset), as UTC; None when it is not one."""
+    if not isinstance(value, str):
+        return None
+    try:
+        t = datetime.datetime.fromisoformat(value[:-1] + '+00:00' if value.endswith('Z') else value)
+    except ValueError:
+        return None
+    if t.tzinfo is None:
+        return None
+    return t.astimezone(datetime.timezone.utc).replace(microsecond=0)
+
+
+def iso(t):
+    return t.strftime('%Y-%m-%dT%H:%M:%SZ')
+
+
+def clock(seconds):
+    if seconds is None:
+        return '-'
+    sign = '-' if seconds < 0 else ''
+    m, s = divmod(abs(seconds), 60)
+    return f'{sign}{m}:{s:02d}'
+
+
+def read_log(path):
+    if not path.is_file():
+        raise Bad(f'{path.name}: missing')
+    steps = []
+    for n, raw in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+        if not raw.strip():
+            continue
+        where = f'{path.name} line {n}'
+        try:
+            line = json.loads(raw)
+        except ValueError:
+            raise Bad(f'{where}: not JSON') from None
+        if not isinstance(line, dict):
+            raise Bad(f'{where}: not a JSON object')
+        at = parse_time(line.get('at'))
+        if at is None:
+            raise Bad(f'{where}: "at" is not a time with a zone')
+        if line.get('step') not in STEPS:
+            raise Bad(f'{where}: unknown step {line.get("step")!r}')
+        if line.get('waits_on') not in WAITS:
+            raise Bad(f'{where}: unknown wait {line.get("waits_on")!r}; one of {", ".join(WAITS)}')
+        failure = line.get('failure')
+        if failure is not None and not isinstance(failure, str):
+            raise Bad(f'{where}: "failure" is not text')
+        if steps and at < steps[-1]['at']:
+            raise Bad(f'{where}: earlier than the line before it')
+        steps.append({'at': at, 'step': line['step'], 'waits_on': line['waits_on'], 'failure': failure or None})
+    return steps
+
+
+def read_json(path):
+    """A file of one JSON value, or of JSON values one after another (`gh ... --json` run per item).
+    Gives (line, value) pairs, a top-level array giving one pair per element."""
+    if not path.is_file():
+        raise Bad(f'{path.name}: missing')
+    text = path.read_text(encoding='utf-8')
+    decoder = json.JSONDecoder()
+
+    def value_at(i):
+        try:
+            return decoder.raw_decode(text, i)
+        except ValueError as e:
+            raise Bad(f'{path.name} line {e.lineno}: not JSON ({e.msg})') from None
+
+    def skip(i):
+        while i < len(text) and text[i] in ' \t\r\n':
+            i += 1
+        return i
+
+    def line(i):
+        return text.count('\n', 0, i) + 1
+
+    out, i = [], skip(0)
+    if text[i:i + 1] == '[':
+        i = skip(i + 1)
+        while i < len(text) and text[i] != ']':
+            start = i
+            value, i = value_at(i)
+            out.append((line(start), value))
+            i = skip(i)
+            if text[i:i + 1] == ',':
+                i = skip(i + 1)
+            elif text[i:i + 1] != ']':
+                raise Bad(f'{path.name} line {line(i)}: not JSON (expected , or ])')
+        if skip(i + 1) != len(text):
+            raise Bad(f'{path.name} line {line(skip(i + 1))}: not JSON (extra data)')
+        return out
+    while i < len(text):
+        start = i
+        value, i = value_at(i)
+        out.append((line(start), value))
+        i = skip(i)
+    return out
+
+
+def record(name, n, value, fields):
+    where = f'{name} line {n}'
+    if not isinstance(value, dict):
+        raise Bad(f'{where}: not a JSON object')
+    if not isinstance(value.get('number'), int) or isinstance(value.get('number'), bool):
+        raise Bad(f'{where}: "number" is not a number')
+    out = {'number': value['number']}
+    for field in fields:
+        if field == 'closingIssuesReferences':
+            continue
+        if field == 'mergedAt' and value.get(field) is None:
+            out[field] = None
+            continue
+        t = parse_time(value.get(field))
+        if t is None:
+            raise Bad(f'{where}: "{field}" is not a time with a zone')
+        out[field] = t
+    if 'closingIssuesReferences' in fields:
+        refs = value.get('closingIssuesReferences')
+        if not isinstance(refs, list) or not all(isinstance(r, dict) and isinstance(r.get('number'), int) for r in refs):
+            raise Bad(f'{where}: "closingIssuesReferences" is not a list of issues')
+        out['closes'] = {r['number'] for r in refs}
+    return out
+
+
+def read_github(run_dir):
+    spec = read_json(run_dir / 'spec.json')
+    if len(spec) != 1 or isinstance(spec[0][1], list):
+        raise Bad(f'spec.json line {spec[0][0] if spec else 1}: not one JSON object')
+    spec = record('spec.json', *spec[0], ('createdAt',))
+    tickets = [record('tickets.json', n, v, ('createdAt',)) for n, v in read_json(run_dir / 'tickets.json')]
+    prs = [record('prs.json', n, v, ('createdAt', 'mergedAt', 'closingIssuesReferences'))
+           for n, v in read_json(run_dir / 'prs.json')]
+    numbers = {t['number'] for t in tickets}
+    fleet = [pr for pr in prs if pr['closes'] & numbers]
+    return spec, tickets, fleet
+
+
+def report(run_dir):
+    steps = read_log(run_dir / LOG)
+    spec, tickets, fleet = read_github(run_dir)
+    events = [(spec['createdAt'], f'spec #{spec["number"]} created')]
+    events += [(t['createdAt'], f'ticket #{t["number"]} created') for t in tickets]
+    events += [(pr['createdAt'], f'pull request #{pr["number"]} created') for pr in fleet]
+    events += [(pr['mergedAt'], f'pull request #{pr["number"]} merged') for pr in fleet if pr['mergedAt']]
+    events.sort(key=lambda e: e[0])  # stable: equal times keep their order
+
+    start = next((s['at'] for s in steps if s['step'] == 'install'), None)
+    merged = sorted((pr for pr in fleet if pr['mergedAt']), key=lambda pr: pr['mergedAt'])
+    first = merged[0] if merged else None
+    reason = None
+    if start is None:
+        reason = 'no install line in the step log'
+    elif first is None:
+        reason = 'no fleet pull request has merged' if fleet else 'no fleet pull request'
+    stop = first['mergedAt'] if first else None
+    origin = start or (steps[0]['at'] if steps else None)
+
+    def since(t):
+        return None if origin is None else int((t - origin).total_seconds())
+
+    rows = []
+    for i, s in enumerate(steps):
+        end = steps[i + 1]['at'] if i + 1 < len(steps) else stop
+        rows.append({'step': s['step'], 'at': iso(s['at']), 'start_seconds': since(s['at']),
+                     'length_seconds': None if end is None else int((end - s['at']).total_seconds()),
+                     'waits_on': s['waits_on'], 'failure': s['failure']})
+    return {
+        'clock_start': iso(start) if start else None,
+        'stop': iso(stop) if stop else None,
+        'stop_pull_request': first['number'] if first else None,
+        'total_seconds': None if reason else since(stop),
+        'no_total_reason': reason,
+        'timer_waits': [s['step'] for s in steps if s['waits_on'] == 'timer'],
+        'steps': rows,
+        'github': [{'event': name, 'at': iso(t), 'start_seconds': since(t)} for t, name in events],
+    }
+
+
+def table(r):
+    out = ['| Step | Start | Length | Waits on | Failure |', '| --- | --- | --- | --- | --- |']
+    for s in r['steps']:
+        failure = (s['failure'] or '-').replace('|', '\\|')
+        out.append(f'| {s["step"]} | {clock(s["start_seconds"])} | {clock(s["length_seconds"])} '
+                   f'| {s["waits_on"]} | {failure} |')
+    out += ['', '| GitHub | At |', '| --- | --- |']
+    out += [f'| {e["event"]} | {clock(e["start_seconds"])} |' for e in r['github']]
+    start = f'{r["clock_start"]} (the install line)' if r['clock_start'] else 'none'
+    stop = f'{r["stop"]} (pull request #{r["stop_pull_request"]} merged)' if r['stop'] else 'none'
+    total = clock(r['total_seconds']) if r['no_total_reason'] is None else f'none: {r["no_total_reason"]}'
+    out += ['', f'Clock: {start} to {stop}', f'Total: {total}',
+            f'Timer waits: {", ".join(r["timer_waits"]) or "none"}']
+    return '\n'.join(out) + '\n'
+
+
+def mark(run_dir, step, waits_on, failure, at):
+    if step not in STEPS:
+        raise Bad(f'unknown step {step!r}; one of: {", ".join(STEPS)}')
+    if waits_on not in WAITS:
+        raise Bad(f'unknown wait {waits_on!r}; one of: {", ".join(WAITS)}')
+    t = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0) if at is None else parse_time(at)
+    if t is None:
+        raise Bad(f'--at {at!r} is not a time with a zone')
+    line = {'at': iso(t), 'step': step, 'waits_on': waits_on}
+    if failure:
+        line['failure'] = failure
+    run_dir.mkdir(parents=True, exist_ok=True)
+    with open(run_dir / LOG, 'a', encoding='utf-8') as f:
+        f.write(json.dumps(line) + '\n')
+    print(f'{iso(t)} {step} (waits on {waits_on})')
+
+
+def main(argv):
+    p = argparse.ArgumentParser(prog='bench.py', description='The first-fleet bench.')
+    sub = p.add_subparsers(dest='command', required=True)
+    m = sub.add_parser('mark', help="append one timed line to the run's step log")
+    m.add_argument('run_dir', type=pathlib.Path)
+    m.add_argument('step', help='one of: ' + ', '.join(STEPS))
+    m.add_argument('waits_on', help='one of: ' + ', '.join(WAITS))
+    m.add_argument('--failure', help='what went wrong in this step')
+    m.add_argument('--at', help='the time, ISO 8601 with a zone (default: now)')
+    r = sub.add_parser('report', help='print the step table')
+    r.add_argument('run_dir', type=pathlib.Path)
+    r.add_argument('--json', action='store_true', help='print the same as JSON')
+    a = p.parse_args(argv)
+    try:
+        if a.command == 'mark':
+            mark(a.run_dir, a.step, a.waits_on, a.failure, a.at)
+        else:
+            result = report(a.run_dir)
+            sys.stdout.write(json.dumps(result, indent=2) + '\n' if a.json else table(result))
+    except Bad as e:
+        print(f'bench: {e}', file=sys.stderr)
+        return 2
+    return 0
+
+
 if __name__ == '__main__':
-    sys.exit('bench: not built yet')
+    sys.exit(main(sys.argv[1:]))
