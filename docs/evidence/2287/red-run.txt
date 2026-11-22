@@ -1,4 +1,4 @@
-# Red run for openwizdev/OpenWiz#2287 on main's code, new tests only (paths and the fake bearer token scrubbed)
+# Red run for openwizdev/OpenWiz#2287 on main's code, new tests only (paths, the fake bearer token and the synthetic ghp_ value scrubbed)
 $ python3 -I tools/github-app/test.py HardeningTests SetupCheckOwnerBoundary.test_the_proof_token_is_revoked_and_must_cover_selected_repositories_only SetupTests.test_the_setup_page_has_a_44_pixel_button_a_viewport_and_a_language
 FAIL: test_a_token_refused_after_minting_is_revoked_and_a_good_one_kept (__main__.HardeningTests.test_a_token_refused_after_minting_is_revoked_and_a_good_one_kept) [write permissions]
 AssertionError: Lists differ: [] != ['Bearer <the fake token>']
@@ -45,7 +45,7 @@ AssertionError: 'project_settings_missing' != 'project_unreadable'
 FAIL: test_credential_shaped_operator_effects_and_reasons_are_refused_before_saving (__main__.CredentialShapedText.test_credential_shaped_operator_effects_and_reasons_are_refused_before_saving) (place='operator', secret='ghp_')
 AssertionError: Refused not raised
 FAIL: test_credential_shaped_operator_effects_and_reasons_are_refused_before_saving (__main__.CredentialShapedText.test_credential_shaped_operator_effects_and_reasons_are_refused_before_saving)
-AssertionError: 'ghp_Synthetic0Synthetic0Synthetic0abcdef' unexpectedly found in '{"app": null, "checks": {"committed": 0, "started": 0}, "observations": {}, "operations": [], "project": {"answer_thread": "synthetic-answer-thread", "effort": "high", "harness": "claude-code", "model": "synthetic-model", "operator": "synthetic ghp_Synthetic0Synthetic0Synthetic0abcdef", "project": "prj_synthetic", "repository": "synthetic-owner/synthetic-consumer", "runtime": null, "service_issue": 7}, "revision": 0, "schema": "openwiz.setup-state.v1"}'
+AssertionError: 'ghp_<36 synthetic characters>' unexpectedly found in '{"app": null, "checks": {"committed": 0, "started": 0}, "observations": {}, "operations": [], "project": {"answer_thread": "synthetic-answer-thread", "effort": "high", "harness": "claude-code", "model": "synthetic-model", "operator": "synthetic ghp_<36 synthetic characters>", "project": "prj_synthetic", "repository": "synthetic-owner/synthetic-consumer", "runtime": null, "service_issue": 7}, "revision": 0, "schema": "openwiz.setup-state.v1"}'
 FAIL: test_a_relative_openwiz_override_prints_an_absolute_models_command (__main__.EveryCodeHasANextStep.test_a_relative_openwiz_override_prints_an_absolute_models_command)
 AssertionError: False is not true : CloudRoom does not offer that harness, model and effort now: list what it offers with `fixture-bin/openwiz models --json`, then prepare again with one of them: `python3 -I <checkout>/tools/install/setup/setup.py prepare --repository OWNER/NAME --project PRJ --operator LOGIN --service-issue N --answer-thread THR --harness HARNESS --model MODEL --effort EFFORT --state-dir '<tmp>/state with space'`.
 Ran 3 tests in 0.022s
