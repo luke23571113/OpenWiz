@@ -9,6 +9,6 @@ test_timer_waits_are_flagged (__main__.Report.test_timer_waits_are_flagged) ... 
 test_unmerged_run_reports_no_total_and_why (__main__.Report.test_unmerged_run_reports_no_total_and_why) ... ok
 
 ----------------------------------------------------------------------
-Ran 9 tests in 1.177s
+Ran 9 tests in 1.528s
 
 OK

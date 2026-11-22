@@ -17,6 +17,16 @@ FIELDS = {'spec.json': ('createdAt',), 'tickets.json': ('createdAt',),
 class Bad(Exception):
     pass
 
+
+def read_text(path):
+    if not path.is_file():
+        raise Bad(f'{path.name}: missing')
+    try:
+        return path.read_text(encoding='utf-8')
+    except UnicodeDecodeError:
+        raise Bad(f'{path.name}: not UTF-8') from None
+
+
 def no_repeats(pairs):
     keys = [k for k, _ in pairs]
     repeated = sorted({k for k in keys if keys.count(k) > 1})
@@ -59,10 +69,8 @@ def clock(seconds):
 
 
 def read_log(path):
-    if not path.is_file():
-        raise Bad(f'{path.name}: missing')
     steps = []
-    for n, raw in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+    for n, raw in enumerate(read_text(path).splitlines(), 1):
         if not raw.strip():
             continue
         where = f'{path.name} line {n}'
@@ -88,9 +96,7 @@ def read_log(path):
 
 
 def read_json(path):
-    if not path.is_file():
-        raise Bad(f'{path.name}: missing')
-    text = path.read_text(encoding='utf-8')
+    text = read_text(path)
     decoder = json.JSONDecoder(object_pairs_hook=no_repeats)
 
     def value_at(i):
@@ -212,7 +218,7 @@ def report(run_dir):
 def table(r):
     out = ['| Step | Start | Length | Waits on | Failure |', '| --- | --- | --- | --- | --- |']
     for s in r['steps']:
-        failure = (s['failure'] or '-').replace('|', '\\|')
+        failure = ' '.join((s['failure'] or '-').split()).replace('|', '\\|')
         out.append(f'| {s["step"]} | {clock(s["start_seconds"])} | {clock(s["length_seconds"])} '
                    f'| {s["waits_on"]} | {failure} |')
     out += ['', '| GitHub | At |', '| --- | --- |']
