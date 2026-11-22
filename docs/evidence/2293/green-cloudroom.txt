@@ -11,6 +11,7 @@ test_a_wake_goes_on_only_when_the_lock_file_reads_live (__main__.Driver.test_a_w
 test_a_wake_refuses_a_run_whose_lock_file_was_lost (__main__.Driver.test_a_wake_refuses_a_run_whose_lock_file_was_lost) ... ok
 test_every_drivers_readme_names_its_platforms (__main__.Driver.test_every_drivers_readme_names_its_platforms) ... ok
 test_kit_passes_all_five (__main__.Driver.test_kit_passes_all_five) ... ok
+test_no_provider_on_the_callers_path_is_ever_started (__main__.Driver.test_no_provider_on_the_callers_path_is_ever_started) ... ok
 test_reads_a_local_and_a_cloud_room_cli (__main__.Driver.test_reads_a_local_and_a_cloud_room_cli) ... ok
 test_room_cli_diagnostics_never_reach_the_drivers_answer (__main__.Driver.test_room_cli_diagnostics_never_reach_the_drivers_answer) ... ok
 test_start_refuses_a_run_cloudroom_did_not_make (__main__.Driver.test_start_refuses_a_run_cloudroom_did_not_make) ... ok
@@ -21,6 +22,6 @@ test_stop_that_cannot_save_ends_the_thread_and_leaves_nothing_to_wake (__main__.
 test_wake_is_the_fleet_routes_queued_delivery (__main__.Driver.test_wake_is_the_fleet_routes_queued_delivery) ... ok
 
 ----------------------------------------------------------------------
-Ran 21 tests in 18.808s
+Ran 22 tests in 19.876s
 
 OK

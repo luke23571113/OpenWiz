@@ -24,6 +24,7 @@ DRIVER = os.path.join(HERE, 'driver')
 KIT = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit')
 sys.path.insert(0, KIT)
 import kit  # noqa: E402
+import test_kit  # noqa: E402 -- the kit's folder goes on sys.path above, so this import must follow it
 
 _spec = importlib.util.spec_from_loader('cloudroom_driver', importlib.machinery.SourceFileLoader('cloudroom_driver',
                                                                                                 DRIVER))
@@ -44,8 +45,8 @@ class Driver(unittest.TestCase):
             json.dump({'record_authors': ['example-bot[bot]'], 'comments': []}, f)
         self.env = dict(os.environ, KIT_TRACKER=tracker, KIT_TEST=self.mark, GH_TOKEN=TOKEN, ROOM_PROJECT_ID=PROJECT, ROOM_THREAD_ID=PARENT,
                         FAKE_ROOM_LOG=self.log, OPENWIZ_CLOUDROOM_STATE=os.path.join(self.folder, 'state'),
-                        PATH=os.pathsep.join([os.path.join(HERE, 'fixtures'), os.path.join(KIT, 'fixtures'),
-                                              os.environ.get('PATH', '')]))
+                        PATH=test_kit.pinned_path(self.folder, os.path.join(HERE, 'fixtures'),
+                                                  os.path.join(KIT, 'fixtures')))
 
     def tearDown(self):
         for pid in filter(str.isdigit, os.listdir('/proc')):
@@ -61,7 +62,9 @@ class Driver(unittest.TestCase):
         self.setUp()
 
     def call(self, cmd, request, **env):
-        p = subprocess.run([sys.executable, DRIVER, cmd], input=json.dumps(request), env=dict(self.env, **env), capture_output=True,
+        env = dict(self.env, **env)
+        test_kit.no_real_harness(env['PATH'])
+        p = subprocess.run([sys.executable, DRIVER, cmd], input=json.dumps(request), env=env, capture_output=True,
                            text=True, timeout=60)
         out = json.loads(p.stdout)
         schema = kit.load_schema()
@@ -80,6 +83,7 @@ class Driver(unittest.TestCase):
                 self.kit(dict(self.env, FAKE_ROOM_HOST=host))
 
     def kit(self, env):
+        test_kit.no_real_harness(env['PATH'])
         p = subprocess.run([sys.executable, '-I', os.path.join(KIT, 'kit.py'), '--driver', DRIVER, '--repo',
                             'example/site', '--ticket', '7', '--harness', 'fake-harness', '--model', 'Synthetic 1',
                             '--tracker', self.env['KIT_TRACKER'], '--wait', '8'],
