@@ -5,6 +5,7 @@
   "total_seconds": 965,
   "no_total_reason": null,
   "timer_waits": [],
+  "after_stop": [],
   "steps": [
     {"step": "preflight", "at": "2026-11-22T10:00:00Z", "start_seconds": -60, "length_seconds": 60, "waits_on": "user", "failure": null},
     {"step": "install", "at": "2026-11-22T10:01:00Z", "start_seconds": 0, "length_seconds": 40, "waits_on": "agent", "failure": null},

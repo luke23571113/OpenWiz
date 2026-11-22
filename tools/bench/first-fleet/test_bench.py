@@ -10,6 +10,7 @@ import unittest
 HERE = pathlib.Path(__file__).resolve().parent
 BENCH = HERE / 'bench.py'
 FIXTURES = HERE / 'fixtures'
+TICKET = '{"createdAt":"2026-11-22T10:08:50Z","number":12}\n'
 
 
 def bench(*args):
@@ -46,6 +47,51 @@ class Report(unittest.TestCase):
         self.assertIsNone(j['stop'])
         self.assertEqual(j['no_total_reason'], 'no fleet pull request has merged')
         self.assertIsNone(j['steps'][-1]['length_seconds'])
+
+
+class Window(unittest.TestCase):
+    def setUp(self):
+        self.tmp = pathlib.Path(tempfile.mkdtemp())
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+
+    def test_a_pull_request_closing_another_repositorys_same_number_is_not_the_fleet(self):
+        j = json.loads(bench('report', FIXTURES / 'merged', '--json').stdout)
+        self.assertEqual((j['stop_pull_request'], j['total_seconds']), (21, 965))
+        self.assertNotIn('pull request #11 created', [e['event'] for e in j['github']])
+
+    def test_marks_after_the_first_merge_are_outside_the_window(self):
+        run_dir = self.tmp / 'run'
+        shutil.copytree(FIXTURES / 'merged', run_dir)
+        self.assertEqual(bench('mark', run_dir, 'review', 'timer', '--at', '2026-11-22T10:17:10Z').returncode, 0)
+        j = json.loads(bench('report', run_dir, '--json').stdout)
+        self.assertEqual([s['step'] for s in j['steps']][-2:], ['review', 'merge'])
+        self.assertEqual(j['steps'][-1]['length_seconds'], 35)
+        self.assertEqual(j['timer_waits'], [])
+        self.assertEqual(j['after_stop'], [{'step': 'review', 'at': '2026-11-22T10:17:10Z', 'waits_on': 'timer'}])
+        text = bench('report', run_dir).stdout
+        self.assertEqual(text, (FIXTURES / 'merged' / 'expected.txt').read_text()
+                         + 'Marked after the clock stopped: review\n')
+
+    def test_a_run_that_stopped_before_the_spec_reports_its_steps(self):
+        run_dir = self.tmp / 'run'
+        shutil.copytree(FIXTURES / 'early', run_dir)
+        expected = (run_dir / 'expected.txt').read_text()
+        plain = bench('report', run_dir)
+        self.assertNotEqual(plain.returncode, 0)
+        self.assertIn('spec.json: missing', plain.stderr)
+        r = bench('report', run_dir, '--no-github')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, expected)
+        j = json.loads(bench('report', run_dir, '--no-github', '--json').stdout)
+        self.assertEqual((j['total_seconds'], j['no_total_reason'], j['github']),
+                         (None, 'the run stopped before the spec was created', []))
+        self.assertEqual(j['steps'][-1]['failure'], 'gh lacked a scope')
+        shutil.copy(FIXTURES / 'merged' / 'spec.json', run_dir)
+        both = bench('report', run_dir, '--no-github')
+        self.assertNotEqual(both.returncode, 0)
+        self.assertIn('spec.json', both.stderr)
 
 
 class Broken(unittest.TestCase):
@@ -87,11 +133,12 @@ class Broken(unittest.TestCase):
         cases = (
             ('prs.json', prs.replace('"2026-11-22T10:18:00Z"', '"yesterday"'), 8),
             ('prs.json', prs.replace('"number": 11', '"number": "11"'), 2),
-            ('prs.json', prs.replace('[{"number": 13}]', '"13"'), 8),
+            ('prs.json', prs.replace('[{"number": 13, "url": "https://github.com/example/fleet/issues/13"}]', '"13"'), 8),
+            ('prs.json', prs.replace('"number": 21\n  }\n]', '"number": 21\n  },\n]'), 19),
             ('prs.json', prs.replace('"number": 22', '"number": 22, "title": "x"'), 8),
             ('prs.json', prs.replace('"number": 22', '"number": 22, "number": 23'), 8),
-            ('tickets.json', '{"createdAt":"2026-11-22T10:08:50Z","number":12}\n{"createdAt":\n', 3),
-            ('tickets.json', '{"createdAt":"2026-11-22T10:08:50Z","number":12}\n{"number":13}\n', 2),
+            ('tickets.json', TICKET + '{"createdAt":\n', 3),
+            ('tickets.json', TICKET + '{"number":13}\n', 2),
             ('spec.json', '{"createdAt":"2026-11-22T10:08:30Z"}\n', 1),
             ('spec.json', '[]\n', 1),
         )
