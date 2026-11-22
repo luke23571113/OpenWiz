@@ -262,6 +262,41 @@ class Schemas(unittest.TestCase):
         self.assertEqual(pin['app']['visibility'], 'public', 'the factory App stays public')
 
 
+HOSTS_PATH = HERE / 'fixtures/hosts.json'
+HOSTS = json.loads(HOSTS_PATH.read_text())
+NEW_THREAD = json.loads((ROOT / 'contracts/new-thread.v1.schema.json').read_text())
+
+
+class Hosts(unittest.TestCase):
+    def assert_cases(self, cases, schema, root):
+        for name, case in cases.items():
+            with self.subTest(case=name):
+                errors = check.schema_errors(case['document'], schema, root)
+                self.assertEqual(not errors, case['valid'], errors)
+
+    def test_setup_reports_follow_the_host_rules(self):
+        self.assert_cases(HOSTS['setup_reports'], SETUP_SCHEMA, SETUP_SCHEMA)
+
+    def test_prepared_projects_need_cloudroom_ids_only_for_the_cloud_host(self):
+        self.assertIn('prepared_project', SETUP_SCHEMA.get('$defs', {}))
+        self.assert_cases(HOSTS['prepared_projects'], {'$ref': '#/$defs/prepared_project'}, SETUP_SCHEMA)
+
+    def test_offered_lists_mark_only_the_local_source(self):
+        self.assert_cases(HOSTS['offered_lists'], {'$ref': '#/$defs/options'}, NEW_THREAD)
+
+    def test_the_local_source_offers_the_current_choices(self):
+        found = {(h['provider'], m['model'], e)
+                 for h in HOSTS['offered_lists']['local-claude-code-and-codex']['document']['harnesses']
+                 for m in h['models'] for e in m['efforts']}
+        self.assertEqual(found, {('claude-code', 'claude-opus-5-5', 'medium'), ('codex', 'gpt-6.2-sol', 'medium')})
+
+    def test_host_fixtures_hold_no_credential_and_only_synthetic_accounts(self):
+        text = HOSTS_PATH.read_text()
+        self.assertEqual(check.credential_shapes(text), [])
+        for owner in re.findall(r'"([A-Za-z0-9-]{1,39})/[A-Za-z0-9_.-]+"', text):
+            self.assertTrue(owner.startswith('synthetic'), owner)
+
+
 class CodeTable(unittest.TestCase):
     def test_the_contract_table_is_the_checker_vocabulary(self):
         self.assertEqual(table_codes(), check.CODES)
