@@ -518,6 +518,30 @@ class Driver(unittest.TestCase):
                 with open(path) as f:
                     self.assertRegex(f.read(), r'\*\*Platforms:\*\* (Linux|macOS)[^\n]*, Python 3\.[0-9]+ or later')
 
+    def test_a_start_whose_cleanup_archive_times_out_still_names_its_run(self):
+        run, calls = 'run-0123456789ab', []
+        old = driver.STATE, driver.saved, driver.spawn, driver.room
+        driver.STATE = self.env['OPENWIZ_CLOUDROOM_STATE']
+
+        def saved(name, state=None):
+            if state and state['thread']:
+                raise OSError('Synthetic full disk')
+            return old[1](name, state)
+
+        def room(*args):
+            calls.append(args)
+            raise driver.Unknown('room-cli thread archive did not answer within 100 seconds; its outcome is unknown',
+                                 'read `room-cli thread list` before you do anything again, so nothing happens twice')
+        driver.saved, driver.spawn, driver.room = saved, lambda *a: 'thr_syn_0001', room
+        try:
+            with self.assertRaises(driver.Unknown) as e:
+                driver.start(START, run, kit.holds_credential)
+        finally:
+            driver.STATE, driver.saved, driver.spawn, driver.room = old
+        self.assertEqual(calls, [('thread', 'archive', 'thr_syn_0001')])
+        self.assertIn(run, e.exception.args[0])
+        self.assertIn('stop %s' % run, e.exception.args[1])
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
