@@ -6,6 +6,6 @@ Ran 1 test in 0.010s
 
 OK
 $ python3 -I tools/github-app/test_agent_token.py
-Ran 35 tests in 14.620s
+Ran 35 tests in 15.305s
 
 OK

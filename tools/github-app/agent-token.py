@@ -578,7 +578,7 @@ def bound_gh(real, refuse, env):
     try:
         fd = os.open(real, os.O_RDONLY | os.O_NONBLOCK | os.O_NOCTTY)
     except OSError:
-        return "the gh this run chose was changed", None
+        return "the gh this run chose cannot be opened to check", None
     try:
         same = gh_identity(fd) == bound.get("identity")
     except OSError:
