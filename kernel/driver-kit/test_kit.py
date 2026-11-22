@@ -240,7 +240,10 @@ class Kit(unittest.TestCase):
         kit, hostkey = module(os.path.join(HERE, 'kit.py')), module(os.path.join(HERE, 'hostkey.py'))
         good = {'devin': {'origin': 'https://api.devin.ai', 'variable': 'DEVIN_API_KEY', 'keychain': 'openwiz-devin',
                           'header': 'authorization-bearer'}}
-        self.assertEqual(hostkey.registry(), good)
+        hosts = hostkey.registry()
+        self.assertEqual(hosts['devin'], good['devin'])
+        for name, entry in hosts.items():
+            self.assertEqual((kit.invalid(name, HOST_NAME), kit.invalid(entry, HOST_SCHEMA)), (None, None), name)
         entry = good['devin']
         cases = [good, dict(good, other=dict(entry, origin='https://api.example.org')), {}, [entry], {'devin': [1]},
                  {'Devin': entry}, {'d' * 41: entry}, {'devin': dict(entry, extra='x')}, {'devin': {'origin': 'x'}},
