@@ -9,3 +9,17 @@ $ python3 -I tools/github-app/test_agent_token.py
 Ran 35 tests in 15.305s
 
 OK
+
+R1 green run with synthetic values only.
+
+$ python3 -I tools/github-app/test_agent_token.py -k intermediate_symlink_targets
+.
+----------------------------------------------------------------------
+Ran 1 test in 0.010s
+
+OK
+$ python3 -I tools/github-app/test_agent_token.py
+----------------------------------------------------------------------
+Ran 36 tests in 14.619s
+
+OK

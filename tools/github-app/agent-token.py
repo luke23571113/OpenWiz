@@ -573,10 +573,11 @@ def bound_gh(real, refuse, env):
     bound = private.read(gh_binding(name))
     if not (isinstance(bound, dict) and bound.get("gh") == real and bound.get("refuse") == refuse):
         return "not the gh this run chose", None
-    if not sys.platform.startswith("linux") and not owner_only_folders(real):
+    path = real if sys.platform.startswith("linux") else owner_only_gh_path(real)
+    if path is None:
         return "this system cannot run the file it checked, and a folder above gh is not owner-only", None
     try:
-        fd = os.open(real, os.O_RDONLY | os.O_NONBLOCK | os.O_NOCTTY)
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOCTTY)
     except OSError:
         return "the gh this run chose cannot be opened to check", None
     try:
@@ -586,28 +587,53 @@ def bound_gh(real, refuse, env):
     if not same:
         os.close(fd)
         return "the gh this run chose was changed", None
-    return None, fd
+    return None, (fd, path)
 
 
-def owner_only_folders(path):
-    me = os.getuid()
-    for target in (os.path.abspath(path), os.path.realpath(path)):
-        folder = os.path.dirname(target)
-        while True:
-            try:
-                info = os.stat(folder)
-            except OSError:
-                return False
-            if info.st_uid not in (0, me) or info.st_mode & 0o022:
-                return False
-            if folder == "/":
-                break
-            folder = os.path.dirname(folder)
-    return True
+def owner_only_directory(info, uid):
+    return stat.S_ISDIR(info.st_mode) and info.st_uid in (0, uid) and not info.st_mode & 0o022
 
 
-def exec_gh(fd, args, env):
-    path = args[0]
+def owner_only_gh_path(path):
+    if not path.startswith("/"):
+        return None
+    uid = os.getuid()
+    folder = "/"
+    remaining = path[1:]
+    symlinks = 0
+    try:
+        if not owner_only_directory(os.lstat(folder), uid):
+            return None
+        while remaining:
+            name, slash, remaining = remaining.partition("/")
+            if name in ("", "."):
+                continue
+            if name == "..":
+                folder = os.path.dirname(folder)
+                continue
+            entry = os.path.join(folder, name)
+            info = os.lstat(entry)
+            if stat.S_ISLNK(info.st_mode):
+                symlinks += 1
+                if symlinks > 40:
+                    return None
+                target = os.readlink(entry)
+                if target.startswith("/"):
+                    folder = "/"
+                    target = target.lstrip("/")
+                remaining = target + slash + remaining
+            elif not slash:
+                return entry
+            elif owner_only_directory(info, uid):
+                folder = entry
+            else:
+                return None
+    except OSError:
+        return None
+    return None
+
+
+def exec_gh(fd, path, args, env):
     if sys.platform.startswith("linux"):
         os.set_inheritable(fd, True)
         path = f"/proc/self/fd/{fd}"
@@ -618,17 +644,18 @@ def gh(args, env):
     if len(args) < 2:
         raise Refused(f"usage: {USAGE}")
     real, refuse, args = args[0], args[1], [args[0], *args[2:]]
-    reason, fd = bound_gh(real, refuse, env)
+    reason, checked = bound_gh(real, refuse, env)
     if reason:
         sys.stderr.write(GH_WITHHELD.format(reason))
         return 128
+    fd, path = checked
     try:
-        return gh_checked(fd, refuse, args, env)
+        return gh_checked(fd, path, refuse, args, env)
     finally:
         os.close(fd)
 
 
-def gh_checked(fd, refuse, args, env):
+def gh_checked(fd, path, refuse, args, env):
     if len(args) < 2 or args[1] not in GH_ALLOWED:
         sys.stderr.write(GH_WITHHELD.format("that gh command is not on the App's list"))
         return 128
@@ -644,7 +671,7 @@ def gh_checked(fd, refuse, args, env):
     env.update({"GH_TOKEN": token, "GH_PAGER": "cat", "GH_EDITOR": shlex.quote(refuse),
                 "GH_BROWSER": shlex.quote(refuse)})
     try:
-        exec_gh(fd, args, env)
+        exec_gh(fd, path, args, env)
     except OSError:
         raise Refused("cannot run gh")
 
