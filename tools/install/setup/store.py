@@ -59,7 +59,6 @@ def text(value):
 
 
 def plain_text(value):
-    # B-S1 (#621): an operator name, effect or reason never holds a token or key.
     return text(value) and SECRET_TEXT.search(value) is None
 
 

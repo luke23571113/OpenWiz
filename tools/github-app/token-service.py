@@ -196,7 +196,6 @@ def serve(api, log, data, setting):
     start = os.lseek(log, 0, os.SEEK_END)
     record(log, line)
     if message["kind"] == "answer" and not fresh(message["expires_at"]):
-        # #1925: a slow audit sync can spend the token's margin; the line is rewritten to match the refusal.
         os.ftruncate(log, start)
         record(log, {key: value for key, value in line.items() if key not in ("permissions", "expires_at")}
                     | {"outcome": "expiry"})

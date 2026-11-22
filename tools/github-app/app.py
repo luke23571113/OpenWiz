@@ -192,7 +192,6 @@ def absent(directory, name):
 
 
 def save_file(directory, name, content):
-    # B-G4 (#609): a crash mid-write leaves only a temporary; linking never replaces a file.
     temporary = f".{name}.{secrets.token_hex(8)}.tmp"
     fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
                  0o600, dir_fd=directory)
@@ -258,7 +257,6 @@ def openssl(args, data, **kwargs):
 
 
 def revoke(base, token):
-    # B-G2 (#607): a minted token that is refused is revoked, never left valid for its hour.
     if not isinstance(token, str) or re.fullmatch(r"[A-Za-z0-9._~+/-]{1,16384}=*", token) is None:
         return
     request = urllib.request.Request(api_base(base) + "/installation/token", headers={

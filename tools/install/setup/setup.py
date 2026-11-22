@@ -536,7 +536,7 @@ def check_app(state_path, project, recorded, base):
     code = proof_code(token, project['repository'])
     if isinstance(token.get('token'), str) and TOKEN.fullmatch(token['token']):
         try:
-            request(base, 'DELETE', '/installation/token', token['token'])  # B-G2 (#607): never left valid
+            request(base, 'DELETE', '/installation/token', token['token'])
         except Exception:
             pass
     del token
