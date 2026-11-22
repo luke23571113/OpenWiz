@@ -19,6 +19,11 @@ _spec = importlib.util.spec_from_loader('records_kit', importlib.machinery.Sourc
     'records_kit', os.path.join(HERE, '..', 'records-kit', 'check.py')))
 records_kit = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(records_kit)
+_spec = importlib.util.spec_from_loader('hostkey', importlib.machinery.SourceFileLoader(
+    'hostkey', os.path.join(HERE, 'hostkey.py')))
+hostkey = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(hostkey)
+KEYCHAIN_TOOLS = re.compile(rb'(?<![A-Za-z0-9_-])(security|secret-tool|find-generic-password)(?![A-Za-z0-9_-])')
 
 SHAPES = re.compile(r'\b(?:[a-z_]*token|[a-z_]*key|secret|password|passwd|pwd|sig|signature|auth|credentials?)\s*='
                     r'|\b(?:password|passwd|secret|token)\s*:\s*\S|\bbearer\s+\S'
@@ -241,6 +246,10 @@ class Ticket:
 class Kit:
     def __init__(self, args, ticket):
         self.args, self.ticket, self.schema = args, ticket, load_schema()
+        try:
+            self.hosts = hostkey.registry()
+        except hostkey.Refused as e:
+            raise Unusable(e.args[0])
         self.mark = 'OPENWIZ_KIT_RUN=' + secrets.token_hex(8)
         self.env = dict(os.environ, OPENWIZ_KIT_RUN=self.mark.partition('=')[2])
         self.leaks = []
@@ -252,12 +261,16 @@ class Kit:
         if what not in self.leaks:
             self.leaks.append(what)
 
-    def call(self, cmd, request=None):
+    def call(self, cmd, request=None, env=None, canary=None):
         try:
             p = subprocess.run([self.args.driver, cmd], input='' if request is None else json.dumps(request),
-                               env=self.env, capture_output=True, text=True, timeout=120)
+                               env=env or self.env, capture_output=True, text=True, timeout=120)
         except (OSError, subprocess.TimeoutExpired) as e:
             return 'bad', '%s did not finish: %s' % (cmd, e)
+        if canary and canary[1] in p.stdout + p.stderr:
+            # SECURITY: the kit's key canary; nothing of this output is shown.
+            self.leak('the driver printed the %s key' % canary[0])
+            return 'bad', 'its %s output held the key' % cmd
         if holds_credential(p.stdout + p.stderr):
             self.leak('the driver printed a credential')
         held = 'bad', 'its %s output held a credential, which the kit does not show' % cmd
@@ -347,7 +360,28 @@ class Kit:
             return self.blind
         return 'ps -E never showed a process of this run, so the kit cannot tell which processes the driver started'
 
-    def scan(self):
+    def commandlines(self):
+        if not PROC:
+            return list(self.ps('-o', 'command=').values())
+        found = []
+        for pid in filter(str.isdigit, os.listdir('/proc')):
+            try:
+                with open('/proc/%s/cmdline' % pid, 'rb') as f:
+                    found.append(f.read().decode('utf-8', 'replace'))
+            except OSError:
+                continue
+        return found
+
+    def scan(self, canary=None):
+        if canary:
+            name, value, variable = canary
+            if any(value in line for line in self.commandlines()):
+                self.leak('a process holds the %s key on its command line' % name)
+            for _, env in self.started():
+                for entry in env:
+                    if value in entry and entry.partition('=')[0] != variable:
+                        self.leak('a process the driver started holds the %s key in %s, not in %s'
+                                  % (name, entry.partition('=')[0], variable))
         for cmd, env in self.started():
             if any(holds_credential(a) for a in cmd):
                 self.leak('a process the driver started holds a credential on its command line')
@@ -356,10 +390,10 @@ class Kit:
                 if holds_credential(value) and os.environ.get(name) != value:
                     self.leak('a process the driver started holds a credential in %s, which the kit never gave it' % name)
 
-    def wait(self, ready):
+    def wait(self, ready, canary=None):
         end = time.monotonic() + self.args.wait
         while True:
-            self.scan()
+            self.scan(canary)
             found = ready()
             if found or time.monotonic() > end:
                 return found
@@ -441,12 +475,79 @@ class Kit:
             self.leak('start took a token field instead of refusing it')
         elif kind == 'bad':
             self.leak('its answer to a token field: ' + v)
+        hosts = self.key_hosts()
+        for name in hosts:
+            self.key_check(name, self.hosts[name])
         self.scan()
         if self.unverified():
             self.leak(self.unverified())
         if self.leaks:
             return 'fail', '; '.join(self.leaks)
-        return 'pass', 'no login or token passed through the driver'
+        return 'pass', 'no login or token passed through the driver' + ''.join(
+            ", and the %s key reached only its host, in the helper's header" % name for name in hosts)
+
+    def key_hosts(self):
+        """The registered hosts the driver's README names, as whole words in any case (driver v1 N4)."""
+        try:
+            with open(os.path.join(os.path.dirname(os.path.abspath(self.args.driver)), 'README.md'), 'rb') as f:
+                text = f.read().decode('utf-8')
+        except FileNotFoundError:
+            return []
+        except (OSError, UnicodeDecodeError) as e:
+            raise Unusable("cannot read the driver's README.md: %s" % type(e).__name__)
+        return [n for n in sorted(self.hosts)
+                if re.search(r'(?<![A-Za-z0-9_-])%s(?![A-Za-z0-9_-])' % re.escape(n), text, re.I)]
+
+    def driver_files(self):
+        """Every file of the driver's folder but its README.md, its evidence/ folder and test_* files."""
+        top = os.path.dirname(os.path.abspath(self.args.driver))
+        for folder, subs, names in os.walk(top):
+            if folder == top:
+                subs[:] = [s for s in subs if s != 'evidence']
+            subs.sort()
+            for n in sorted(names):
+                if not (folder == top and n == 'README.md') and not n.startswith('test_'):
+                    yield os.path.join(folder, n)
+
+    def key_check(self, name, entry):
+        variable = entry['variable']
+        for path in self.driver_files():
+            try:
+                with open(path, 'rb') as f:
+                    data = f.read()
+            except OSError as e:
+                raise Unusable('cannot read the driver file %s: %s' % (path, type(e).__name__))
+            rel = os.path.relpath(path, os.path.dirname(os.path.abspath(self.args.driver)))
+            if variable.encode() in data:
+                self.leak("the driver's file %s names %s, the key's variable" % (rel, variable))
+            tool = KEYCHAIN_TOOLS.search(data)
+            if tool:
+                self.leak("the driver's file %s calls the keychain tool %s" % (rel, tool.group(1).decode()))
+            if hostkey.OVERRIDE.encode() in data:
+                self.leak("the driver's file %s names %s, the kit's test override" % (rel, hostkey.OVERRIDE))
+        canary = (name, 'kit-canary-' + secrets.token_hex(16), variable)
+        host = FakeHost()
+        env = dict(self.env, **{variable: canary[1], hostkey.OVERRIDE: host.origin})
+        a = self.args
+        try:
+            kind, v = self.call('start', {'repository': a.repo, 'ticket': a.ticket, 'skill': a.skill,
+                                          'harness': a.harness, 'model': a.model}, env, canary)
+            run = v['run'] if kind == 'ok' else 'kit-key-run'
+            self.scan(canary)
+            self.call('wake', {'run': run}, env, canary)
+            self.scan(canary)
+            self.call('stop', {'run': run}, env, canary)
+            self.wait(lambda: not any(True for _ in self.started()), canary)
+        finally:
+            host.close()
+        if not host.requests:
+            self.leak("the %s key never reached the kit's fake host" % name)
+        for line, headers, body in host.requests:
+            rest = line + ''.join('%s: %s' % (k, v) for k, v in headers if k.lower() != 'authorization')
+            if canary[1] in rest + body.decode('utf-8', 'replace'):
+                self.leak("the %s key reached the kit's fake host outside the helper's Authorization header" % name)
+            if [v for k, v in headers if k.lower() == 'authorization'] != ['Bearer ' + canary[1]]:
+                self.leak("a request reached the kit's fake host without the %s key in the helper's header" % name)
 
     def checks(self):
         yield 'version', self.version()
