@@ -336,12 +336,7 @@
       ]
     },
     "host": {
-      "type": "string",
-      "maxLength": 40,
-      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
-      "not": {
-        "const": "cloudroom"
-      }
+      "$ref": "#/$defs/host_name"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -608,6 +603,107 @@
     }
   ],
   "$defs": {
+    "host_name": {
+      "type": "string",
+      "maxLength": 40,
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "not": {
+        "const": "cloudroom"
+      }
+    },
+    "models_host_selection": {
+      "description": "The models host selector and the source marker on the offered-list response, projected together. host is the explicit flag and saved_host is the saved project host. An omitted saved host includes a legacy cloud project.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "host": {
+          "$ref": "#/$defs/host_name"
+        },
+        "saved_host": {
+          "$ref": "#/$defs/host_name"
+        },
+        "source": {
+          "const": "local"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "anyOf": [
+              {
+                "required": [
+                  "host"
+                ],
+                "properties": {
+                  "host": {
+                    "not": {
+                      "const": "cloud"
+                    }
+                  }
+                }
+              },
+              {
+                "required": [
+                  "saved_host"
+                ],
+                "not": {
+                  "required": [
+                    "host"
+                  ]
+                },
+                "properties": {
+                  "saved_host": {
+                    "not": {
+                      "const": "cloud"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "then": {
+            "required": [
+              "source"
+            ]
+          }
+        },
+        {
+          "if": {
+            "anyOf": [
+              {
+                "required": [
+                  "host"
+                ],
+                "properties": {
+                  "host": {
+                    "const": "cloud"
+                  }
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "host"
+                  ]
+                },
+                "properties": {
+                  "saved_host": {
+                    "const": "cloud"
+                  }
+                }
+              }
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "source"
+              ]
+            }
+          }
+        }
+      ]
+    },
     "prepared_project": {
       "description": "The project settings prepare saves: a cloud project's nine keys exactly as today, or another host's ten, naming the host and holding no CloudRoom id.",
       "oneOf": [

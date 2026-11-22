@@ -175,6 +175,27 @@ A `next` line for another host never names a CloudRoom step.
 
 ### The local offered list
 
+The read is `openwiz models --json --host <cloud|local|boat|driver name>`.
+An explicit `--host` wins, including before `prepare` saves a project.
+Without the flag, use the host from the saved project if it has one, else
+`cloud`. A host other than `cloud` selects the local source and makes no
+CloudRoom call, even when CloudRoom is available. With `cloud`, the read
+uses the existing CloudRoom catalogue.
+
+`openwiz models set` (including `follows-builder`) and `openwiz models show`
+accept the same `--host NAME` flag and use the same host precedence.
+`show` continues to read the configured roles from `fleet.md` without a
+catalogue read or a write. `set ... follows-builder` keeps its existing
+read and write behaviour.
+
+First-fleet (NC5) passes the user's chosen host explicitly when reading
+models or calling `set` or `show` before `prepare`; setup (NC2) passes the
+saved host when asking the models CLI for choices. The models CLI (NC3)
+applies the selector in each form. The schema's `$defs/models_host_selection`
+pairs the explicit and saved host inputs with the response's source marker.
+It describes the selection rule, and the response itself keeps the options
+shape below.
+
 `openwiz models --json` (`openwiz.cloud-options.v1`, the
 [`options`](new-thread.v1.schema.json) shape) can be read without CloudRoom:
 
@@ -190,4 +211,3 @@ A `next` line for another host never names a CloudRoom step.
   `harnesses_not_reported`, and `harnesses` is empty.
 - **`label`** keeps its one value, so a reader tells the two lists apart by
   `source`, never by the label.
-- The read stays CloudRoom's when the host is `cloud`.
