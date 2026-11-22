@@ -240,7 +240,7 @@ class Kit:
         self.stubs = None
         if holds_template_command(args.driver):
             self.stubs = stub_agent_clis(tempfile.mkdtemp(prefix='openwiz-kit-stubs-'))
-            self.env['PATH'] = self.stubs + os.pathsep + self.env.get('PATH', '')
+            self.env['PATH'] = self.stubs + os.pathsep + self.env.get('PATH', os.defpath)
 
     def leak(self, what):
         if what not in self.leaks:

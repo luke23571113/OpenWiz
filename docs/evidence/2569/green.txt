@@ -16,7 +16,7 @@ test_without_proc_as_on_macos_the_template_passes_all_five (__main__.Kit.test_wi
 test_without_proc_or_the_runs_visible_environment_stop_and_token_fail_unverified (__main__.Kit.test_without_proc_or_the_runs_visible_environment_stop_and_token_fail_unverified) ... ok
 
 ----------------------------------------------------------------------
-Ran 15 tests in 59.152s
+Ran 15 tests in 59.108s
 
 OK
 exit 0
@@ -43,7 +43,7 @@ test_without_proc_as_on_macos_stop_ends_each_grandchild (__main__.Template.test_
 test_without_the_live_opt_in_start_and_wake_start_no_harness (__main__.Template.test_without_the_live_opt_in_start_and_wake_start_no_harness) ... ok
 
 ----------------------------------------------------------------------
-Ran 14 tests in 13.539s
+Ran 14 tests in 13.551s
 
 OK
 exit 0
@@ -73,7 +73,7 @@ test_the_shared_platform_check_takes_any_platform_and_language (__main__.Driver.
 test_wake_is_the_fleet_routes_queued_delivery (__main__.Driver.test_wake_is_the_fleet_routes_queued_delivery) ... ok
 
 ----------------------------------------------------------------------
-Ran 23 tests in 22.884s
+Ran 23 tests in 22.862s
 
 OK
 exit 0
@@ -96,7 +96,7 @@ test_without_proc_as_on_macos_stop_ends_a_worker_handed_off_as_the_turn_exits (_
 test_without_proc_as_on_macos_the_kit_passes_and_stop_ends_each_grandchild (__main__.Local.test_without_proc_as_on_macos_the_kit_passes_and_stop_ends_each_grandchild) ... ok
 
 ----------------------------------------------------------------------
-Ran 16 tests in 45.211s
+Ran 16 tests in 45.400s
 
 OK
 exit 0
@@ -109,7 +109,7 @@ ResourceWarning: Enable tracemalloc to get the object allocation traceback
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 .............
 ----------------------------------------------------------------------
-Ran 31 tests in 61.405s
+Ran 31 tests in 61.748s
 
 OK
 exit 0
@@ -121,7 +121,7 @@ test_reader_refuses_any_other_shape (__main__.Kit.test_reader_refuses_any_other_
 test_valid_trackers_pass (__main__.Kit.test_valid_trackers_pass) ... ok
 
 ----------------------------------------------------------------------
-Ran 5 tests in 1.014s
+Ran 5 tests in 1.048s
 
 OK
 exit 0
