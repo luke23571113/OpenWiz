@@ -16,6 +16,7 @@ CATEGORIES = [
     ('ci', r'^\.github/|^ci/'), ('tools', r'^tools/|^scripts/'), ('contracts', r'^contracts/'),
     ('skills', r'^skills/'), ('docs', r'\.md$|^docs/'), ('lockfiles', r'(\.lock|lock\.json|lock\.yaml)$')]
 ORDER = [name for name, _ in CATEGORIES] + ['product']
+LOCKFILE = dict(CATEGORIES)['lockfiles']
 CEILING_FILE = 'line-budget.json'
 POINTER = r'https://github\.com/jparker2006/ClosedWiz/(?:issues|pull)/[1-9][0-9]*#issuecomment-[1-9][0-9]*'
 EXCEPTION, CEILING = 'Line budget exception:', 'Line budget ceiling:'
@@ -47,7 +48,7 @@ def count(repo, rev):
         if mode in (b'100644', b'100755'):
             blobs.append((path.decode('utf-8', 'surrogateescape'), sha))
     out = git(repo, 'cat-file', '--batch', data=b''.join(sha + b'\n' for _, sha in blobs))
-    lines, ceiling, at = dict.fromkeys(ORDER, 0), None, 0
+    lines, ceiling, at = dict.fromkeys(ORDER + ['locked'], 0), None, 0
     for path, _ in blobs:
         eol = out.index(b'\n', at)
         size = int(out[at:eol].split()[2])
@@ -55,7 +56,9 @@ def count(repo, rev):
         if path == CEILING_FILE:
             ceiling = body
         if b'\0' not in body:
-            lines[category(path)] += body.count(b'\n') + (not body.endswith(b'\n') if body else 0)
+            n = body.count(b'\n') + (not body.endswith(b'\n') if body else 0)
+            lines[category(path)] += n
+            lines['locked'] += n if re.search(LOCKFILE, path) else 0
     return lines, ceiling
 
 
@@ -77,9 +80,8 @@ def read_ceiling(raw):
 
 
 def pointer_lines(description, prefix):
-    lead = prefix.lower().rstrip(':')
-    found = [s for s in (line.strip() for line in description.splitlines()) if s.lower().startswith(lead)]
-    bad = [s for s in found if not re.fullmatch(re.escape(prefix) + ' ' + POINTER, s)]
+    found = [line for line in description.splitlines() if line.startswith(prefix)]
+    bad = [line for line in found if not re.fullmatch(re.escape(prefix) + ' ' + POINTER, line)]
     return len(found) > len(bad), bad
 
 
@@ -106,9 +108,9 @@ def report(base, merge, ceiling, seconds):
     print(f'line-budget: counted in {seconds:.2f}s')
     print(f'  {"category":<15} {"base":>8} {"merge":>8} {"change":>7}')
     for name in ORDER + ['total']:
-        b, m = (sum(c.values()) if name == 'total' else c[name] for c in (base, merge))
+        b, m = (sum(c[n] for n in ORDER) if name == 'total' else c[name] for c in (base, merge))
         print(f'  {name:<15} {b:>8} {m:>8} {m - b:>+7}')
-    b, m = (sum(c.values()) - c['lockfiles'] for c in (base, merge))
+    b, m = (sum(c[n] for n in ORDER) - c['locked'] for c in (base, merge))
     print(f'line-budget: total, lockfiles excluded: {m} of {ceiling}; base {b}, change {m - b:+}')
     return m
 
