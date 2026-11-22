@@ -36,16 +36,19 @@ class Driver(unittest.TestCase):
             json.dump({'record_authors': ['example-bot[bot]'], 'comments': []}, f)
         self.fault({})
         open(self.log, 'w').close()
+        self.key = 'syn-test-key-' + secrets.token_hex(12)
+        key_file = os.path.join(self.folder, 'key')
+        with open(key_file, 'w') as f:
+            f.write(self.key)
         self.devin = subprocess.Popen([sys.executable, '-I', os.path.join(HERE, 'fixtures', 'fake-devin'),
-                                       self.tracker, self.log, self.faults], stdout=subprocess.PIPE, text=True)
+                                       self.tracker, self.log, self.faults, key_file], stdout=subprocess.PIPE,
+                                      text=True)
         self.addCleanup(self.devin.stdout.close)
         self.addCleanup(self.devin.wait)
         self.addCleanup(self.devin.kill)
-        self.key = 'syn-test-key-' + secrets.token_hex(12)
         self.env = dict(os.environ, DEVIN_ORG_ID=ORG, KIT_TRACKER=self.tracker,
                         OPENWIZ_DEVIN_STATE=os.path.join(self.folder, 'state'),
-                        OPENWIZ_HOSTKEY_TEST_ORIGIN=self.devin.stdout.readline().strip(),
-                        OPENWIZ_HOSTKEY_TEST_KEY=self.key)
+                        OPENWIZ_HOSTKEY_TEST_ORIGIN=self.devin.stdout.readline().strip())
 
     def fault(self, faults):
         with open(self.faults, 'w') as f:

@@ -1,6 +1,7 @@
 # Red (openwizdev/openwiz#1996): the Devin driver's tests after merging KY1's fix round at 2292b177, before the fake Devin
 # serves the helper's test key at GET /.openwiz/hostkey-test-key. Agent CLIs stubbed first on PATH; synthetic; no host reached.
 # Run: python3 -I adapters/devin/test_driver.py
+# The key's variable is shown as <the key's variable>: the kit fails any driver file that names it.
 
 E.FFF
 ======================================================================
@@ -31,7 +32,7 @@ First differing element 0:
 +   'pass wake: the run edited builder status note 1',
 +   'pass stop: the run ended, and a wake after it is refused',
 -   "fail start: the key helper refused: the kit's fake host gave no test key; "
--   'under OPENWIZ_HOSTKEY_TEST_ORIGIN the helper never reads DEVIN_API_KEY or '
+-   'under OPENWIZ_HOSTKEY_TEST_ORIGIN the helper never reads <the key's variable> or '
 -   'the keychain entry openwiz-devin',
 -   'fail wake: not run: start failed',
 -   'fail stop: not run: start failed',
@@ -53,7 +54,7 @@ FAIL: test_start_wake_and_stop_are_devins_documented_calls (__main__.Driver.test
 Traceback (most recent call last):
   File "<repo>/adapters/devin/test_driver.py", line 82, in test_start_wake_and_stop_are_devins_documented_calls
     self.assertEqual(code, 0, out)
-AssertionError: 1 != 0 : {'error': "the key helper refused: the kit's fake host gave no test key; under OPENWIZ_HOSTKEY_TEST_ORIGIN the helper never reads DEVIN_API_KEY or the keychain entry openwiz-devin", 'next': "unset OPENWIZ_HOSTKEY_TEST_ORIGIN: it is only for the kit's tests"}
+AssertionError: 1 != 0 : {'error': "the key helper refused: the kit's fake host gave no test key; under OPENWIZ_HOSTKEY_TEST_ORIGIN the helper never reads <the key's variable> or the keychain entry openwiz-devin", 'next': "unset OPENWIZ_HOSTKEY_TEST_ORIGIN: it is only for the kit's tests"}
 
 ----------------------------------------------------------------------
 Ran 5 tests in 1.588s
