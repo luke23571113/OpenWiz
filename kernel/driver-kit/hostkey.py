@@ -79,6 +79,8 @@ def path_fault(path):
         return 'path has a percent sign that is not a %XX escape'
     if '%' in decoded:
         return 'path is percent-encoded twice'
+    if any(ord(c) > 0x7e for c in decoded):
+        return 'path has an escape outside printable ASCII'
     return None
 
 
@@ -249,7 +251,7 @@ def main():
     except BaseException as e:
         out, code = {'error': 'the key helper failed: ' + type(e).__name__, 'next': 'report it to OpenWiz'}, 1
     text = json.dumps(out)
-    if any(k in text for k in _key):
+    if any(k in s for k in _key for s in [text] + list(_strings(out))):
         text, code = json.dumps({'error': 'the answer held the key, so the helper did not print it',
                                  'next': 'report it to OpenWiz'}), 1
     sys.stdout.write(text + '\n')
