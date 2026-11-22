@@ -182,16 +182,12 @@ back:
   output is read in that window. Later output is drained and discarded, and
   never written to a file. The app keeps running.
 - When the sign-in gives no usable link, times out or fails to open, the
-  tool shows the program's own words on standard error. On a timeout, it shows
-  only the complete lines printed before it. Before any line is shown,
-  terminal sequences and control characters are removed. Links, email
-  addresses, everything after a credential word (token, password, key, code,
-  session, cookie, authorization, bearer and the like) and opaque runs are
-  replaced. JSON output shows only its `message`, `error`, `detail` and
-  `reason` strings. JSON fragments are dropped. A credential word whose value is
-  not on its own line drops the lines after it, up to the next blank line. Other
-  lines that are still unsafe are dropped. At most 20 lines of 300
-  characters are shown. These words are never on standard output or saved.
+  tool never prints the program's output. Standard error gets the exit status
+  (or the timeout), then a fixed sentence for each known error phrase found
+  exactly in the output (FUSE, a missing desktop session or system library,
+  the sandbox helper, no browser, and the network errors `ENOTFOUND`,
+  `ECONNREFUSED` and `ETIMEDOUT`), then the command the user can run to see
+  the full output themselves. That command never holds the sign-in link.
 
 OpenWiz never asks for, receives, stores or logs a CloudRoom password or token.
 The tool has no option for one and reads nothing from standard input.
@@ -246,9 +242,9 @@ link. It is the last line of the CloudRoom step, in the caption style
 
 `python3 -I <build>/runtime/cloudroom/cloudroom.py status | install [--yes | --no] [--operation ID] | sign-in [--state-dir DIR]`.
 It prints one JSON object: `{"schema": "openwiz.cloudroom-setup.v1", "code": <code>, "operation": <operation or null>, "opened": null | "sign_in" | "app" | "download_page"}`.
-`sign-in` may also write diagnostic lines to standard error, each
-`openwiz-cloudroom: <program> said: <sanitized line>` (or a fixed notice for a
-timeout or a silent failure). Standard output stays exactly that four-key
+`sign-in` may also write fixed diagnostic lines to standard error: the exit
+status, `openwiz-cloudroom: <program> reported: <fixed sentence>` for each known
+error, and `openwiz-cloudroom: to see its full output, run: <command>`. Standard output stays exactly that four-key
 object. A refusal exits 5 with `openwiz-cloudroom: refused: <reason>` on standard
 error and nothing on standard output. A missing desktop session or missing FUSE
 on Linux is such a refusal, and its reason ends with `Next:` and the step. The packaged runtime ships the tool as `runtime/cloudroom/cloudroom.py`

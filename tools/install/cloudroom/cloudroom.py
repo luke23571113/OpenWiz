@@ -11,12 +11,12 @@ import platform
 import re
 import secrets
 import select
+import shlex
 import shutil
 import stat
 import subprocess
 import sys
 import time
-import unicodedata
 import urllib.parse
 import urllib.request
 
@@ -40,9 +40,10 @@ DESCRIPTION = """OpenWiz setup's CloudRoom step: install, reuse and sign in (#22
       Declines that preview. Nothing is installed.
   cloudroom.py sign-in
       Opens CloudRoom's own sign-in once, then reads the result back. If it
-      fails, CloudRoom's own words go to standard error, with links, addresses
-      and secrets removed. On Linux it first checks for a desktop session and
-      FUSE, and names whichever is missing with its next step.
+      fails, standard error gets its exit status, fixed text for any known
+      error, and the command to run to see its full output; never its raw
+      output. On Linux it first checks for a desktop session and FUSE, and
+      names whichever is missing with its next step.
 
 Contract: contracts/public-cloudroom-setup.v1.md. Records go to owner-only
 `<state>/cloudroom/install.json`. Output is JSON with fixed public codes; never
@@ -80,23 +81,22 @@ EFFECT_TIMEOUT = 900
 RUNNING_MS = 30 * 60 * 1000
 OPEN_WAIT = 3
 OPEN_CAPTURE = 1 << 16
-SAID_LINES, SAID_WIDTH = 20, 300
 FUSERMOUNT = ('usr/bin/fusermount', 'usr/bin/fusermount3', 'bin/fusermount', 'bin/fusermount3')
 LIBFUSE2 = tuple(f'{d}/libfuse.so.2' for d in ('lib/x86_64-linux-gnu', 'usr/lib/x86_64-linux-gnu', 'lib64',
                                                 'usr/lib64', 'lib', 'usr/lib'))
 RUNTIME_BYTES = 2 << 20
-TERMINAL = re.compile(r'\x1b(?:\[[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]|\][^\x07\x1b]*(?:\x07|\x1b\\)'
-                      r'|[PX^_][^\x1b]*\x1b\\|[\x20-\x2f]*[\x30-\x7e])|\x9b[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]')
-CREDENTIAL = ('authorization|credentials?|passwords?|passwd|passphrase|passcode|secrets?|apikeys?|keys?|tokens?'
-              '|codes?|nonces?|sessions?|cookies?|auth|bearer|jwt|otp|signatures?|sig')
-CAMEL = '|'.join(word[0].upper() + word[1:] for word in CREDENTIAL.split('|'))
-CREDENTIAL_WORD = re.compile(rf'(?:(?<![A-Za-z])(?i:{CREDENTIAL})|(?<=[a-z])(?:{CAMEL}))(?![a-z])')
-JSONISH = re.compile(r'^[\[\]{}"\']|["\']\s*:|[,:={\[(]$')
-MESSAGE_KEYS = ('message', 'error', 'detail', 'reason')
-REDACTIONS = ((re.compile(r'[A-Za-z][A-Za-z0-9+.-]*://\S*'), '[link removed]'),
-              (re.compile(r'\S+@\S+\.\S+'), '[address removed]'),
-              (re.compile(rf'({CREDENTIAL_WORD.pattern}).*'), r'\1 [removed]'),
-              (re.compile(r'[A-Za-z0-9+/_=.-]{24,}|(?=[A-Za-z+/_=.-]*[0-9])[A-Za-z0-9+/_=.-]{16,}'), '[removed]'))
+KNOWN_ERRORS = (
+    ('error loading libfuse.so.2', "CloudRoom's AppImage could not load FUSE 2 (libfuse.so.2)."),
+    ('AppImages require FUSE to run', "CloudRoom's AppImage needs FUSE to run."),
+    ('Missing X server or $DISPLAY', 'CloudRoom found no desktop session.'),
+    ('error while loading shared libraries', 'A system library CloudRoom needs is missing.'),
+    ('The SUID sandbox helper binary was found, but is not configured correctly',
+     "CloudRoom's sandbox helper is not set up."),
+    ('no method available for opening', 'No browser is set up to open the sign-in page.'),
+    ('ENOTFOUND', 'CloudRoom could not look up its server; check the network.'),
+    ('ECONNREFUSED', 'CloudRoom could not connect; is CloudRoom running?'),
+    ('ETIMEDOUT', 'CloudRoom timed out reaching its server; check the network.'),
+)
 
 
 class Redirects(urllib.request.HTTPRedirectHandler):
@@ -692,67 +692,26 @@ def sign_in_link(raw):
     return url
 
 
-def structured(text):
-    try:
-        value = json.loads(text, object_pairs_hook=store.unique)
-    except (ValueError, Refused, RecursionError):
-        return None
-    if type(value) not in (dict, list):
-        return None
-    found = []
-
-    def walk(node, depth):
-        if depth > 4 or len(found) >= SAID_LINES:
-            return
-        for key, item in (node.items() if type(node) is dict else ((None, n) for n in node)):
-            if key in MESSAGE_KEYS and isinstance(item, str):
-                found.append(item)
-            elif type(item) in (dict, list):
-                walk(item, depth + 1)
-    walk(value, 0)
-    return [line for item in found for line in said(item.encode())]
+def shown(host, argv):
+    words = []
+    for word in argv:
+        path = Path(word)
+        if path.is_absolute() and path.is_relative_to(host.home):
+            words.append('"$HOME"/' + shlex.quote(str(path.relative_to(host.home))))
+        else:
+            words.append(shlex.quote(word))
+    return ' '.join(words)
 
 
-def said(raw, complete=False):
-    text = raw.decode('utf-8', 'replace')
-    whole = structured(text)
-    if whole is not None:
-        return whole
-    lines, tainted = [], False
-    rows = re.split(r'\r\n|\n|\r', text)
-    for line in rows[:-1] if complete or not rows[-1] else rows:
-        line = TERMINAL.sub('', line)
-        if '\x1b' in line or '\x9b' in line:
-            continue
-        line = ' '.join(''.join(' ' if unicodedata.category(c)[0] in 'CZ' else c for c in line).split())
-        if not line:
-            tainted = False
-            continue
-        if tainted:
-            continue
-        inline = structured(line)
-        if inline is not None:
-            lines += inline
-            continue
-        jsonish = JSONISH.search(line) is not None
-        credential = CREDENTIAL_WORD.search(line)
-        if credential and (jsonish or not re.search(r'[A-Za-z0-9]', line[credential.end():])):
-            tainted = True
-        if jsonish:
-            continue
-        for pattern, replacement in REDACTIONS:
-            line = pattern.sub(replacement, line)
-        lines.append(line[:SAID_WIDTH])
-    return lines
+def report(who, status, output, command):
+    print(f'openwiz-cloudroom: {status}', file=sys.stderr)
+    for phrase, text in KNOWN_ERRORS:
+        if phrase.encode() in output:
+            print(f'openwiz-cloudroom: {who} reported: {text}', file=sys.stderr)
+    print(f'openwiz-cloudroom: to see its full output, run: {command}', file=sys.stderr)
 
 
-def tell(who, lines):
-    for line in lines[:SAID_LINES]:
-        line = line[len(who) + 2:] if line.startswith(who + ': ') else line
-        print(f'openwiz-cloudroom: {who} said: {line}', file=sys.stderr)
-
-
-def launched(host, who, argv):
+def launched(host, who, argv, command):
     try:
         code, out = host.open(argv)
     except OSError:
@@ -760,7 +719,9 @@ def launched(host, who, argv):
         return False
     if code in (None, 0):
         return True
-    tell(who, said(out) or [f'nothing, and exited with status {code}'])
+    status = (f'{who} exited with status {code} at launch.' if who == 'CloudRoom'
+              else f'{who} exited with status {code}; the sign-in page did not open.')
+    report(who, status, out, command)
     return False
 
 
@@ -806,23 +767,17 @@ def sign_in(host, state_dir):
         url = sign_in_link(out) if result == 0 else None
         if url is not None:
             command = opener(host)
-            opened = 'sign_in' if launched(host, Path(command[0]).name, command + [url]) else None
-        elif result is None:
-            print("openwiz-cloudroom: CloudRoom's sign-in did not answer within "
-                  f'{TIMEOUT} seconds; is CloudRoom running?', file=sys.stderr)
-            tell('CloudRoom', said(err, complete=True) + said(out, complete=True))
+            opened = 'sign_in' if launched(host, Path(command[0]).name, command + [url],
+                                           shown(host, command + ['https://www.cloudroom.dev'])) else None
         else:
-            words = said(err) + said(out)
-            if words:
-                tell('CloudRoom', words)
-            else:
-                print("openwiz-cloudroom: CloudRoom's sign-in gave no usable link and said nothing "
-                      f'(status {result})', file=sys.stderr)
+            status = (f"CloudRoom's sign-in did not answer within {TIMEOUT} seconds; is CloudRoom running?"
+                      if result is None else f"CloudRoom's sign-in exited with status {result} and gave no usable link.")
+            report('CloudRoom', status, err + b'\n' + out, shown(host, [str(launcher), *ROOM_CLI_CALLS[1]]))
     else:
         app = next((p for p in installation(host, records.read()) if p.name != 'room-cli'), None)
         if app is not None:
             command = (['/usr/bin/open'] if host.system == 'Darwin' else []) + [str(app)]
-            opened = 'app' if launched(host, 'CloudRoom', command) else None
+            opened = 'app' if launched(host, 'CloudRoom', command, shown(host, command)) else None
     return answer(code_for(host, records.read()), opened=opened)
 
 
