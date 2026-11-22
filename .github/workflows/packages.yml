@@ -115,15 +115,6 @@ jobs:
         with:
           name: openwiz-${{ inputs.version }}-x86_64-unknown-linux-gnu
           path: artifact
-      - name: Planted break (seam 2, reverted next commit) flips one archive byte
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          [path] = Path('artifact/packages').glob('openwiz-*-x86_64-unknown-linux-gnu.tar.gz')
-          data = bytearray(path.read_bytes())
-          data[len(data) // 2] ^= 1
-          path.write_bytes(bytes(data))
-          PY
       - name: Rehearse the install
         run: |
           env -i PATH=/usr/bin:/bin python3 -I tools/rehearsal/rehearse.py --assets artifact/packages --target "$TARGET" \
