@@ -38,6 +38,7 @@ class Driver(unittest.TestCase):
         open(self.log, 'w').close()
         self.devin = subprocess.Popen([sys.executable, '-I', os.path.join(HERE, 'fixtures', 'fake-devin'),
                                        self.tracker, self.log, self.faults], stdout=subprocess.PIPE, text=True)
+        self.addCleanup(self.devin.stdout.close)
         self.addCleanup(self.devin.wait)
         self.addCleanup(self.devin.kill)
         # A synthetic key: under the loopback override the helper reads only this variable, never the real one.
