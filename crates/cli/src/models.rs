@@ -44,7 +44,7 @@ pub fn run_models_in(
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) -> i32 {
-    let lister = cfg!(target_os = "macos").then(|| Path::new(MACOS_LS));
+    let lister = (std::env::consts::OS == "macos").then(|| Path::new(MACOS_LS));
     run_models_listing_acls(args, root, client, clock, lister, stdout, stderr)
 }
 
@@ -461,6 +461,9 @@ fn run_set(
         ));
     }
     let mut files = Vec::new();
+    if result.text.is_some() {
+        agents.keep_acl(FLEET_FILE)?;
+    }
     if let Some(options) = &options {
         let current = read_fleet(result.text.as_deref().unwrap_or(text)).ok();
         put(
@@ -722,6 +725,58 @@ impl Agents {
         Ok(text)
     }
 
+    /// Refuses `rel` when replacing it would drop its macOS extended ACL, or when
+    /// that cannot be checked. A missing file has none to drop.
+    fn keep_acl(&self, rel: &str) -> Result<(), String> {
+        let Some(check) = &self.1 else {
+            return Ok(());
+        };
+        let unchecked = |why: String| {
+            format!(
+                "cannot write {rel}: cannot check its macOS extended ACL ({why}); nothing was written"
+            )
+        };
+        let flags = OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC;
+        let fd = match rustix::fs::openat(&self.0, name(rel), flags, Mode::empty()) {
+            Ok(fd) => fd,
+            Err(Errno::NOENT) => return Ok(()),
+            Err(e) => return Err(unchecked(e.to_string())),
+        };
+        let path = check.dir.join(name(rel));
+        let unmoved = || {
+            let open = rustix::fs::fstat(&fd).map_err(|e| unchecked(e.to_string()))?;
+            let here = rustix::fs::lstat(&path).map_err(|e| unchecked(e.to_string()))?;
+            match (open.st_dev, open.st_ino) == (here.st_dev, here.st_ino) {
+                true => Ok(()),
+                false => Err(unchecked("it moved while it was checked".to_owned())),
+            }
+        };
+        unmoved()?;
+        let lister = check.lister.display();
+        let listed = std::process::Command::new(&check.lister)
+            .arg("-lde")
+            .arg(&path)
+            .stdin(std::process::Stdio::null())
+            .output()
+            .map_err(|e| unchecked(format!("cannot run {lister}: {e}")))?;
+        unmoved()?;
+        if !listed.status.success() {
+            return Err(unchecked(format!("{lister} failed: {}", listed.status)));
+        }
+        match String::from_utf8(listed.stdout)
+            .ok()
+            .and_then(|l| extended_acl(&l))
+        {
+            Some(false) => Ok(()),
+            Some(true) => Err(format!(
+                "cannot write {rel}: it has a macOS extended ACL, which openwiz cannot keep; nothing was written"
+            )),
+            None => Err(unchecked(format!(
+                "{lister} printed no listing openwiz reads"
+            ))),
+        }
+    }
+
     fn lock(&self) -> Result<(), String> {
         self.0
             .lock()
@@ -736,6 +791,7 @@ fn name(rel: &str) -> &str {
 fn put(agents: &Agents, rel: &str, text: &str) -> Result<(), String> {
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let fail = |e: std::io::Error| format!("cannot write {rel}: {e}");
+    agents.keep_acl(rel)?;
     let dir = &agents.0;
     let target = name(rel);
     let read = OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC;
@@ -816,6 +872,26 @@ fn access_acl(fd: impl AsFd) -> std::io::Result<Option<Vec<u8>>> {
     let size = rustix::fs::fgetxattr(&fd, ACCESS_ACL, &mut acl[..])?;
     acl.truncate(size);
     Ok(Some(acl))
+}
+
+/// Whether one regular file's `ls -lde` listing shows extended ACL entries, or
+/// `None` when the listing is not one this reads.
+fn extended_acl(listing: &str) -> Option<bool> {
+    let mut lines = listing.lines();
+    let mode = lines.next()?.split(' ').next()?;
+    if !mode.starts_with('-') || !(10..=11).contains(&mode.len()) {
+        return None;
+    }
+    let mut entries = 0;
+    for line in lines {
+        let (at, _) = line.trim_start().split_once(": ")?;
+        at.parse::<u32>().ok()?;
+        entries += 1;
+    }
+    match (mode.ends_with('+'), entries) {
+        (true, 0) => None,
+        (_, n) => Some(n > 0),
+    }
 }
 
 fn emit(stdout: &mut dyn Write, stderr: &mut dyn Write, (code, text): (i32, String)) -> i32 {
