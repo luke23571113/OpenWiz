@@ -77,7 +77,8 @@ NOTES = {('Darwin', 'x86_64'): 'Supported. CloudRoom has no Intel Mac build, so 
          ' computer or on boat.dev.'}
 DISK = 512 * 1024 * 1024
 GLIBC = (2, 34)
-TOOLS = (('room-cli', 'Install the CloudRoom app and sign in; it provides room-cli.'),
+TOOLS = (('room-cli', 'Optional: CloudRoom is needed only if you pick it as the host; then install the CloudRoom'
+                       ' app and sign in, which provides room-cli.'),
          ('gh', 'Install the GitHub CLI and run gh auth login.'),
          ('git', 'Install git.'))
 ARCHIVE_NAME = re.compile(r'openwiz-0\.[0-9]+\.[0-9]+-[a-z0-9_]+-[a-z0-9_-]+\.tar\.gz')
