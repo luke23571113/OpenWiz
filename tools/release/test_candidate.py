@@ -1362,6 +1362,16 @@ class Candidate(World):
         self.assertEqual(self.record()['publication']['status'], 'complete')
         self.assertEqual(self.git(self.remote, 'tag', '-l', '--format=%(contents:subject)', 'v0.1.0'), 'OpenWiz 0.1.0')
 
+    def test_2278_publishing_0_1_1_creates_and_reads_back_openwiz_0_02(self):
+        self.ready_public('0.1.1')
+        code, out = self.publish()
+        self.assertEqual((code, out['status']), (0, 'published'), out)
+        created = next(c['args'] for c in self.calls() if c['action'] == 'release')
+        self.assertEqual(created[created.index('--title') + 1], 'OpenWiz 0.02')
+        self.assertEqual(json.loads((self.releases / 'v0.1.1' / 'meta.json').read_text())['title'], 'OpenWiz 0.02')
+        self.assertEqual(self.record()['publication']['status'], 'complete')
+        self.assertEqual(self.git(self.remote, 'tag', '-l', '--format=%(contents:subject)', 'v0.1.1'), 'OpenWiz 0.1.1')
+
     def test_1836_a_0_1_0_release_read_back_under_another_name_is_incomplete(self):
         self.ready_public()
         fake = self.bin / 'gh'
