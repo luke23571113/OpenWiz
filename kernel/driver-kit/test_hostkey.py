@@ -132,7 +132,8 @@ class Helper(unittest.TestCase):
                  '/v1\nx': 'control character', '/v1\x00': 'control character', '/v1\x7f': 'control character',
                  '/v1/%0d%0ax': 'control character', '/v1/%00': 'control character', '/v1 x': 'outside',
                  '/v1/\u00e9': 'outside', '/v1/<x>': 'outside', '/v1/%': 'percent', '/v1/%zz': 'percent',
-                 '/v1/%252e%252e': 'encoded twice', '/' + 'a' * 2048: 'longer'}
+                 '/v1/%252e%252e': 'encoded twice', '/v1/%EF%BC%8F%EF%BC%8F': 'outside printable ASCII',
+                 '/v1/%C3%A9': 'outside printable ASCII', '/v1/%ff': 'percent', '/' + 'a' * 2048: 'longer'}
         for path, why in cases.items():
             with self.subTest(path):
                 self.refused(dict(GOOD, path=path), why)
@@ -176,6 +177,14 @@ class Helper(unittest.TestCase):
                 code, out = self.run_helper(GOOD, OPENWIZ_HOSTKEY_TEST_ORIGIN=host.origin)
                 self.assertEqual(code, 1)
                 self.assertIn("the host's answer held the key", out['error'])
+
+    def test_a_key_with_quotes_or_backslashes_is_still_never_echoed(self):
+        key = 'synthetic"quoted\\key-' + 'Kit0Value' * 2
+        host = self.fake(500, [], json.dumps({'echo': key}).encode())
+        p = subprocess.run([sys.executable, '-I', HOSTKEY], input=json.dumps(GOOD), capture_output=True, text=True,
+                           env=self.env(DEVIN_API_KEY=key, OPENWIZ_HOSTKEY_TEST_ORIGIN=host.origin), timeout=60)
+        self.assertEqual(p.returncode, 1)
+        self.assertFalse(key in p.stdout or key in json.loads(p.stdout)['error'] + json.loads(p.stdout)['next'])
 
     def test_a_non_json_answer_comes_back_as_a_null_body(self):
         for body in (b'', b'not json', b'{"n": NaN}', b'\xff'):
