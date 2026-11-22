@@ -1,4 +1,20 @@
 {
+  "models_host_selection": {
+    "fresh-local": {"document": {"host": "local"}, "options": "local-claude-code-and-codex", "valid": true},
+    "fresh-boat": {"document": {"host": "boat"}, "options": "local-codex-only", "valid": true},
+    "fresh-driver": {"document": {"host": "synthetic-driver"}, "options": "local-none-installed", "valid": true},
+    "fresh-cloud": {"document": {"host": "cloud"}, "options": "cloudroom-unmarked", "valid": true},
+    "legacy-cloud-default": {"document": {}, "options": "cloudroom-unmarked", "valid": true},
+    "saved-local": {"document": {"saved_host": "local"}, "options": "local-codex-only", "valid": true},
+    "saved-cloud": {"document": {"saved_host": "cloud"}, "options": "cloudroom-unmarked", "valid": true},
+    "explicit-cloud-over-saved-local": {"document": {"host": "cloud", "saved_host": "local"}, "options": "cloudroom-unmarked", "valid": true},
+    "explicit-local-over-saved-cloud": {"document": {"host": "local", "saved_host": "cloud"}, "options": "local-claude-code-and-codex", "valid": true},
+    "first-local-falls-back-to-cloud": {"document": {"host": "local"}, "options": "cloudroom-unmarked", "valid": false},
+    "saved-local-falls-back-to-cloud": {"document": {"saved_host": "local"}, "options": "cloudroom-unmarked", "valid": false},
+    "cloud-default-uses-local": {"document": {}, "options": "local-codex-only", "valid": false},
+    "cloud-override-uses-local": {"document": {"host": "cloud", "saved_host": "local"}, "options": "local-codex-only", "valid": false},
+    "invalid-host": {"document": {"host": "cloudroom"}, "options": "local-codex-only", "valid": false}
+  },
   "setup_reports": {
     "local-ready-without-cloudroom": {
       "document": {

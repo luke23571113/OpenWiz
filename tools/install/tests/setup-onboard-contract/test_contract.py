@@ -281,6 +281,17 @@ class Hosts(unittest.TestCase):
         self.assertIn('prepared_project', SETUP_SCHEMA.get('$defs', {}))
         self.assert_cases(HOSTS['prepared_projects'], {'$ref': '#/$defs/prepared_project'}, SETUP_SCHEMA)
 
+    def test_models_host_selects_the_offered_source(self):
+        schema = SETUP_SCHEMA.get('$defs', {}).get('models_host_selection', {})
+        for name, case in HOSTS['models_host_selection'].items():
+            with self.subTest(case=name):
+                options = HOSTS['offered_lists'][case['options']]['document']
+                selection = dict(case['document'])
+                if 'source' in options:
+                    selection['source'] = options['source']
+                errors = check.schema_errors(selection, schema, SETUP_SCHEMA)
+                self.assertEqual(not errors, case['valid'], errors)
+
     def test_offered_lists_mark_only_the_local_source(self):
         self.assert_cases(HOSTS['offered_lists'], {'$ref': '#/$defs/options'}, NEW_THREAD)
 
