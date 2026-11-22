@@ -1327,20 +1327,15 @@ fn b5_limited_builder_restarts_only_on_a_codex_small_builder() {
             .iter()
             .filter(|a| a["ticket"] == 10)
             .collect::<Vec<_>>();
+        assert_eq!(ten.len(), 1, "{harness}: {doc}");
         if restart {
-            assert!(
-                ten.iter().any(|a| a["rule"] == "restart"),
-                "{harness}: {doc}"
-            );
+            assert_eq!(ten[0]["rule"], "restart", "{harness}: {doc}");
+            assert_eq!(ten[0]["facts"]["builder"], "thr_syn_limited");
+            assert_eq!(ten[0]["facts"]["settings"]["harness"], harness);
         } else {
-            assert!(
-                ten.iter().all(|a| a["rule"] != "restart"),
-                "{harness}: {doc}"
-            );
-            assert!(
-                ten.iter().any(|a| a["rule"] == "look"
-                    && a.to_string()
-                        .contains("fallback builder is not another family")),
+            assert_eq!(ten[0]["rule"], "look", "{harness}: {doc}");
+            assert_eq!(
+                ten[0]["facts"]["reason"], "fallback builder is not another family",
                 "{harness}: {doc}"
             );
         }
