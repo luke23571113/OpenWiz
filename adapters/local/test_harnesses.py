@@ -215,6 +215,8 @@ def check_row(rows, name):
                     raise Fail('driver', 'it did not refuse this broken row with a D3 error naming the row file, '
                                          'before starting anything')
         raise Fail('row.json ' + e.args[0], e.args[1])
+    if row is None:
+        raise Fail('row.json is missing', None)
     return folder, row
 
 
@@ -296,7 +298,7 @@ def check(rows, name):
                 raise Fail('test_row.py', 'it failed (exit %d)' % p.returncode)
         return 'pass %s: %s' % (name, GOOD)
     except Fail as e:
-        return 'fail %s: %s: %s' % (name, e.args[0], e.args[1])
+        return 'fail %s: %s' % (name, ': '.join(x for x in e.args if x))
 
 
 def check_driver_unknown_harness_and_early_wake(rows):
