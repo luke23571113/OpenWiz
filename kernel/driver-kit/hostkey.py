@@ -24,7 +24,7 @@ scrub_tls_environment()
 HERE = os.path.dirname(os.path.abspath(__file__))
 REGISTRY = os.path.join(HERE, 'hosts.json')
 OVERRIDE = 'OPENWIZ_HOSTKEY_TEST_ORIGIN'
-TEST_KEY = 'OPENWIZ_HOSTKEY_TEST_KEY'
+KEY_PATH = '/.openwiz/hostkey-test-key'
 TOOLS = {'linux': ['/usr/bin/secret-tool', 'lookup', 'service'],
          'darwin': ['/usr/bin/security', 'find-generic-password', '-w', '-s']}
 TOOL_ENVIRONMENT = {'linux': ('HOME', 'LANG', 'DBUS_SESSION_BUS_ADDRESS', 'XDG_RUNTIME_DIR'), 'darwin': ('HOME', 'LANG')}
@@ -44,6 +44,8 @@ SCHEMA = 'send exactly host, method, path and an optional body, as kernel/driver
 _key = []
 FALLBACK = {'error': 'the answer held the key, so the helper did not print it', 'next': 'report it to OpenWiz'}
 LAST_RESORT = {'error': 'refused', 'next': 'retry'}
+SILENT = ''
+UNREACHABLE = 'the helper could not reach the host, or its answer was unreadable'
 
 
 class Refused(Exception):
@@ -147,11 +149,12 @@ def find_key(entry, environ):
     variable, keychain = entry['variable'], entry['keychain']
     names = '%s or the keychain entry %s' % (variable, keychain)
     if OVERRIDE in environ:
-        # SECURITY: the loopback override reads only the fixture key, never a production source.
-        key, where = environ.get(TEST_KEY, ''), TEST_KEY
+        # SECURITY: under the loopback override the key comes only from the kit's fake host, never a production
+        # source, and never through the driver's environment.
+        key, where = fetch_test_key(test_origin(environ)), 'the kit\'s fake host'
         if not key:
-            raise Refused('no test key in %s; under %s the helper never reads %s' % (TEST_KEY, OVERRIDE, names),
-                          'set %s to a synthetic key; it and the override are only for the kit\'s tests' % TEST_KEY)
+            raise Refused('the kit\'s fake host gave no test key; under %s the helper never reads %s'
+                          % (OVERRIDE, names), 'unset %s: it is only for the kit\'s tests' % OVERRIDE)
     else:
         key, where = environ.get(variable, ''), variable
         if not key:
@@ -162,8 +165,30 @@ def find_key(entry, environ):
     _key.append(key)
     if not KEY.fullmatch(key):
         raise Refused('the key in %s is not %s' % (where, KEY_FORMAT), 'store the key alone, as the host gave it, '
-                      'in %s' % (TEST_KEY if where == TEST_KEY else names))
+                      'in %s' % names)
     return key
+
+
+def fetch_test_key(origin):
+    import http.client
+    host, _, port = origin.partition('://')[2].partition(':')
+    try:
+        conn = http.client.HTTPConnection(host, int(port), timeout=60)
+        try:
+            conn.request('GET', KEY_PATH, headers={'User-Agent': 'openwiz-hostkey/1'})
+            answer = conn.getresponse()
+            status, raw = answer.status, answer.read(LIMIT + 1)
+        finally:
+            conn.close()
+    except (OSError, http.client.HTTPException, ValueError):
+        raise Refused(UNREACHABLE, 'check your network and the host\'s status, then retry')
+    try:
+        value = json.loads(raw.decode('utf-8'), parse_constant=_no_constant) if status == 200 else None
+    except ValueError:
+        return ''
+    if not isinstance(value, dict) or set(value) != {'key'} or not isinstance(value['key'], str):
+        return ''
+    return value['key']
 
 
 def _keychain(entry, environ):
@@ -210,7 +235,7 @@ def send(origin, method, path, body, key):
         raise Refused('TLS verification of the host failed', 'check the host\'s address and your system\'s '
                       'certificates; the helper trusts only the system defaults')
     except (OSError, http.client.HTTPException, ValueError):
-        raise Refused('the helper could not reach the host, or its answer was unreadable',
+        raise Refused(UNREACHABLE,
                       'check your network and the host\'s status, then retry')
     if len(raw) > LIMIT:
         raise Refused('the host answered more than 1 MiB', 'ask the host for a smaller answer')
@@ -255,7 +280,7 @@ def render(out, keys):
         text = json.dumps(answer)
         if not any(k in s for k in keys for s in [text] + list(_strings(answer))):
             return text, code
-    return json.dumps(LAST_RESORT), 1
+    return SILENT, 1
 
 
 def run(stdin, environ):
@@ -295,7 +320,7 @@ def main():
         out, code = {'error': 'the key helper failed: ' + type(e).__name__, 'next': 'report it to OpenWiz'}, 1
     text, gated = render(out, _key)
     code = gated or code
-    sys.stdout.write(text + '\n')
+    sys.stdout.write(text + '\n' if text else text)
     sys.stdout.flush()
     sys.exit(code)
 
