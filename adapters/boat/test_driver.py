@@ -91,9 +91,6 @@ def paused(*args):
 t.sandbox_state = paused
 t.main()
 '''
-# A boat CLI that answers the push check's `boat exec` with malformed bytes on both streams (PUSH_ANSWER=ok
-# also prints the success marker and exits 0), and with STDERR_FOR=<command> fails that command with only a
-# known code on stderr (STDERR_HOW=code) or a generic structured error and a sign-in line on stderr.
 ODD_BOAT = '''import json, os, sys
 if sys.argv[1:2] == ['exec'] and 'openwiz-push-ok' in ' '.join(sys.argv) and os.environ.get('PUSH_ANSWER'):
     ok = os.environ['PUSH_ANSWER'] == 'ok'
@@ -109,7 +106,6 @@ if sys.argv[1:2] == [os.environ.get('STDERR_FOR')]:
     sys.exit(1)
 os.execv(%r, [%r] + sys.argv[1:])
 '''
-# A driver whose push check's `boat exec` cannot be run at all.
 EXEC_FAILS = '''import importlib.machinery, importlib.util, os, sys
 sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_loader('boat', importlib.machinery.SourceFileLoader('boat', %r))
@@ -671,8 +667,6 @@ class Boat(unittest.TestCase):
         return folder + os.pathsep + self.env['PATH']
 
     def test_the_push_refusal_holds_when_the_check_answers_odd_bytes_or_cannot_run(self):
-        # catches: a push check that decodes boat's streams as text, so malformed bytes end in a generic
-        # driver failure, and one that lets an OS error running `boat exec` escape the push refusal.
         refusal = (1, {'error': "the sandbox cannot push to example/site: the GitHub account connected in boat needs "
                                 "write access to it",
                        'next': "give the GitHub account connected in boat's dashboard write access to example/site, then "
@@ -688,8 +682,6 @@ class Boat(unittest.TestCase):
         self.assertEqual(self.driver('stop', out), (0, dict(out, stopped=True)))
 
     def test_known_boat_guidance_reaches_the_answer_from_stderr(self):
-        # catches: a known error code boat prints only on stderr answered as a generic error, and a generic
-        # structured error that hides a sign-in failure stderr names; boat's own text still never reaches the answer.
         marker = 'sk-' + 'Synthetic0Host0Marker' + self.mark
         path = self.odd_boat()
         for cmd, how, says in (('new', 'code', 'Agents & Proxying'), ('prompt', 'code', 'Agents & Proxying'),
@@ -810,8 +802,6 @@ class Boat(unittest.TestCase):
         self.assertFalse(alive(earlier))
 
     def test_without_proc_as_on_macos_a_wake_that_cannot_save_ends_only_its_own_turn(self):
-        # catches: a wake's cleanup after its save fails taking an earlier saved turn's supervisor for a stray,
-        # and so ending that turn's worker.
         macos = {'PATH': NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable}
         code, out = self.driver('start', REQUEST, **macos)
         self.assertEqual(code, 0, out)

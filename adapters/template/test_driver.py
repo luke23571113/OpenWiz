@@ -321,7 +321,6 @@ class Template(unittest.TestCase):
         self.assertFalse(alive(worker), 'a worker the turn handed off as it exited still runs after stop')
 
     def test_without_proc_as_on_macos_stop_says_when_lsof_cannot_check_the_output_file(self):
-        # catches: a stop that, with lsof failing, falls back to the turn's group and recorded processes in silence.
         for broken in (False, True):
             with self.subTest(lsof_fails=broken):
                 self.tearDown()

@@ -340,8 +340,6 @@ class Local(unittest.TestCase):
         self.assertEqual(self.driver('wake', out), (0, dict(out, woke=True)))
 
     def test_a_quick_clean_first_turn_starts(self):
-        # catches: a clean exit failed for ordinary words that only mention permissions or a login, and a
-        # relative OPENWIZ_LOCAL_STATE that sends the supervisor's exit record into the clone (exit unknown).
         talker = os.path.join(self.folder, 'talker')
         os.mkdir(talker)
         with open(os.path.join(talker, 'claude'), 'w') as f:
@@ -427,7 +425,6 @@ class Local(unittest.TestCase):
         self.assertFalse(alive(worker), 'a worker the turn handed off as it exited still runs after stop')
 
     def test_without_proc_as_on_macos_stop_says_when_lsof_cannot_check_the_output_file(self):
-        # catches: a stop that, with lsof failing, falls back to the turn's group and recorded processes in silence.
         for broken in (False, True):
             with self.subTest(lsof_fails=broken):
                 self.tearDown()

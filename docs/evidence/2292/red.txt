@@ -6,13 +6,13 @@ AssertionError: 1 != 0 : {"error": "run run-<id>: the first turn ended at once: 
 FAIL: test_a_quick_clean_first_turn_starts (__main__.Local.test_a_quick_clean_first_turn_starts) [relative state]
 AssertionError: 1 != 0 : {"error": "run run-<id>: the first turn ended at once: the harness failed (exit unknown)", "next": "read state/run-<id>.log, fix what it says there, then start again"}
 FAIL: test_without_proc_as_on_macos_stop_says_when_lsof_cannot_check_the_output_file (__main__.Local.test_without_proc_as_on_macos_stop_says_when_lsof_cannot_check_the_output_file) (lsof_fails=True)
-AssertionError: False != True : 
+AssertionError: False != True :
 Ran 2 tests in 7.633s
 FAILED (failures=3)
 
 $ python3 -I adapters/template/test_driver.py -k lsof_cannot
 FAIL: test_without_proc_as_on_macos_stop_says_when_lsof_cannot_check_the_output_file (__main__.Template.test_without_proc_as_on_macos_stop_says_when_lsof_cannot_check_the_output_file) (lsof_fails=True)
-AssertionError: False != True : 
+AssertionError: False != True :
 Ran 1 test in 1.299s
 FAILED (failures=1)
 
@@ -35,4 +35,3 @@ FAIL: test_without_proc_as_on_macos_a_wake_that_cannot_save_ends_only_its_own_tu
 AssertionError: False is not true : the failed wake ended an earlier turn's worker
 Ran 3 tests in 3.748s
 FAILED (failures=8)
-
