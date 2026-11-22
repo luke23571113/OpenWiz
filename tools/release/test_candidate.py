@@ -668,6 +668,72 @@ class Candidate(World):
             saved = self.state / attempt['evidence']['record']
             self.assertEqual(sha(saved.read_bytes()), attempt['evidence']['sha256'])
 
+    def test_install_status_never_reads_a_held_or_interrupted_attempt_record(self):
+        import candidate
+        state = candidate.State(self.root / 'attempts')
+        evidence = {'target': LINUX, 'downloads': [], 'steps': []}
+        first = candidate.install_attempt(state, LINUX, None, 100, evidence)
+        held, stops = [], 0
+
+        def at_each_line(watch):
+            def tracer(frame, event, arg):
+                if frame.f_code is not candidate.install_attempt.__code__:
+                    return None
+                def line(frame, event, arg):
+                    if event == 'line':
+                        watch()
+                    return line
+                return line
+            return tracer
+
+        def status():
+            try:
+                [attempt] = candidate.install_attempts(state)
+                held.append(attempt['attempts'])
+            except ValueError as error:
+                held.append(f'unreadable: {error}')
+        sys.settrace(at_each_line(status))
+        try:
+            second = candidate.install_attempt(state, LINUX, 'install_refused', 200, evidence)
+        finally:
+            sys.settrace(None)
+        # Each read while the write is held sees the old attempt, or the new one once it is complete.
+        self.assertGreater(len(held), 3)
+        self.assertLessEqual(set(held), {1, 2})
+        self.assertEqual(held, sorted(held))
+        self.assertIn(1, held)
+        self.assertEqual(candidate.install_attempts(state)[0]['evidence'], second['evidence'])
+        while True:
+            calls = [0]
+
+            def interrupt():
+                calls[0] += 1
+                if calls[0] > stops:
+                    raise KeyboardInterrupt
+            sys.settrace(at_each_line(interrupt))
+            try:
+                candidate.install_attempt(state, LINUX, 'install_refused', 300 + stops, evidence)
+                break
+            except KeyboardInterrupt:
+                pass
+            finally:
+                sys.settrace(None)
+            try:
+                [attempt] = candidate.install_attempts(state)
+            except ValueError as error:
+                self.fail(f'status after an interrupt at line {stops + 1}: {error}')
+            self.assertIn(attempt['attempts'], (2, 3))
+            if attempt['attempts'] == 3:
+                saved = state.file(attempt['evidence']['record'])
+                self.assertEqual(json.loads(saved.read_bytes())['at'], 300 + stops)
+                saved.unlink()
+            stops += 1
+        self.assertGreater(stops, 3)
+        folder = state.file(f'evidence/install-{LINUX}')
+        self.assertEqual(sorted(p.name for p in folder.iterdir() if candidate.ATTEMPT.fullmatch(p.name)),
+                         ['1.json', '2.json', '3.json'])
+        self.assertEqual(first['evidence']['record'], f'evidence/install-{LINUX}/1.json')
+
     def test_missing_ship_or_exact_changelog_approval_refuses_before_any_write(self):
         self.smoke_kit()
         self.artifacts()
@@ -2067,8 +2133,7 @@ class Notes(World):
     def test_rl6_the_approved_changelog_passes_as_is(self):
         raw = (ROOT / 'changes/notes/0.0.12.md').read_bytes()
         self.assertEqual(sha(raw), 'e690a1652787865d67cb557fc1a2a59588b87a21a067b2e547b90a709f5e6e3d')
-        current, cut = (ROOT / 'CHANGELOG.md').read_bytes(), raw.index(b'\n\n', raw.index(b'All OpenWiz versions')) + 2
-        self.assertTrue(current.startswith(raw[:cut]) and current.endswith(raw[cut:]))
+        kept_history((ROOT / 'CHANGELOG.md').read_bytes(), raw)
         self.untagged(raw.decode())
         (self.repo / 'changes/notes').mkdir()
         (self.repo / 'changes/notes/0.0.12.md').write_bytes(raw)
@@ -2118,6 +2183,20 @@ class Notes(World):
                 self.untagged(HISTORY)
                 (code, out), _ = self.curated(text, included)
                 self.assertEqual((code, out['reasons']), (1, [reason]))
+
+    def test_rl6_the_changelog_inserts_only_well_formed_newer_sections_over_the_approved_history(self):
+        raw = (ROOT / 'changes/notes/0.0.12.md').read_bytes()
+        cut = raw.index(b'\n\n', raw.index(b'All OpenWiz versions')) + 2
+        newer = (section('0.1.1') + '\n' + section('0.1.0') + '\n').encode()
+        kept_history(raw, raw)
+        kept_history(raw[:cut] + newer + raw[cut:], raw)
+        for name, planted in (('a stray paragraph', b'Synthetic stray paragraph.\n\n'),
+                              ('a broken section', newer.replace(b'**Use 0.1.0**', b'Use 0.1.0')),
+                              ('an older version', (section('0.0.11') + '\n').encode()),
+                              ('oldest first', (section('0.1.0') + '\n' + section('0.1.1') + '\n').encode()),
+                              ('no blank line before the history', newer[:-1])):
+            with self.subTest(case=name), self.assertRaises(AssertionError):
+                kept_history(raw[:cut] + planted + raw[cut:], raw)
 
     def test_rl6_moved_lines_take_their_version_from_the_ticket_they_moved_to(self):
         moved = b'kind: fixed\n\nFixture-tested: The moved line.\n'
@@ -2169,6 +2248,11 @@ class Notes(World):
         (self.repo / 'changes/2201.md').write_bytes(moved)
         (code, out), _ = self.generate(('0.0.14', '0.0.13'), excluded=[('changes/2201.md', sha(moved))])
         self.assertEqual(code, 0, out)
+
+
+def kept_history(current, raw):
+    cut = raw.index(b'\n\n', raw.index(b'All OpenWiz versions')) + 2
+    assert current.startswith(raw[:cut]) and current.endswith(raw[cut:]), 'the approved changelog bytes moved'
 
 
 def section(version):
