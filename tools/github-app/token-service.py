@@ -18,6 +18,7 @@ and never a token. mint-token.py stays byte-identical to the copy WizSkills'
 launch-fleet carries: this tool uses the same guards from app.py.
 """
 from datetime import datetime
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -154,18 +155,25 @@ def mint(api, request, setting):
     except Exception:
         raise Refused("github") from None
     token, listed = result.get("token"), result.get("repositories")
-    check(result.get("permissions") == permissions and result.get("repository_selection") == "selected", "github")
-    check(isinstance(listed, list) and all(isinstance(r, dict) and isinstance(r.get("full_name"), str)
-                                           for r in listed), "github")
-    check(sorted(r["full_name"].lower() for r in listed) == sorted(n.lower() for n in repositories), "github")
-    check(isinstance(token, str) and TOKEN.fullmatch(token) is not None, "github")
     try:
-        expires_at = int(datetime.fromisoformat(result["expires_at"].replace("Z", "+00:00")).timestamp())
-    except Exception:
-        raise Refused("github") from None
-    left = expires_at - time.time()
-    check(REFRESH + HANDOVER < left <= LONGEST, "expiry")
+        check(result.get("permissions") == permissions and result.get("repository_selection") == "selected", "github")
+        check(isinstance(listed, list) and all(isinstance(r, dict) and isinstance(r.get("full_name"), str)
+                                               for r in listed), "github")
+        check(sorted(r["full_name"].lower() for r in listed) == sorted(n.lower() for n in repositories), "github")
+        check(isinstance(token, str) and TOKEN.fullmatch(token) is not None, "github")
+        try:
+            expires_at = int(datetime.fromisoformat(result["expires_at"].replace("Z", "+00:00")).timestamp())
+        except Exception:
+            raise Refused("github") from None
+        check(fresh(expires_at), "expiry")
+    except Refused:
+        app.revoke(api["base"], token)
+        raise
     return token, expires_at
+
+
+def fresh(expires_at):
+    return REFRESH + HANDOVER < expires_at - time.time() <= LONGEST
 
 
 def serve(api, log, data, setting):
@@ -184,10 +192,23 @@ def serve(api, log, data, setting):
     except Exception:
         line["outcome"] = "unavailable"
         message = refusal("unavailable")
+    fcntl.flock(log, fcntl.LOCK_EX)
+    start = os.lseek(log, 0, os.SEEK_END)
+    record(log, line)
+    if message["kind"] == "answer" and not fresh(message["expires_at"]):
+        # #1925: a slow audit sync can spend the token's margin; the line is rewritten to match the refusal.
+        os.ftruncate(log, start)
+        record(log, {key: value for key, value in line.items() if key not in ("permissions", "expires_at")}
+                    | {"outcome": "expiry"})
+        app.revoke(api["base"], message["token"])
+        message = refusal("expiry")
+    return message, REFUSALS[message["refusal"]][0] if message["kind"] == "refusal" else 0
+
+
+def record(log, line):
     entry = (json.dumps(line) + "\n").encode()
     app.require(os.write(log, entry) == len(entry))
     os.fsync(log)
-    return message, REFUSALS[message["refusal"]][0] if message["kind"] == "refusal" else 0
 
 
 def refusal(code):

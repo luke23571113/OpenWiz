@@ -395,7 +395,8 @@ class ReadProfileTests(KeyFixture):
                     self.assertEqual(result.stdout, b"")
                     self.assertEqual(result.stderr,
                                      b"App token refused: check PC state permissions, App installation and GitHub availability.\n")
-            self.assertEqual(len(calls), 3 * (len(cases) - 2))
+            self.assertEqual(len(calls) - len(revoked(calls)), 3 * (len(cases) - 2))
+            self.assertEqual(len(revoked(calls)), 4, "each token refused after minting is revoked")
 
     def test_read_token_is_bound_to_the_app_owner_or_the_named_factory_installations(self):
         text = (HERE.parent.parent / "contracts/github-identity.v1.md").read_text()
@@ -1846,9 +1847,7 @@ with patch("datetime.datetime", DeviceClock), patch("time.time", return_value=fi
                 fake_github(self.pem) as (endpoint, calls, behavior):
             behavior["permissions"] = SERVICE
             self.assertEqual(self.run_tool("refresh-token.py", endpoint, "--write").returncode, 0)
-        log = self.openssl_log.read_bytes()
-        self.assertIn(b"/dev/fd/", log)
-        self.assertFalse(b"synthetic-runner-value" in log, "the runner's environment reached the tool")
+        self.assertFalse(self.openssl_log.exists(), "the key file is signed by /usr/bin/openssl, never PATH's (#608)")
         for check in (lambda: self.assert_no_key("synthetic-context " + self.pem.decode()),
                       lambda: self.assert_hidden("synthetic-leaked-token", "synthetic-context synthetic-leaked-token")):
             with self.assertRaises(AssertionError) as caught:
