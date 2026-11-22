@@ -28,7 +28,7 @@ def script(path, body):
     os.chmod(path, 0o755)
 
 
-def logged_logged_fake_tool(version):
+def logged_fake_tool(version):
     return 'echo "$(basename "$0") $*" >> "$FAKE_CALLS"\necho "fake %s (synthetic)"\n' % version
 
 
@@ -38,7 +38,6 @@ def sha256(path):
 
 
 class Fixture:
-
     def __init__(self, root):
         self.root = root
         self.home = os.path.join(root, 'home')

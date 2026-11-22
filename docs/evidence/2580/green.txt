@@ -8,6 +8,6 @@ test_too_old_system_tool_is_left_out_with_its_reason (__main__.BootstrapTest.tes
 test_every_tool_names_its_source_exact_version_checksum_and_why (__main__.ToolsJsonTest.test_every_tool_names_its_source_exact_version_checksum_and_why) ... ok
 
 ----------------------------------------------------------------------
-Ran 7 tests in 0.541s
+Ran 7 tests in 0.548s
 
 OK
