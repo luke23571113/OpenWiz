@@ -317,6 +317,18 @@ class HostSetup(HostFixtureCase):
         self.assertEqual(self.invoke('prepare', *args, '--yes', '--operation', operation['operation_id']).stdout,
                          applied.stdout)
 
+    def test_prepare_names_every_missing_flag_in_one_error(self):
+        rest = ['--operator', 'synthetic-owner', '--service-issue', '7', '--harness', 'claude-code',
+                '--model', 'synthetic-model', '--effort', 'high']
+        cloud = '--repository, --project, --answer-thread'
+        for host, missing in ((None, cloud), ('cloud', cloud), ('local', '--repository')):
+            with self.subTest(host=host):
+                done = self.invoke('prepare', *rest, *(['--host', host] if host else []))
+                self.assertEqual(done.returncode, 2)
+                self.assertEqual(done.stdout, b'')
+                self.assertTrue(done.stderr.decode().endswith(
+                    f'error: the following arguments are required: {missing}\n'), done.stderr)
+
 
 class HostCheck(HostFixtureCase):
     def program(self, name, code):
