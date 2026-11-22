@@ -367,7 +367,7 @@ def remove(root, state_root, yes, home, codex_home=None):
     path = root / 'install.lock'
     if not owned(root, stat.S_ISDIR) or not (yes or os.path.lexists(path)):
         return remove_unlocked(root, state, state_root, yes, home, codex_home)
-    flags, made = os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, True
+    flags, made, held = os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, True, False
     try:
         try:
             lock = os.open(path, flags | os.O_CREAT | os.O_EXCL, 0o600)
@@ -386,9 +386,10 @@ def remove(root, state_root, yes, home, codex_home=None):
         except BlockingIOError:
             raise installer.Refused('an install or update is running at %s; nothing was changed. Run install '
                                     'remove again once it finishes' % root) from None
+        held = True
         return remove_unlocked(root, state, state_root, yes, home, codex_home, path if made else None)
     finally:
-        if made and os.path.lexists(path) and os.path.samestat(os.lstat(path), os.fstat(lock)):
+        if made and held and os.path.lexists(path) and os.path.samestat(os.lstat(path), os.fstat(lock)):
             os.unlink(path)
         os.close(lock)
 

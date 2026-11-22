@@ -26,6 +26,7 @@ test_a_root_with_an_unrelated_entry_is_refused_by_name_and_left_as_it_was (test_
 test_a_state_root_with_another_apps_entries_is_refused_by_name (test_root_safety.RootSafety.test_a_state_root_with_another_apps_entries_is_refused_by_name) ... ok
 test_an_empty_root_and_a_previous_install_are_accepted (test_root_safety.RootSafety.test_an_empty_root_and_a_previous_install_are_accepted) ... ok
 test_an_empty_state_root_and_a_previous_openwiz_state_are_accepted (test_root_safety.RootSafety.test_an_empty_state_root_and_a_previous_openwiz_state_are_accepted) ... ok
+test_an_install_that_wins_the_lock_remove_made_keeps_it_and_a_retry_is_refused (__main__.LockedRemove.test_an_install_that_wins_the_lock_remove_made_keeps_it_and_a_retry_is_refused) ... ok
 test_remove_never_deletes_a_shared_state_root_or_follows_a_link (__main__.LockedRemove.test_remove_never_deletes_a_shared_state_root_or_follows_a_link) ... ok
 test_remove_of_a_dedicated_install_leaves_no_root_and_lists_agent_skills_to_clean (__main__.LockedRemove.test_remove_of_a_dedicated_install_leaves_no_root_and_lists_agent_skills_to_clean) ... ok
 test_remove_on_a_root_with_nothing_installed_changes_nothing (__main__.LockedRemove.test_remove_on_a_root_with_nothing_installed_changes_nothing) ... ok
@@ -42,7 +43,7 @@ test_a_read_only_agent_folder_fails_on_its_own_row_and_the_next_agent_installs (
 test_when_no_agent_can_be_written_the_canonical_folder_is_not_written_either (test_skills.Truthful.test_when_no_agent_can_be_written_the_canonical_folder_is_not_written_either) ... ok
 test_the_in_process_installer_suites_never_touch_an_agent_home_outside_their_synthetic_home (test_skills.Isolation.test_the_in_process_installer_suites_never_touch_an_agent_home_outside_their_synthetic_home) ... ok
 ----------------------------------------------------------------------
-Ran 41 tests in 29.801s
+Ran 42 tests in 31.988s
 OK
 
 # Roadmap --root probe (issue 406), synthetic fake gh
