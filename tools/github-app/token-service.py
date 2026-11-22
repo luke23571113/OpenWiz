@@ -194,19 +194,38 @@ def serve(api, log, data, setting):
         message = refusal("unavailable")
     fcntl.flock(log, fcntl.LOCK_EX)
     start = os.lseek(log, 0, os.SEEK_END)
-    record(log, line)
-    if message["kind"] == "answer" and not fresh(message["expires_at"]):
-        os.ftruncate(log, start)
-        record(log, {key: value for key, value in line.items() if key not in ("permissions", "expires_at")}
-                    | {"outcome": "expiry"})
-        app.revoke(api["base"], message["token"])
-        message = refusal("expiry")
+    token = message.get("token")
+    try:
+        size = record(log, line)
+        if token is not None and not fresh(message["expires_at"]):
+            app.revoke(api["base"], token)
+            token = None
+            refused = {key: value for key, value in line.items() if key not in ("permissions", "expires_at")}
+            overwrite(log, start, size, dict(refused, outcome="expiry"))
+            message = refusal("expiry")
+    except Exception:
+        app.revoke(api["base"], token)
+        raise
     return message, REFUSALS[message["refusal"]][0] if message["kind"] == "refusal" else 0
 
 
 def record(log, line):
     entry = (json.dumps(line) + "\n").encode()
     app.require(os.write(log, entry) == len(entry))
+    os.fsync(log)
+    return len(entry)
+
+
+def overwrite(log, start, size, line):
+    entry = json.dumps(line).encode()
+    app.require(len(entry) < size)
+    entry = entry.ljust(size - 1) + b"\n"
+    flags = fcntl.fcntl(log, fcntl.F_GETFL)
+    fcntl.fcntl(log, fcntl.F_SETFL, flags & ~os.O_APPEND)
+    try:
+        app.require(os.pwrite(log, entry, start) == size)
+    finally:
+        fcntl.fcntl(log, fcntl.F_SETFL, flags)
     os.fsync(log)
 
 
