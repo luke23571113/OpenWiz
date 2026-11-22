@@ -109,8 +109,11 @@ NC3 (#2220, `openwiz models`) and NC5 (#2222, the first fleet).
 **The host.** The host is where the project's agents run: `cloud`
 (CloudRoom), `local` (this computer, through OpenWiz's local driver), `boat`
 (boat.dev) or another driver's name. A name is lowercase letters and digits
-in parts joined by single hyphens, at most 40 characters, the same name as
-the project's `Host: <name>` line in `docs/agents/host.md`.
+in parts joined by single hyphens, at most 40 characters. Another host's
+name is its driver's name, the same as the project's `Host: <name>` line in
+`docs/agents/host.md`. CloudRoom is always `cloud`, whether launch-fleet
+starts its agents with `room-cli` (no `Host:` line) or through the
+`cloudroom` driver, so setup refuses `cloudroom` as a host name.
 
 **The cloud host is unchanged.** With the host `cloud`, and in every report,
 saved project and check output from before 0.1.1, which name no host, every

@@ -338,7 +338,10 @@
     "host": {
       "type": "string",
       "maxLength": 40,
-      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "not": {
+        "const": "cloudroom"
+      }
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -732,7 +735,10 @@
                 {
                   "type": "string",
                   "maxLength": 40,
-                  "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+                  "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+                  "not": {
+                    "const": "cloudroom"
+                  }
                 },
                 {
                   "not": {
