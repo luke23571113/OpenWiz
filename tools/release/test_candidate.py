@@ -2190,12 +2190,15 @@ class Notes(World):
         newer = (section('0.1.1') + '\n' + section('0.1.0') + '\n').encode()
         kept_history(raw, raw)
         kept_history(raw[:cut] + newer + raw[cut:], raw)
-        for name, planted in (('a stray paragraph', b'Synthetic stray paragraph.\n\n'),
-                              ('a broken section', newer.replace(b'**Use 0.1.0**', b'Use 0.1.0')),
-                              ('an older version', (section('0.0.11') + '\n').encode()),
-                              ('oldest first', (section('0.1.0') + '\n' + section('0.1.1') + '\n').encode()),
-                              ('no blank line before the history', newer[:-1])):
-            with self.subTest(case=name), self.assertRaises(AssertionError):
+        whole, order = 'is not whole version sections', 'are not newest first and newer than the kept history'
+        for name, planted, reason in (
+                ('a stray paragraph', b'Synthetic stray paragraph.\n\n', whole),
+                ('a broken section', newer.replace(b'**Use 0.1.0**', b'Use 0.1.0'),
+                 'entry: 0.1.0 needs its bold headline here'),
+                ('an older version', (section('0.0.11') + '\n').encode(), order),
+                ('oldest first', (section('0.1.0') + '\n' + section('0.1.1') + '\n').encode(), order),
+                ('no blank line before the history', newer[:-1], whole)):
+            with self.subTest(case=name), self.assertRaisesRegex(AssertionError, re.escape(reason)):
                 kept_history(raw[:cut] + planted + raw[cut:], raw)
 
     def test_rl6_moved_lines_take_their_version_from_the_ticket_they_moved_to(self):
