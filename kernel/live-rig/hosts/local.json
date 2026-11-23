@@ -1,11 +1,9 @@
 {
   "host": "local",
   "driver": "adapters/local/driver",
-  "needs": ["claude", "codex", "gh"],
+  "needs": ["claude", "gh"],
   "signed_in": [
-    ["claude", "auth", "status"],
-    ["codex", "login", "status"],
-    ["gh", "auth", "status", "--hostname", "github.com", "--active", "--no-refresh"]
+    ["env", "GH_TELEMETRY=0", "gh", "config", "get", "-h", "github.com", "user"]
   ],
   "cost": "none",
   "runs": [{"harness": "claude", "model": "claude-opus-5-5"}],
