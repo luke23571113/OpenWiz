@@ -45,15 +45,30 @@ class Unusable(Exception):
     pass
 
 
+STOCK_LAUNCH = "return [req['harness'], '--model', req['model'], '-p', prompt]"
+FIXTURE_FOLDERS = (os.path.join(HERE, 'fixtures'), os.path.join(HERE, '..', '..', 'adapters', 'template', 'fixtures'))
+
+
+def _bare(text):
+    return re.sub(r'\s+', '', text)
+
+
 def holds_template_command(driver):
-    # SAFETY: a driver the kit can't read, or that still holds the template's `command`, is treated as the template.
+    # SAFETY: a driver the kit can't read, or holding any stock template's launch line, counts as the template.
     try:
         with open(TEMPLATE) as f:
             found = re.search(r'^def command\(.*?(?=^\S)', f.read(), re.S | re.M)
         with open(driver) as f:
-            return not found or found.group(0) in f.read()
+            text = _bare(f.read())
     except (OSError, UnicodeDecodeError):
         return True
+    return not found or _bare(STOCK_LAUNCH) in text or _bare(found.group(0)) in text
+
+
+def fixture_harness(name, path):
+    found = shutil.which(name, path=path)
+    folders = {os.path.realpath(f) for f in FIXTURE_FOLDERS}
+    return bool(found) and os.path.dirname(os.path.realpath(found)) in folders
 
 
 def stub_agent_clis(folder):
@@ -239,6 +254,9 @@ class Kit:
         self.blind = None if PROC else self.unseen()
         self.stubs = None
         if holds_template_command(args.driver):
+            if not fixture_harness(args.harness, self.env.get('PATH', os.defpath)):
+                raise Unusable("the driver still holds the template's command, and harness %s is not one of the kit's "
+                               "fixtures, so the kit ran nothing: write your own command first" % args.harness)
             self.stubs = stub_agent_clis(tempfile.mkdtemp(prefix='openwiz-kit-stubs-'))
             self.env['PATH'] = self.stubs + os.pathsep + self.env.get('PATH', os.defpath)
 

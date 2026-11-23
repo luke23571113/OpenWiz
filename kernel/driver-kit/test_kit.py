@@ -133,7 +133,8 @@ class Kit(unittest.TestCase):
         older = re.sub(r"    if os.environ.get\('OPENWIZ_TEMPLATE_LIVE'\).*?live check'\)\n", '', source, flags=re.S)
         self.assertNotEqual(older, source)
         copies = {}
-        for name, text in (('current', source), ('older', older), ('tighter', source.replace(launch + '\n\n', launch + '\n'))):
+        tighter = source.replace(launch + '\n\n', launch + '\n')
+        for name, text in (('current', source), ('older', older), ('tighter', tighter)):
             self.assertIn(launch, text)
             copies[name] = os.path.join(self.folder, 'copy-' + name)
             os.mkdir(copies[name])
@@ -252,7 +253,14 @@ class Kit(unittest.TestCase):
         with open(os.path.join(sleepy, 'fake-harness'), 'w') as f:
             f.write('#!%s\nimport time\ntime.sleep(120)\n' % sys.executable)
         os.chmod(os.path.join(sleepy, 'fake-harness'), 0o700)
-        code, out, err = self.kit(TEMPLATE, wait='2', PATH=sleepy + os.pathsep + self.env['PATH'])
+        wrapper = os.path.join(self.folder, 'wrapper')
+        with open(wrapper, 'w') as f:
+            f.write('#!%s\nimport importlib.machinery, importlib.util, sys\nsys.dont_write_bytecode = True\n'
+                    'spec = importlib.util.spec_from_loader("t", importlib.machinery.SourceFileLoader("t", %r))\n'
+                    't = importlib.util.module_from_spec(spec)\nspec.loader.exec_module(t)\nt.main()\n'
+                    % (sys.executable, os.path.realpath(TEMPLATE)))
+        os.chmod(wrapper, 0o700)
+        code, out, err = self.kit(wrapper, wait='2', PATH=sleepy + os.pathsep + self.env['PATH'])
         self.assertEqual((code, out), (1, [PASS[0], 'fail start: no builder status note appeared within 2 seconds',
                                            'fail wake: not run: start failed', 'fail stop: not run: start failed',
                                            PASS[4]]), err)
