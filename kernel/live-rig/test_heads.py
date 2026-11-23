@@ -339,7 +339,10 @@ class Heads(unittest.TestCase):
         self.assertEqual(self.heads(hosts, *extra, '--post', env=dict(self.env, HEADS_LOSE='PUT', HEADS_REFUSE='pulls'))[0], 2)
         first = len(self.calls())
         self.assertEqual(self.heads(hosts, *extra, '--post', env=dict(self.env, HEADS_GH_LOGIN='example-other'))[0], 2)
-        self.assertEqual(self.heads(hosts, *extra)[:2], (2, ''))
+        kept = read(os.path.join(self.out, 'publish.json'))
+        self.assertEqual(self.heads(hosts, *extra)[1], 'would finish the publish an earlier --post left unfinished:\n'
+                                                      'would open a pull request on openwizdev/WizMarket\n')
+        self.assertEqual(read(os.path.join(self.out, 'publish.json')), kept)
         code, out, err = self.heads(hosts, *extra, '--post')
         self.assertEqual((code, out), (0, 'finishing the publish an earlier --post left unfinished\n'
                                           'posted https://github.com/openwizdev/WizMarket/pull/41\n'), err)
@@ -368,6 +371,12 @@ class Heads(unittest.TestCase):
             self.assertEqual(len(self.calls()), calls, self.calls()[calls:])
         with open(journal, 'w') as f:
             f.write(kept)
+        rel = 'receipts/fixture-five/%s-%s.txt' % (self.day(), self.head[:12])
+        self.assertEqual(self.heads(['fixture-five'], *extra[:-1])[1], ''.join([
+            'would finish the publish an earlier --post left unfinished:\n', 'would post on openwizdev/OpenWiz#201:\n',
+            self.expected_comment(), 'would add %s to openwizdev/WizMarket:\n' % rel, self.expected_receipt(self.day()),
+            'would open a pull request on openwizdev/WizMarket\n']))
+        self.assertEqual((read(journal), len(self.calls())), (kept, calls))
         branch = 'receipts-fixture-five-%s-%s' % (self.day(), self.head[:12])
         with open(os.path.join(self.state, 'pulls.json'), 'w') as f:
             json.dump({LOGIN + ':' + branch: [{'html_url': 'https://github.com/openwizdev/WizMarket/pull/7', 'state':
