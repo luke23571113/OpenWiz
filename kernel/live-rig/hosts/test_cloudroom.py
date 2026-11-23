@@ -15,7 +15,7 @@ AGENT_CLIS = ['claude', 'codex', 'cursor-agent', 'agent', 'cursor', 'pi', 'openc
               'kimi', 'qwen', 'cline', 'kilo', 'kilocode', 'crush', 'vibe', 'auggie', 'kiro-cli', 'junie', 'amp', 'agy',
               'oz', 'sculpt', 'hermes', 'acpx', 'droid', 'boat', 'room-cli', 'runpane', 'pane', 'openhands', 'devin',
               'warp', 'grok', 'codespaces', 'conductor']
-STATUS = {'room-cli': 'room-cli status', 'gh': 'gh auth status --hostname github.com --active --no-refresh'}
+STATUS = {'room-cli': 'room-cli status', 'gh': 'gh config get -h github.com user'}
 RUNS = [('claude', 'claude-opus-5-5')]
 FAKE = '''#!/bin/sh
 printf '%%s\\n' "%s $*" >> "$FAKE_LOG"
