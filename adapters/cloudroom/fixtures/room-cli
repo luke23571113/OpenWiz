@@ -58,7 +58,8 @@ LEVELS_BY_MODEL = {'Opus 5.5': ('low', 'medium', 'high'), 'Synthetic 1': ('mediu
 PROVIDERS_WITH_MODELS, PROVIDERS_WITH_A_NOTE = ('claude-code', 'codex', 'fake-harness'), ('pi',)
 if sub == 'models' and args[0] == 'provider':
     if not os.environ.get('FAKE_ROOM_MODELS') and args[2] not in PROVIDERS_WITH_MODELS + PROVIDERS_WITH_A_NOTE:
-        sys.exit(print('Unknown provider %s. See room-cli provider list.' % args[2], file=sys.stderr) or 1)
+        sys.exit(print('Unknown provider %s. See room-cli provider list.' % os.environ.get('FAKE_ROOM_UNKNOWN', args[2]),
+                       file=sys.stderr) or 1)
     out = os.environ.get('FAKE_ROOM_MODELS') or json.dumps(
         [{'id': m, 'isDefault': False, 'model': m, 'supportedReasoningEfforts': [{'reasoningEffort': e} for e in levels]}
          for m, levels in LEVELS_BY_MODEL.items()]

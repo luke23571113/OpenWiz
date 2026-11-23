@@ -143,7 +143,6 @@ class Driver(unittest.TestCase):
 
     def test_an_effort_it_cannot_set_is_refused_and_starts_nothing(self):
         cases = {'a provider with no levels': dict(harness='pi', model='Synthetic 1', effort='medium'),
-                 'a provider Cloudroom does not know': dict(harness='gemini', model='Synthetic 1', effort='medium'),
                  'a level the model does not list': dict(effort='ultra'),
                  'a level only Synthetic 1 lists': dict(effort='xhigh'),
                  'a level only Opus 5.5 lists': dict(harness='codex', model='Synthetic 1', effort='low'),
@@ -170,6 +169,20 @@ class Driver(unittest.TestCase):
                 self.assertNotIn('Synthetic', json.dumps(out))
                 self.assertNotEqual(out['next'], CANT)
                 self.assertNotIn(['thread', 'spawn'], [c[:2] for c in self.calls()])
+                self.assertEqual(self.started(), [])
+
+    def test_a_lookup_diagnostic_never_reaches_the_answer(self):
+        credential = 'synthetic-demo-credential-' + self.mark
+        for unknown in ('gemini', credential):
+            with self.subTest(unknown=unknown):
+                self.fresh()
+                code, out = self.call('start', dict(START, harness='gemini', effort='medium'), GH_TOKEN=credential,
+                                      FAKE_ROOM_UNKNOWN=unknown)
+                self.assertEqual((code, out), (1, {
+                    'error': 'Cloudroom did not list the levels of harness gemini: room-cli gave an error the driver '
+                             'does not repeat; nothing was saved or started',
+                    'next': 'check `room-cli provider models gemini`, then start again'}))
+                self.assertEqual(self.calls(), [['provider', 'models', 'gemini', '--json']])
                 self.assertEqual(self.started(), [])
 
     def test_version_lists_effort_and_the_readme_says_how(self):

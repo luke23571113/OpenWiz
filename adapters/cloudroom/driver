@@ -37,8 +37,6 @@ LOOKUP = ("Read 'skills/{s}/SKILL.md' if present, otherwise find '*/skills/{s}/S
           ".claude-plugin/plugin.json manifest name openwiz and entry ./skills/{s}; report missing, unreadable or "
           "ambiguous matches, otherwise read the unique matching file and follow it.")
 KIT = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit', 'kit.py')
-UNKNOWN_PROVIDER = re.compile(r'Unknown provider ([a-z0-9][a-z0-9._-]{0,59})\. See room-cli provider list\.')
-NO_SUCH_PROVIDER = 'room-cli knows no provider %s'
 SIGNED_OUT = re.compile(r'\b(?:not signed in|signed out|sign in|sign-in|not logged in|logged out|log in)\b', re.I)
 
 
@@ -111,9 +109,7 @@ def room_said(out, err):
         out = said['error'] if isinstance(said, dict) and isinstance(said.get('error'), str) else out
     except ValueError:
         pass
-    told, unknown = out + ' ' + err, UNKNOWN_PROVIDER.fullmatch(err.strip())
-    if unknown and not out.strip():
-        return NO_SUCH_PROVIDER % unknown.group(1)
+    told = out + ' ' + err
     if SIGNED_OUT.search(told):
         return 'room-cli is not signed in'
     return 'room-cli gave an error the driver does not repeat' if told.strip() else 'room-cli gave no answer'
@@ -147,12 +143,11 @@ def refuse_unlisted_effort(req):
         code, out, said = room('provider', 'models', provider(req), '--json')
     except Unknown:
         code, said = 1, 'room-cli gave no answer'
-    provider_unknown = code != 0 and said == NO_SUCH_PROVIDER % provider(req)
-    if code != 0 and not provider_unknown:
+    if code != 0:
         raise Refused('Cloudroom did not list the levels of harness %s: %s; nothing was saved or started'
                       % (req['harness'], said), 'check `room-cli provider models %s`, then start again' % provider(req))
     try:
-        models = [] if provider_unknown else json.loads(out)
+        models = json.loads(out)
     except ValueError:
         models = None
     a_note_without_models = isinstance(models, dict)
