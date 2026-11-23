@@ -242,6 +242,79 @@ class Rig(unittest.TestCase):
                 self.assertEqual(rig.record_stdout(line + '\n', settings, LOGIN), kept + '\n' if kept else '')
         self.assertEqual(rig.record_stdout(PASS[0] + '\n', settings, None), 'pass version: withheld\n')
 
+    def test_a_line_with_any_path_a_non_ascii_or_other_unusual_character_is_withheld_and_clean_lines_kept(self):
+        rig = self.module()
+        settings = {'repo': REPO, 'ticket': TICKET}
+        for line in ['fail start: cannot open /\u00dcser/x', 'fail start: cannot open /\u00e9t\u00e9',
+                     'fail start: cannot open /\u4e2d\u6587', 'fail start: cannot open a/b',
+                     'fail start: cannot open \uff0fhome\uff0fsomeone', 'fail start: C:\\Users\\someone',
+                     'fail start: ~someone has no state', 'fail start: mailed someone@example.invalid',
+                     'fail start: HOME=somewhere', 'fail start: \x1b[31mred', 'fail start: caf\u00e9 is missing',
+                     'fail start: the tab\there']:
+            with self.subTest(line):
+                self.assertEqual(rig.record_stdout(line + '\n', settings, LOGIN), 'fail start: withheld\n')
+        self.assertEqual(rig.record_stdout(''.join(p + '\n' for p in PASS), settings, LOGIN),
+                         ''.join(p + '\n' for p in PASS))
+        for line in ['fail stop: a process the run started still runs after stop',
+                     'fail start: no builder status note appeared within 900 seconds',
+                     "fail start: the run posted 2 builder notes; it keeps one"]:
+            self.assertEqual(rig.record_stdout(line + '\n', settings, LOGIN), line + '\n')
+
+    def test_case_equivalent_host_or_record_names_exit_2_before_any_run(self):
+        with open(os.path.join(self.hosts, 'template.json')) as f:
+            config = json.load(f)
+        for name, bad in (('template.json', dict(config, runs=config['runs'] + [
+                              {'harness': 'fake-harness', 'model': 'SYNTHETIC 1'}])),
+                          ('upper.json', dict(config, host='Fixture-Template'))):
+            with self.subTest(bad):
+                self.commit_host(name, bad)
+                code, out, err = self.rig('--host', 'fixture-template')
+                self.assertEqual((code, out), (2, []), err)
+                self.assertIn('rig.py: ', err)
+                self.assertEqual((self.kit_calls(), self.records()), ([], []))
+            if name == 'upper.json':
+                os.remove(os.path.join(self.hosts, name))
+            self.commit_host('template.json', config)
+            shutil.rmtree(self.out, ignore_errors=True)
+            if os.path.exists(self.gh_log):
+                os.remove(self.gh_log)
+
+    def test_a_symlinked_host_config_or_hosts_folder_exits_2_and_runs_nothing(self):
+        marker = os.path.join(self.folder, 'status-ran')
+        with open(os.path.join(self.hosts, 'cost-unknown.json')) as f:
+            config = json.load(f)
+        outside = os.path.join(self.folder, 'outside.json')
+        with open(outside, 'w') as f:
+            json.dump(dict(config, host='fixture-linked', signed_in=[['touch', marker]]), f)
+        inside = os.path.join(self.checkout, 'kernel', 'live-rig', 'inside.json')
+        shutil.copy2(outside, inside)
+        hosts_link = os.path.join(self.checkout, 'kernel', 'live-rig', 'hosts-link')
+        os.symlink('fixtures/hosts', hosts_link)
+        git(self.checkout, 'add', '-A')
+        git(self.checkout, 'commit', '-q', '-m', 'a linked hosts folder')
+        for target in (outside, os.path.relpath(inside, self.hosts)):
+            with self.subTest(target):
+                link = os.path.join(self.hosts, 'linked.json')
+                os.symlink(target, link)
+                git(self.checkout, 'add', '-A')
+                git(self.checkout, 'commit', '-q', '-m', 'a tracked symlink')
+                try:
+                    code, out, err = self.rig('--host', 'fixture-linked')
+                    self.assertEqual((code, out), (2, []), err)
+                    self.assertIn('rig.py: ', err)
+                    self.assertFalse(os.path.exists(marker))
+                    self.assertEqual((self.kit_calls(), self.records()), ([], []))
+                finally:
+                    os.remove(link)
+                    git(self.checkout, 'commit', '-qam', 'drop it')
+                    shutil.rmtree(self.out, ignore_errors=True)
+        command = self.command('--host', 'fixture-cost')
+        command[command.index('--hosts') + 1] = hosts_link
+        p = subprocess.run(command, env=self.env, capture_output=True, text=True, timeout=60)
+        self.assertEqual((p.returncode, p.stdout), (2, ''), p.stderr)
+        self.assertIn('rig.py: --hosts', p.stderr)
+        self.assertEqual((self.kit_calls(), self.records()), ([], []))
+
     def test_load_host_and_check_host_are_importable_and_give_the_exact_skip_reasons(self):
         rig = self.module()
         files = {'fixture-template': 'template.json', 'fixture-missing': 'missing.json',
