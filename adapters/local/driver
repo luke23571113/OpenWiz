@@ -22,7 +22,7 @@ ROW_FIELDS = ('harness', 'program', 'start', 'wake', 'session', 'modes', 'env', 
 OPTIONAL_ROW_FIELDS = ('signed_out', 'login_command')
 PLACEHOLDERS = ('{prompt}', '{model}', '{session}', '{mode}', '{effort}')
 SESSION = r'[A-Za-z0-9._:-]{1,100}'
-EFFORT = r'[A-Za-z0-9._-]{1,40}'
+EFFORT = r'[a-z][a-z0-9-]{0,19}'
 ENV_NAME = r'(?!OPENWIZ_)[A-Z][A-Z0-9_]{0,59}'
 PROGRAM = r'[A-Za-z0-9][A-Za-z0-9._-]{0,59}'
 CANT_SET_EFFORT = ("this host can't set effort: remove the effort for this harness in your Models table or Roster "
@@ -232,7 +232,7 @@ def row_folders():
         return []
 
 
-def program(harness):
+def program(harness, effort):
     row = None
     if harness not in HARNESSES:
         try:
@@ -251,6 +251,7 @@ def program(harness):
                     break
                 choices += n if choices.endswith(': ') else ', ' + n
             raise Refused('harness %s is not one this driver runs' % harness, choices)
+    effort_of(harness, row, effort)
     name = row['program'] if row else harness
     path = shutil.which(name)
     if not path:
@@ -783,8 +784,7 @@ def answer(cmd):
             return json.load(f)
     if cmd == 'start':
         req, run = no_credentials(read(START)), 'run-' + secrets.token_hex(6)
-        path, row = program(req['harness'])
-        effort_of(req['harness'], row, req.get('effort'))
+        path, row = program(req['harness'], req.get('effort'))
         state = {'request': req, 'program': path, 'turns': [], 'stopped': False, 'starting': True,
                  'workspace': None, 'mode': None}
         if row:

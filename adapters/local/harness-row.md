@@ -55,18 +55,18 @@ A row ticket owns only its folder. No row edits the driver, this file, the local
 
 A user must always be able to set effort. Each row takes exactly one of two forms:
 
-- **It passes the user's effort to the CLI:** an `effort` object maps each effort value the user may set (an effort id: letters, digits, `.`, `_` or `-`, up to 40) to either a non-empty list of fixed arguments it adds where `{effort}` sits, or `{"env": {"<NAME>": "<value>"}}`, the fixed `env` setting it makes. It names the exact flag or setting. An effort flag that needs another flag with it, such as a model, keeps both in the same argument list.
+- **It passes the user's effort to the CLI:** an `effort` object maps each effort value the user may set (an effort id, as driver v1's `effort` start field has it in #2471: `^[a-z][a-z0-9-]{0,19}$`, such as `low` or `xhigh`) to either a non-empty list of fixed arguments it adds where `{effort}` sits, or `{"env": {"<NAME>": "<value>"}}`, the fixed `env` setting it makes. It names the exact flag or setting. An effort flag that needs another flag with it, such as a model, keeps both in the same argument list.
 - **The host can't set effort:** `"effort": "none: <one line why, naming the primary source>"`.
 
 Both `row.json` and the row's README say which form it is. `{effort}` may appear in `start` only, or in both `start` and `wake`, because some CLIs refuse an effort flag on resume; it appears only when some effort value adds arguments. A row must not claim an effort value that its CLI silently ignores for some models: it declares `none` instead.
 
-When a start carries an effort, the effort reaches the CLI. When the row's effort is `none`, or doesn't list that value, the start is a D3 refusal that starts nothing, and its `next` is exactly:
+When a start carries an effort, the effort reaches the CLI. When the row's effort is `none`, or doesn't list that value, the start is a D3 refusal that starts nothing, checked with the row and before the driver looks for its `program`, and its `next` is exactly:
 
 `this host can't set effort: remove the effort for this harness in your Models table or Roster to run it at the host's default`
 
 A start with an effort never falls back to a default. Built-in `claude` and `codex` refuse an effort the same way until their flags are added.
 
-**Hooks for driver v1's `effort` start field (#2471).** That ticket adds the field to driver v1, the schema and `version`'s `can` list (the local driver lists `effort` there, because `claude` and `codex` take it); `version` carries no per-row note, since its schema is fixed, and each row's README `Effort:` line says what the row takes. Until then the driver is wired below the field: `command(state, woken)` turns a run's row and request into the turn's command line and environment, `effort_of(harness, row, effort)` gives an effort's arguments and environment or the refusal above, and `start` reads `request.get('effort')` before it saves anything. Turning the field on is adding `effort` to the driver's `START` fields. Its field name and values are matched once its contract is posted.
+**Hooks for driver v1's `effort` start field (#2471).** That ticket adds the field to driver v1, the schema and `version`'s `can` list (the local driver lists `effort` there, because `claude` and `codex` take it); `version` carries no per-row note, since its schema is fixed, and each row's README `Effort:` line says what the row takes. Until then the driver is wired below the field: `command(state, woken)` turns a run's row and request into the turn's command line and environment, `effort_of(harness, row, effort)` gives an effort's arguments and environment or the refusal above, and `start` reads `request.get('effort')` before it saves anything. Turning the field on is adding `effort` to the driver's `START` fields as an optional field: `read` takes exactly `START`'s fields today, so it must also accept a start without `effort`, and an ordinary start stays valid. Its field name and values are matched once its contract is posted.
 
 ## 5. The kit check for rows
 

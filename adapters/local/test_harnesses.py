@@ -372,7 +372,7 @@ def effort_checked_first_with_its_grammar(planted):
         ok = env.start_refused_starting_nothing(lambda out: out['next'] == CANT_SET_EFFORT, effort='medium')
     with example_variant('example', effort={'High': ['--effort', 'high']}) as rows, \
             ThrowawayMachine(rows, 'example', mode='auto') as env:
-        ok = env.start_refused_starting_nothing(lambda out: 'harnesses/example/row.json (effort:' in out['error']) and ok
+        ok = env.start_refused_starting_nothing(lambda out: 'harnesses/example/row.json' in out['error'] and '(effort:' in out['error']) and ok
     return ok
 
 
