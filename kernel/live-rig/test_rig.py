@@ -66,6 +66,11 @@ class Rig(unittest.TestCase):
                 continue
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             (shutil.copytree if os.path.isdir(src) else shutil.copy2)(src, dst)
+        signed_out = os.path.join(self.checkout, 'kernel', 'live-rig', 'fixtures', 'hosts', 'signed-out.json')
+        with open(signed_out) as f:
+            config = json.load(f)
+        with open(signed_out, 'w') as f:
+            json.dump(dict(config, cost='none'), f)
         for name in ('planted', 'quoting'):
             os.makedirs(os.path.join(self.checkout, 'adapters', name))
             shutil.copy2(os.path.join(FAKES, name + '-driver'), os.path.join(self.checkout, 'adapters', name, 'driver'))
@@ -333,11 +338,39 @@ class Rig(unittest.TestCase):
         self.assertIn('rig.py: --hosts goes through a symlink', p.stderr)
         self.assertFalse(os.path.exists(marker))
         self.assertEqual((self.kit_calls(), self.records()), ([], []))
+        for given in ('retired/../hosts-link/../hosts', 'rig.py/../hosts-link/../hosts', 'retired/../fixtures/hosts',
+                      os.path.join(live_rig, 'retired', '..', 'hosts-link', '..', 'hosts'),
+                      os.path.join(live_rig, 'rig.py', '..', 'hosts-link', '..', 'hosts')):
+            with self.subTest(given):
+                command[at] = given
+                p = subprocess.run(command, cwd=live_rig, env=self.env, capture_output=True, text=True, timeout=60)
+                self.assertEqual((p.returncode, p.stdout), (2, ''), p.stderr)
+                self.assertIn('rig.py: ', p.stderr)
+                self.assertEqual((self.kit_calls(), self.records()), ([], []))
         command[at] = os.path.join(live_rig, 'fixtures', '..', 'fixtures', 'hosts')
         p = subprocess.run(command, env=self.env, capture_output=True, text=True, timeout=60)
         self.assertEqual((p.returncode, p.stdout), (0, 'skipped fixture-linked fake-harness: cost\n'), p.stderr)
-        self.assertTrue(os.path.exists(marker))
+        self.assertFalse(os.path.exists(marker))
         self.assertEqual(len(self.records()), 1)
+
+    def test_a_host_whose_cost_is_not_none_is_skipped_as_cost_before_any_status_probe_runs(self):
+        marker = os.path.join(self.folder, 'status-ran')
+        with open(os.path.join(self.hosts, 'cost-unknown.json')) as f:
+            config = json.load(f)
+        probe = [['sh', '-c', 'touch "$0"; exit 1', marker]]
+        self.commit_host('paid.json', dict(config, host='fixture-paid', cost='paid', signed_in=probe))
+        self.commit_host('cost-unknown.json', dict(config, signed_in=probe))
+        rig = self.module()
+        for host, name in (('fixture-cost', 'cost-unknown.json'), ('fixture-paid', 'paid.json')):
+            with self.subTest(host):
+                self.assertEqual(rig.check_host(rig.load_host(os.path.join(self.hosts, name))), 'cost')
+                code, out, err = self.rig('--host', host)
+                self.assertEqual((code, out), (0, ['skipped %s fake-harness: cost' % host]), err)
+                record = self.record(host)
+                self.assertEqual({k: record[k] for k in KEYS[6:10]},
+                                 {'outcome': 'skipped', 'skipped': 'cost', 'kit_exit': None, 'stdout': None})
+                self.assertFalse(os.path.exists(marker))
+                self.assertEqual(self.kit_calls(), [])
 
     def test_load_host_and_check_host_are_importable_and_give_the_exact_skip_reasons(self):
         rig = self.module()
