@@ -251,6 +251,45 @@ class Kit(unittest.TestCase):
                 self.assertEqual((code, out), (1, PASS[:4] + ['fail token: the file %s, which a process of the driver '
                                                              'ran, %s' % (rel, SCRIPT)]))
 
+    def test_a_relative_script_without_a_prefix_or_behind_a_decoy_is_scanned_on_linux_and_macos(self):
+        macos = {'PATH': NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable}
+        cases = {'key-runtime-relative-spaced': ('shared scripts', 'reader.py'),
+                 'key-runtime-decoy-run': ('y', 'reader.py')}
+        for name, script in cases.items():
+            driver = os.path.join(FIXTURES, 'planted', name, 'driver')
+            for python, env in ((sys.executable, {}), (os.path.join(NO_PROC, 'python3'), macos)):
+                with self.subTest(name, python=python):
+                    self.tearDown()
+                    self.setUp()
+                    env = dict(env, PATH=NO_PROC + os.pathsep + self.env['PATH']) if env else {}
+                    code, out, _ = self.keyed(driver, python=python, **env)
+                    path = os.path.realpath(os.path.join(self.folder, 'state', *script))
+                    rel = os.path.relpath(path, os.path.realpath(os.path.dirname(driver)))
+                    self.assertEqual((code, out), (1, PASS[:4] + ['fail token: the file %s, which a process of the '
+                                                                 'driver ran, %s' % (rel, SCRIPT)]))
+
+    @unittest.skipUnless(os.path.isdir('/proc/self'), 'reads /proc')
+    def test_a_live_marked_process_whose_folder_cannot_be_read_fails_the_check(self):
+        kit = module(os.path.join(HERE, 'kit.py'))
+        child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])
+        self.addCleanup(child.wait)
+        self.addCleanup(child.kill)
+        k = kit.Kit.__new__(kit.Kit)
+        k.lock, k.leaks, k.mark = threading.RLock(), [], 'OPENWIZ_KIT_RUN=synthetic'
+        k.table = lambda: {str(child.pid): (os.getpid(), os.getuid(), [k.mark], [sys.executable, ''], 0, 0)}
+
+        def unreadable(pid, tries=kit.HIDDEN_TRIES):
+            raise OSError(5, 'Input/output error')
+        k.folder_of = unreadable
+        self.assertEqual(list(k.run_processes()), [])
+        self.assertEqual(k.leaks, ["the kit could not read a process of the driver's working folder, so it cannot "
+                                   "check it"])
+        child.kill()
+        child.wait()
+        k.leaks = []
+        self.assertEqual(list(k.run_processes()), [])
+        self.assertEqual(k.leaks, [], 'a process that has exited is skipped')
+
     def test_the_kit_trusts_only_its_own_interpreter_not_one_on_path(self):
         fake = os.path.join(self.folder, 'bin')
         os.makedirs(fake)
