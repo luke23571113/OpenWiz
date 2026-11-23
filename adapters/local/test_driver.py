@@ -462,7 +462,6 @@ class Local(unittest.TestCase):
                 self.assertNotIn(OPAQUE, p.stderr)
 
     def test_without_proc_as_on_macos_stop_warns_when_lsof_failed_in_a_supervisor_that_has_exited(self):
-        # catches: a stop that says nothing of a failed output check once the turn's supervisor has exited.
         folder, pids = self.harness_handing_off_as_it_exits('claude')
         broken = os.path.join(self.folder, 'broken-lsof')
         os.mkdir(broken)

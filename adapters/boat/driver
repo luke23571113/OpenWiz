@@ -109,11 +109,13 @@ def host_said(lines, stderr):
     code = errors[-1].get('code') if errors else None
     if isinstance(code, str) and code in HOST_ERRORS:
         return code, HOST_ERRORS[code]
+    told = ' '.join(str(errors[-1].get(k)) for k in ('error', 'code')) if errors else ''
+    if SIGNED_OUT.search(told):
+        return 'boat is not signed in', SIGN_IN
     for known in HOST_ERRORS:
         if re.search(r'(?<![A-Za-z0-9_])%s(?![A-Za-z0-9_])' % known, stderr):
             return known, HOST_ERRORS[known]
-    told = ' '.join(str(errors[-1].get(k)) for k in ('error', 'code')) if errors else ''
-    if SIGNED_OUT.search(told) or SIGNED_OUT.search(stderr):
+    if SIGNED_OUT.search(stderr):
         return 'boat is not signed in', SIGN_IN
     return ('boat gave an error the driver does not repeat' if told.strip() or stderr.strip()
             else 'boat gave no answer'), None

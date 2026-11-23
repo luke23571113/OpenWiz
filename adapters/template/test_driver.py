@@ -325,8 +325,6 @@ class Template(unittest.TestCase):
         self.assertFalse(alive(worker), 'a worker the turn handed off as it exited still runs after stop')
 
     def test_without_proc_as_on_macos_stop_warns_when_lsof_failed_in_a_supervisor_that_has_exited(self):
-        # catches: a stop that says nothing of a failed output check once the turn's supervisor has exited, or
-        # an output file removed before stop.
         folder, pids = self.harness_handing_off_as_it_exits('fake-harness')
         broken = os.path.join(self.folder, 'broken-lsof')
         os.mkdir(broken)
