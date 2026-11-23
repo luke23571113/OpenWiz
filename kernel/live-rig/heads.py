@@ -43,6 +43,7 @@ TRIED_MARGIN = datetime.timedelta(hours=1)
 STAMP = '%Y-%m-%dT%H:%M:%SZ'
 COMMENT = re.compile(r'\*\*[A-Z][A-Z0-9]{1,15} live kit run: [0-5] of 5 pass\*\*, at head `[0-9a-f]{40}`\n\n```\n'
                      r'((?:[^`\n]*\n)*)```\n')
+COMMENT_URL = r'https://github\.com/openwizdev/OpenWiz/pull/[0-9]+#issuecomment-[0-9]+'
 RECEIPT_REL = re.compile(r'receipts/([a-z0-9-]{2,40})/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9a-f]{12}\.txt')
 CHECK_PREFIX = re.compile(r'^(?:pass|fail) (?:version|start|wake|stop|token): ', re.M)
 GH_OVERRIDES = ('GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN', 'GH_HOST')
@@ -179,16 +180,17 @@ def check_journal(plan, settings):
         return type(value) is int and value >= 0 and (top is None or value < top)
 
     if not (isinstance(plan, dict) and set(plan) == JOURNAL_KEYS and ok(plan['login'], r'[A-Za-z0-9-]{1,39}') and
-            plan['outcome'] in (0, 1) and type(plan['outcome']) is int and type(plan['ref']) is bool and isinstance(plan['comments'], list) and plan['comments'] and
+            plan['outcome'] in (0, 1) and type(plan['outcome']) is int and type(plan['ref']) is bool and
+            isinstance(plan['comments'], list) and plan['comments'] and
             isinstance(plan['receipts'], list) and isinstance(plan['put'], list) and
             (plan['fork'] is None or ok(plan['fork'], r'[A-Za-z0-9-]{1,39}/WizMarket')) and
             (plan['pull'] is None or ok(plan['pull'], r'https://github\.com/openwizdev/WizMarket/pull/[0-9]+'))):
         raise Refused('%s is not a publish heads.py wrote' % JOURNAL)
     for c in plan['comments']:
-        if not (isinstance(c, dict) and set(c) == {'pr', 'body', 'run', 'tried', 'url'} and index(c['pr']) and
+        if not (isinstance(c, dict) and set(c) == {'pr', 'body', 'run', 'tried', 'url'} and
+                index(c['pr']) and c['pr'] > 0 and
                 isinstance(c['body'], str) and ok(c['run'], r'[0-9a-f]{32}') and stamp(c['tried']) and
-                (c['url'] is None or ok(c['url'], r'https://github\.com/openwizdev/OpenWiz/pull/[0-9]+#issuecomment-[0-9]+'
-                                                  ))):
+                (c['url'] is None or ok(c['url'], COMMENT_URL))):
             raise Refused('%s holds a comment heads.py did not plan' % JOURNAL)
         lines = COMMENT.fullmatch(c['body'])
         if c['url'] is None and (lines is None or holds_credential_after_check_names(c['body']) or
@@ -197,7 +199,8 @@ def check_journal(plan, settings):
     for r in plan['receipts']:
         if not (isinstance(r, dict) and set(r) == {'rel', 'text', 'listing', 'pr', 'comment'} and
                 ok(r['rel'], RECEIPT_REL.pattern) and RECEIPT_REL.fullmatch(r['rel']).group(1) == r['listing'] and
-                index(r['pr']) and index(r['comment'], len(plan['comments'])) and isinstance(r['text'], str)):
+                index(r['pr']) and r['pr'] > 0 and index(r['comment'], len(plan['comments'])) and
+                isinstance(r['text'], str)):
             raise Refused('%s holds a receipt heads.py did not plan' % JOURNAL)
         if holds_credential_after_check_names(r['text']):
             raise Refused('%s holds a receipt with a credential, so nothing is posted' % JOURNAL)
@@ -220,7 +223,8 @@ def save(path, plan):
 class Session:
     def __init__(self, args):
         self.args, self.failed, self.login, self.folder, self.read = args, False, None, None, {}
-        self.plan = {'login': None, 'outcome': None, 'comments': [], 'receipts': [], 'fork': None, 'ref': False, 'put': [], 'pull': None}
+        self.plan = {'login': None, 'outcome': None, 'comments': [], 'receipts': [], 'fork': None, 'ref': False,
+                     'put': [], 'pull': None}
 
     def say(self, line):
         print(line, flush=True)

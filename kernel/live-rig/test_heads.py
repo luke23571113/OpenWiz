@@ -141,7 +141,7 @@ class Heads(unittest.TestCase):
             every = json.load(f)
         tickets = os.path.join(self.folder, 'live-tickets.json')
         with open(tickets, 'w') as f:
-            json.dump({h: every[h] for h in hosts}, f)
+            json.dump(hosts if isinstance(hosts, dict) else {h: every[h] for h in hosts}, f)
         command = [sys.executable, '-I', os.path.join(self.checkout, 'kernel', 'live-rig', 'heads.py'),
                    '--tickets', tickets, '--hosts', folder or self.hosts, '--settings', self.settings,
                    '--out', self.out] + list(extra)
@@ -293,26 +293,15 @@ class Heads(unittest.TestCase):
             good = json.load(f)['fixture-paid']
         for bad in (dict(good, extra=1), dict(good, pr='205'), dict(good, listing='Bad_Id'), dict(good, id='')):
             with self.subTest(bad=bad):
-                tickets = os.path.join(self.folder, 'bad.json')
-                with open(tickets, 'w') as f:
-                    json.dump({'fixture-paid': bad}, f)
-                p = subprocess.run([sys.executable, '-I', os.path.join(self.checkout, 'kernel', 'live-rig', 'heads.py'),
-                                    '--tickets', tickets, '--hosts', self.hosts, '--settings',
-                                    self.settings, '--out', self.out], env=self.env, capture_output=True, text=True,
-                                   timeout=60)
-                self.assertEqual((p.returncode, p.stdout), (2, ''), p.stderr)
+                self.assertEqual(self.heads({'fixture-paid': bad})[:2], (2, ''))
         self.assertEqual(self.calls(), [])
 
     def test_a_frozen_head_naming_another_pr_or_a_host_with_no_config_is_skipped_and_starts_no_kit(self):
-        tickets = os.path.join(self.folder, 'other.json')
-        with open(tickets, 'w') as f:
-            json.dump({'fixture-paid': {'id': 'FX5L', 'ticket': 105, 'pr': 999, 'listing': 'fixture-paid'},
-                       'fixture-absent': {'id': 'FX7L', 'ticket': 105, 'pr': 205, 'listing': 'fixture-absent'}}, f)
-        p = subprocess.run([sys.executable, '-I', os.path.join(self.checkout, 'kernel', 'live-rig', 'heads.py'),
-                            '--tickets', tickets, '--hosts', self.hosts, '--settings', self.settings, '--out', self.out,
-                            '--allow-cost', 'fixture-paid'], env=self.env, capture_output=True, text=True, timeout=60)
-        self.assertEqual((p.returncode, p.stdout), (0, 'skipped fixture-paid: the frozen head names #205, not the build '
-                                                       'PR #999\nskipped fixture-absent: no host config\n'), p.stderr)
+        code, out, err = self.heads({'fixture-paid': {'id': 'FX5L', 'ticket': 105, 'pr': 999, 'listing': 'fixture-paid'},
+                                     'fixture-absent': {'id': 'FX7L', 'ticket': 105, 'pr': 205, 'listing': 'fixture-absent'}},
+                                    '--allow-cost', 'fixture-paid')
+        self.assertEqual((code, out), (0, 'skipped fixture-paid: the frozen head names #205, not the build '
+                                          'PR #999\nskipped fixture-absent: no host config\n'), err)
         self.assertFalse(self.kit_ran())
         self.assertEqual(len(self.calls()), 1, self.calls())
 
