@@ -95,6 +95,8 @@ def turn(prompt, model, session=None, announce=None, daemon=None, signed_out=Non
              'env': {n: os.environ.get(n) for n in names}}
     if os.environ.get('FAKE_CLI_RECORD_ONLY'):
         record(entry)
+        if os.environ.get('FAKE_CLI_LINGER') and not woken:
+            time.sleep(300)
         sys.exit(0)
     if daemon and not woken:
         entry['daemon'] = background_service(daemon)

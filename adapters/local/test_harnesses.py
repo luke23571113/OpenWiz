@@ -349,13 +349,16 @@ def check_driver(rows):
         lists = lambda out: out['next'].startswith('use one of: claude, codex, ') and 'example-none' in out['next']
         found.append(('an unknown harness is a D3 error that lists the built-ins and the row folders, and starts '
                       'nothing', env.start_refused_starting_nothing(lists, 'no-such-row')))
-        code, out = env.start(FAKE_CLI_QUIET='1', FAKE_CLI_RECORD_ONLY='1')
-        before = len(env.records())
-        woke = env.driver('wake', out) if code == 0 else (0, {})
-        env.driver('stop', out)
-        found.append(('a wake before the reported session id is known is a D3 error that starts nothing',
-                      woke[0] == 1 and kit.invalid(woke[1], ERROR) is None and 'no session id' in woke[1]['error']
-                      and len(env.records()) == before == 1))
+        early = []
+        for linger in ('', '1'):
+            code, out = env.start(FAKE_CLI_QUIET='1', FAKE_CLI_RECORD_ONLY='1', FAKE_CLI_LINGER=linger)
+            before = len(env.records())
+            woke = env.driver('wake', out) if code == 0 else (0, {})
+            env.driver('stop', out)
+            early.append(woke[0] == 1 and kit.invalid(woke[1], ERROR) is None and 'no session id' in woke[1]['error']
+                         and len(env.records()) == before == len(early) + 1)
+        found.append(('a wake before the reported session id is known is a D3 error that starts nothing, whether '
+                      'the first turn has ended or still runs', all(early)))
     return ['%s driver: %s' % ('pass' if ok else 'fail', what) for what, ok in found]
 
 
