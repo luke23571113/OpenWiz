@@ -49,8 +49,10 @@ with tempfile.TemporaryDirectory() as tmp:
         code = run(argv, record)
         if code != 2:
             failed.append('%s exited %d, not 2' % (why, code))
-    with open(record) as f:
-        turns = [json.loads(line) for line in f]
+    turns = []
+    if os.path.exists(record):
+        with open(record) as f:
+            turns = [json.loads(line) for line in f]
     if [t['turn'] for t in turns] != ['first'] * 4 + ['woken'] * 2 or {t['session'] for t in turns} != {SID}:
         failed.append('the fake did not record four first turns and two woken turns of one session')
 for line in failed:
