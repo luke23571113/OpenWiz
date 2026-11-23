@@ -35,7 +35,7 @@ FROZEN = re.compile(r'launch-fleet: look: live run due at the approved frozen he
                     r'(?![0-9a-f])')
 ETAGS = 'heads-etags.json'
 JOURNAL = 'publish.json'
-JOURNAL_KEYS = {'login', 'comments', 'receipts', 'fork', 'ref', 'put', 'pull'}
+JOURNAL_KEYS = {'login', 'outcome', 'comments', 'receipts', 'fork', 'ref', 'put', 'pull'}
 FORK_READY_TRIES = 6
 PAGE = 100
 RUN_LINE = '<!-- openwiz:heads-run %s -->\n'
@@ -179,7 +179,7 @@ def check_journal(plan, settings):
         return type(value) is int and value >= 0 and (top is None or value < top)
 
     if not (isinstance(plan, dict) and set(plan) == JOURNAL_KEYS and ok(plan['login'], r'[A-Za-z0-9-]{1,39}') and
-            type(plan['ref']) is bool and isinstance(plan['comments'], list) and plan['comments'] and
+            plan['outcome'] in (0, 1) and type(plan['outcome']) is int and type(plan['ref']) is bool and isinstance(plan['comments'], list) and plan['comments'] and
             isinstance(plan['receipts'], list) and isinstance(plan['put'], list) and
             (plan['fork'] is None or ok(plan['fork'], r'[A-Za-z0-9-]{1,39}/WizMarket')) and
             (plan['pull'] is None or ok(plan['pull'], r'https://github\.com/openwizdev/WizMarket/pull/[0-9]+'))):
@@ -220,7 +220,7 @@ def save(path, plan):
 class Session:
     def __init__(self, args):
         self.args, self.failed, self.login, self.folder, self.read = args, False, None, None, {}
-        self.plan = {'login': None, 'comments': [], 'receipts': [], 'fork': None, 'ref': False, 'put': [], 'pull': None}
+        self.plan = {'login': None, 'outcome': None, 'comments': [], 'receipts': [], 'fork': None, 'ref': False, 'put': [], 'pull': None}
 
     def say(self, line):
         print(line, flush=True)
@@ -470,10 +470,10 @@ def run(args):
         check_journal(plan, settings)
         if not args.post:
             preview(plan)
-            return 0
+            return plan['outcome']
         print('finishing the publish an earlier --post left unfinished', flush=True)
         Publish(journal, plan).run()
-        return 0
+        return plan['outcome']
     cache_path = os.path.join(args.out, ETAGS)
     cache = rig.read_json(cache_path, ETAGS) if os.path.exists(cache_path) else {}
     session = Session(args)
@@ -485,7 +485,7 @@ def run(args):
             json.dump(cache, f)
         os.replace(cache_path + '.part', cache_path)
     if args.post and session.plan['comments']:
-        session.plan['login'] = session.run_by()
+        session.plan.update(login=session.run_by(), outcome=1 if session.failed else 0)
         check_journal(session.plan, settings)
         save(journal, session.plan)
         Publish(journal, session.plan).run()
