@@ -214,7 +214,7 @@ class Page(unittest.TestCase):
         commands = re.findall(r'(?<!`)`([^`\n]+)`(?!`)', self.page)
         doctors = [command for command in commands if command.startswith('runpane agents doctor ')]
         self.assertEqual(len(doctors), 1)
-        start = 'pane --daemon-headless'
+        start = 'pane --ozone-platform=headless --disable-gpu --daemon-headless'
         register = 'runpane repos add --path "$CHECKOUT"'
         self.assertIn(register, commands)
         self.assertLess(commands.index(register), commands.index(doctors[0]), 'register before running doctor')
