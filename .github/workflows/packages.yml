@@ -145,6 +145,15 @@ jobs:
         with:
           name: openwiz-${{ inputs.version }}-${{ matrix.target }}
           path: artifact
+      - name: Planted break, flip one archive byte
+        run: |
+          /usr/bin/python3 - <<'PY2'
+          import glob
+          path, = glob.glob('artifact/packages/openwiz-*.tar.gz')
+          data = bytearray(open(path, 'rb').read())
+          data[len(data) // 2] ^= 1
+          open(path, 'wb').write(bytes(data))
+          PY2
       - name: Rehearse the install
         run: |
           mkdir -m 700 "$RUNNER_TEMP/stranger-home"
