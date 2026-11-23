@@ -4,7 +4,10 @@ import json, os, subprocess, sys, tempfile
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 FAKE = os.path.join(HERE, 'fake')
-LIB = os.path.join(HERE, '..', '..', 'fixtures')
+LOCAL = os.path.abspath(os.path.join(HERE, '..', '..'))
+LIB = os.path.join(LOCAL, 'fixtures')
+sys.path.insert(0, LOCAL)
+from test_harnesses import ThrowawayMachine
 BASE = ['--skip-update-check', '--output-format', 'json']
 REFUSED = {
     'text output': ['--skip-update-check', '--output-format', 'text', '--model', 'm', '--task', 'p'],
@@ -25,6 +28,33 @@ def run(args, **env):
                           env=dict(os.environ, FAKE_CLI_LIB=LIB, PYTHONDONTWRITEBYTECODE='1', **env))
 
 
+def check_start(bad):
+    with ThrowawayMachine(os.path.dirname(HERE), 'junie', 'junie', FAKE, 'allow-all') as machine:
+        code, out = machine.start(FAKE_CLI_SIGNED_OUT='1')
+        if code == 1 and 'the harness is not signed in (exit 0)' in out.get('error', '') and \
+                'sign in yourself with `junie`' in out.get('next', ''):
+            print('pass junie start: a signed-out response asks the user to sign in')
+        else:
+            bad.append('a signed-out Junie response did not fail start with sign-in guidance')
+
+        reply = json.dumps({
+            'sessionId': 'synthetic-junie-session',
+            'errors': [],
+            'result': 'The log said: "Cannot find authorization. Please authenticate before running Junie."',
+        })
+        code, out = machine.start(FAKE_CLI_RECORD_ONLY='1', FAKE_CLI_QUIET='1', FAKE_CLI_PRELUDE=reply)
+        if code == 0 and 'run' in out:
+            stopped, _ = machine.driver('stop', out)
+            if stopped == 0:
+                print('pass junie start: a successful result quoting the diagnostic starts normally')
+            else:
+                bad.append('the run quoting the diagnostic did not stop')
+        elif 'the harness is not signed in' in out.get('error', ''):
+            bad.append('a successful Junie result quoting the diagnostic was treated as signed out')
+        else:
+            bad.append('a successful Junie result quoting the diagnostic did not start a run')
+
+
 def main():
     bad = []
     for why, args in REFUSED.items():
@@ -39,6 +69,7 @@ def main():
                 os.path.exists(os.path.join(d, 'rec')):
             bad.append('fake signed out did not answer as Junie 26.9.7 does: one errors line, no sessionId, exit 0, '
                        'and no turn')
+    check_start(bad)
     for line in bad:
         print('fail ' + line)
     print('pass junie test_row.py: the fake refuses %d command lines the row never sends, and answers signed out '
