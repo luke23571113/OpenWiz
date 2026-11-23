@@ -916,17 +916,29 @@ class SystemGh(Helper):
                 mock.patch.object(helper, "sealed_gh", seal_after), mock.patch.object(helper, "fcntl", seals), \
                 mock.patch.object(helper.sys, "platform", "linux"), \
                 mock.patch.object(helper.os, "execve", exec_boundary), \
-                mock.patch.object(helper.sys, "stderr") as stderr:
+                mock.patch.object(helper.sys, "stderr") as stderr, mock.patch.object(helper.sys, "stdout") as stdout:
             try:
                 code = helper.gh([chosen or str(self.real), self.refuse, "pr", "list"], dict(self.run_env))
             except helper.Refused:
                 code = "exec intercepted"
         said = "".join(call.args[0] for call in stderr.write.call_args_list)
-        self.assertNotIn(TOKEN, said, "the token is never written out")
+        self.printed = "".join(call.args[0] for call in stdout.write.call_args_list)
+        self.assert_no_token(said + self.printed, "the token is never written out")
         for path, content, args, _ in ran:
             self.assertFalse(TOKEN in path or TOKEN in content or TOKEN in " ".join(args),
                              "the token is never in gh's path, file or argument list")
         return code, ran, said, looked_up
+
+    def assert_no_token(self, text, what):
+        self.assertFalse(TOKEN in text, what)
+
+    def leaks(self, *streams):
+        found = [f"stream {n}" for n, text in enumerate(streams) if TOKEN in text]
+        for root in (self.root, self.system.parent):
+            for path in root.rglob("*"):
+                if path.is_file() and self.private not in path.parents and TOKEN.encode() in path.read_bytes():
+                    found.append(path.name)
+        return found
 
     def assert_withheld(self, code, ran, said, looked_up, reason, looked=True):
         self.assertEqual((code, ran), (128, []), "no gh runs with the token")
@@ -1055,6 +1067,43 @@ class SystemGh(Helper):
         self.assert_withheld(*self.run_gh(self.table(), at_seal=write_copy), "the gh this run chose was changed",
                              looked=False)
         self.assertEqual(written, [rogue], "the copy really held other bytes when it was sealed")
+
+    def test_the_token_reaches_no_output_log_or_file_outside_the_private_directory(self):
+        # comment-ok: catches: a leak check that can't see a seeded leak, or a token that a run writes to stdout,
+        # stderr, the call log or a file outside the private directory
+        for seed in (self.root / "seeded.log", self.system.parent / "seeded.txt"):
+            seed.write_text(f"seeded {TOKEN}\n")
+            self.assertEqual(self.leaks(), [seed.name], "the check sees a seeded file")
+            seed.unlink()
+        self.assertEqual(self.leaks("clean", f"seeded {TOKEN}"), ["stream 1"], "the check sees a seeded stream")
+        self.assertIsNotNone(self.bind(self.table()))
+        code, ran, said, looked_up = self.run_gh(self.table())
+        self.assert_ran_checked(code, ran, said, looked_up)
+        self.assertEqual(self.leaks(said, self.printed), [], "no output, log or outside file holds the token")
+
+    def test_a_failed_assertion_never_prints_the_token(self):
+        # comment-ok: catches: a guard assertion whose failure message quotes the text it searched, printing
+        # the token into the test log
+        with self.assertRaises(AssertionError) as caught:
+            self.assert_no_token(f"seeded {TOKEN}", "seeded leak")
+        self.assertFalse(TOKEN in str(caught.exception), "the failure names the leak, not the token")
+
+    def test_a_sealed_gh_the_system_will_not_execute_names_the_memfd_restriction(self):
+        # comment-ok: catches: a kernel or sandbox that blocks executable memfds failing as a bare "cannot run
+        # gh", so nobody learns why a system gh never runs
+        helper = self.helper_module
+        copy = os.memfd_create("openwiz-gh", os.MFD_CLOEXEC)
+        self.addCleanup(os.close, copy)
+        refused = mock.Mock(side_effect=PermissionError(13, "synthetic noexec memfd"))
+        with mock.patch.object(helper.sys, "platform", "linux"), mock.patch.object(helper.os, "execve", refused):
+            try:
+                helper.exec_gh(copy, str(self.real), [str(self.real), "pr", "list"], {})
+                caught = None
+            except Exception as error:
+                caught = error
+        self.assertIsInstance(caught, helper.Refused, "the exec refusal is the helper's own diagnostic")
+        self.assertIn("executable memfds", str(caught))
+        self.assertEqual(refused.call_args.args[0], f"/proc/self/fd/{copy}")
 
     def test_a_system_gh_moved_while_its_folders_are_checked_is_refused(self):
         # comment-ok: catches: the folder walk from an open fd vouching for another file now at the fd's path
