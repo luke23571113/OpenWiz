@@ -7,7 +7,7 @@ Effort: passed as `--reasoning-level <effort>` to `room-cli thread spawn`, for e
 | Harness | Effort (as `room-cli` 0.1.120 lists it) |
 | --- | --- |
 | `claude` (Cloudroom's `claude-code`), `codex`, `cursor`, `opencode` | `--reasoning-level <effort>`, for the levels Cloudroom lists for the model (such as `low`, `medium`, `high`, `xhigh`, `max`) |
-| `pi`, `hermes`, `devin`, `droid`, `kimi`, `antigravity`, `fx`, `openclaw`, `agent-zero` | can't (Cloudroom lists no models, and so no levels, for it) |
+| `pi`, `hermes`, `droid`, `kimi`, `antigravity`, `fx`, `openclaw`, `agent-zero`, and every other provider Cloudroom lists no models for | can't (Cloudroom lists no models, and so no levels, for it) |
 
 A [driver v1](../../kernel/driver.v1.md) for [Cloudroom](https://cloudroom.dev): each run is one Cloudroom thread. One Python file, standard library only. **Platforms:** Linux and macOS, Python 3.9 or later (the turns run in Cloudroom's own sandboxes; the driver only calls `room-cli`). Run it inside a Cloudroom thread of the project the repository belongs to, where `room-cli` is already signed in and `ROOM_PROJECT_ID` is set; the threads it starts are that thread's children, each in its own sandbox.
 
