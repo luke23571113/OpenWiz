@@ -204,7 +204,8 @@ def payload(rows):
 
 def architecture(data, target):
     if target.endswith('linux-gnu'):
-        return data[:6] == b'\x7fELF\x02\x01' and len(data) >= 20 and struct.unpack_from('<H', data, 18)[0] == 62
+        machine = 183 if target.startswith('aarch64') else 62
+        return data[:6] == b'\x7fELF\x02\x01' and len(data) >= 20 and struct.unpack_from('<H', data, 18)[0] == machine
     cpu = 0x100000c if target.startswith('aarch64') else 0x1000007
     return data[:4] == b'\xcf\xfa\xed\xfe' and len(data) >= 8 and struct.unpack_from('<I', data, 4)[0] == cpu
 

@@ -593,8 +593,6 @@ class CandidateArtifacts(unittest.TestCase):
 
 
 def elf(machine, ident=b'\x7fELF\x02\x01\x01'):
-    """The synthetic Linux program, as an ELF for `machine` (e_machine) with
-    the given identification bytes."""
     data = bytearray(program(TARGET))
     data[:len(ident)] = ident
     struct.pack_into('<H', data, 18, machine)
@@ -602,9 +600,6 @@ def elf(machine, ident=b'\x7fELF\x02\x01\x01'):
 
 
 class LinuxArchitecture(unittest.TestCase):
-    """#2666 (LA1): each Linux target accepts only its own 64-bit
-    little-endian ELF machine, AArch64 (183) or x86_64 (62)."""
-
     ARM = 'aarch64-unknown-linux-gnu'
 
     def architecture(self, data, target):
@@ -614,17 +609,14 @@ class LinuxArchitecture(unittest.TestCase):
         return architecture(data, target)
 
     def test_aarch64_elf_is_the_arm_linux_target_only(self):
-        # catches: an AArch64 program refused for its own target, or accepted as x86_64.
         self.assertTrue(self.architecture(elf(183), self.ARM))
         self.assertFalse(self.architecture(elf(183), TARGET))
 
     def test_x86_64_elf_is_not_the_arm_linux_target(self):
-        # catches: the ARM target accepting any ELF, or an x86_64 one.
         self.assertTrue(self.architecture(elf(62), TARGET))
         self.assertFalse(self.architecture(elf(62), self.ARM))
 
     def test_arm_linux_target_refuses_other_elf_forms_and_macho(self):
-        # catches: 32-bit, big-endian, truncated or other-machine programs passing for ARM Linux.
         for case, data in {'32-bit ARM': elf(40, b'\x7fELF\x01\x01\x01'),
                            '32-bit AArch64': elf(183, b'\x7fELF\x01\x01\x01'),
                            'big-endian AArch64': elf(183, b'\x7fELF\x02\x02\x01'),
@@ -635,7 +627,6 @@ class LinuxArchitecture(unittest.TestCase):
                 self.assertFalse(self.architecture(data, self.ARM))
 
     def test_macho_targets_are_unchanged_and_refuse_elf(self):
-        # catches: a Linux change leaking into the Mach-O check.
         for target in ('aarch64-apple-darwin', 'x86_64-apple-darwin'):
             with self.subTest(target=target):
                 self.assertTrue(self.architecture(program(target), target))
@@ -643,9 +634,6 @@ class LinuxArchitecture(unittest.TestCase):
 
 
 class ReleaseAssetTargets(unittest.TestCase):
-    """#2666 (LA1): the public export's `release-asset` review names each
-    release target's package, and still no unknown target."""
-
     VERSION = '0.1.2'
 
     def setUp(self):
@@ -663,8 +651,6 @@ class ReleaseAssetTargets(unittest.TestCase):
         self.scans, self.Refused = scans, check.Refused
 
     def scan(self, target):
-        """Scan an export holding one binary package for `target` under its
-        one `release-asset` review."""
         export = self.work / f'export-{target}'
         path = f'packages/openwiz-{self.VERSION}-{target}.tar.gz'
         data = gzip.compress(b'synthetic package\0', mtime=0)
@@ -681,7 +667,6 @@ class ReleaseAssetTargets(unittest.TestCase):
         return check
 
     def test_arm_linux_package_review_is_accepted(self):
-        # catches: the ARM Linux package refused by the export's binary scan.
         try:
             check = self.scan('aarch64-unknown-linux-gnu')
         except self.Refused as refused:
@@ -689,13 +674,11 @@ class ReleaseAssetTargets(unittest.TestCase):
         self.assertEqual(check.used_exceptions, {0})
 
     def test_existing_targets_are_still_accepted(self):
-        # catches: the pattern change dropping a shipped target.
         for target in ('aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-gnu'):
             with self.subTest(target=target):
                 self.assertEqual(self.scan(target).used_exceptions, {0})
 
     def test_unknown_targets_are_still_refused(self):
-        # catches: a widened pattern admitting other ARM Linux forms or any target.
         for target in ('armv7-unknown-linux-gnueabihf', 'aarch64-unknown-linux-musl',
                        'aarch64-unknown-linux-gnux', 'aarch64-pc-windows-msvc'):
             with self.subTest(target=target):
