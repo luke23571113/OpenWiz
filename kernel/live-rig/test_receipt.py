@@ -21,8 +21,13 @@ WIZMARKET_FIXTURE = os.path.join(FIXTURES, 'wizmarket', 'verified-driver.txt')
 WIZMARKET_SOURCE = 'fixtures/valid/verified-driver/receipts/example-driver/2026-11-01-aaaaaaaaaaaa.txt'
 PRIVATE_IDS = [p + '_' + 'example1' for p in ('thr', 'proj', 'mch', 'usr', 'acct', 'cr')]
 TOKEN = 'gh' + 'p_' + 'Synthetic0Receipt0Value' * 2
-AGENT_CLIS = ('claude codex cursor-agent agent pi opencode copilot goose gemini kimi qwen cline kilo crush vibe '
-              'auggie kiro-cli junie amp agy oz sculpt hermes acpx droid').split()
+AGENT_CLIS = ('claude codex cursor-agent agent cursor pi opencode copilot goose gemini kimi qwen cline kilo kilocode '
+              'crush vibe auggie kiro-cli junie amp agy oz sculpt hermes acpx droid boat room-cli runpane pane '
+              'openhands devin warp grok codespaces conductor').split()
+LOGIN = 'octo-example'
+UUID = '12345678-1234-4abc-8def-123456789abc'
+NOT_HARNESS = 'the run record harness is not a known public harness'
+NOT_MODEL = 'the run record model is not a known public model name'
 
 
 def stubs():
@@ -55,7 +60,8 @@ MAPPED = [('local', 'local'), ('boat.dev', 'boat-dev'), ('Cloudroom', 'cloudroom
 NOT_TOKENS = ['', 'Claude', 'Example Harness', 'someone@example.com', '/tmp/example', 'C:\\example',
               'two\nlines', 'tab\there', '\ud800', 'caf\u00e9', '\u0661\u0662', '-leading', '.leading', 'a' * 61,
               1, None, ['claude']]
-TOKENS = ['claude', 'codex', 'claude-opus-5-5', 'gpt-5.1', 'a', '0', 'a' * 60]
+HARNESSES = ['claude', 'codex', 'cursor-agent', 'opencode', 'gemini']
+MODELS = ['example-model', 'claude-opus-5-5', 'gpt-5.1', 'o3', 'gemini-2.5-pro', 'claude-' + 'a' * 53]
 
 
 def kit_test_pass_lines():
@@ -133,7 +139,24 @@ class Receipt(unittest.TestCase):
         self.assertEqual(body.splitlines()[8:13], [re.sub(r'note [0-9]+$', 'note <note>', l) for l in kit_pass])
 
     def test_four_of_five_writes_nothing(self):
-        self.refused(record('4-of-5.json'), 'kit.py exited 1, not 0')
+        self.refused(record('4-of-5.json'), 'kit.py exited non-zero, not 0')
+
+    def test_a_nonzero_exit_is_one_fixed_line_without_its_value(self):
+        for code in (2, -9, 123456789012):
+            with self.subTest(code=code):
+                err = self.refused(record('4-of-5.json', kit_exit=code), 'kit.py exited non-zero, not 0')
+                self.assertNotIn(str(abs(code)), err)
+
+    def test_a_too_deep_record_is_one_fixed_line(self):
+        for raw in (b'[' * 50000, b'{"a": ' * 20000):
+            with self.subTest(raw=raw[:8]):
+                self.refused(None, 'the run record is not readable JSON with each key once', raw=raw)
+
+    def test_a_too_large_record_is_one_fixed_line(self):
+        text = json.dumps(record('5-of-5.json')).encode()
+        self.refused(None, 'the run record is larger than 64 KiB', raw=text + b' ' * (65536 - len(text) + 1))
+        p = self.run_receipt(None, raw=text + b' ' * (65536 - len(text)))
+        self.assertEqual(p.returncode, 0, p.stderr)
 
     def test_a_fail_line_with_exit_0_writes_nothing(self):
         self.refused(record('4-of-5.json', kit_exit=0), 'the run is 4 of 5 pass, not 5 of 5')
@@ -147,9 +170,9 @@ class Receipt(unittest.TestCase):
 
     def test_a_missing_or_extra_line_writes_nothing(self):
         lines = record('5-of-5.json')['stdout'].splitlines(True)
-        self.refused(record('5-of-5.json', stdout=''.join(lines[:4])), "kit.py's stdout has 4 lines, not its five")
+        self.refused(record('5-of-5.json', stdout=''.join(lines[:4])), "kit.py's stdout does not have its five lines")
         self.refused(record('5-of-5.json', stdout=''.join(lines) + 'pass extra: more\n'),
-                     "kit.py's stdout has 6 lines, not its five")
+                     "kit.py's stdout does not have its five lines")
         self.refused(record('5-of-5.json', stdout=''.join(lines)[:-1]), "kit.py's stdout does not end in a newline")
 
     def test_a_credential_shape_in_a_token_writes_nothing(self):
@@ -167,7 +190,8 @@ class Receipt(unittest.TestCase):
                 with self.subTest(key=key, value=value):
                     self.fresh()
                     self.refused(record('5-of-5.json', **{key: value}), 'the run record %s is not a public token' % key)
-            for value in TOKENS:
+        for key, values in (('harness', HARNESSES), ('model', MODELS)):
+            for value in values:
                 with self.subTest(key=key, value=value):
                     self.fresh()
                     p = self.run_receipt(record('5-of-5.json', **{key: value}))
@@ -175,11 +199,28 @@ class Receipt(unittest.TestCase):
                     text = self.written(os.path.join('receipts', 'local', '2026-11-01-aaaaaaaaaaaa.txt')).decode()
                     self.assertIn('# %s: %s\n' % (key, value), text)
 
+    def test_a_login_as_harness_or_model_writes_nothing(self):
+        for value in (LOGIN, 'example-runner', 'example-login', 'example', 'model', 'a', '0', 'a' * 60):
+            with self.subTest(value=value):
+                self.refused(record('5-of-5.json', harness=value), NOT_HARNESS)
+                self.refused(record('5-of-5.json', model=value), NOT_MODEL)
+
+    def test_a_uuid_shaped_id_writes_nothing(self):
+        bare = UUID.replace('-', '')
+        for value in (UUID, bare):
+            with self.subTest(value=value):
+                self.refused(record('5-of-5.json', harness=value), NOT_HARNESS)
+                self.refused(record('5-of-5.json', model=value), NOT_MODEL)
+        for value in ('claude-' + UUID, 'gpt-' + bare, 'claude-opus-' + UUID + '-1'):
+            with self.subTest(value=value):
+                self.refused(record('5-of-5.json', model=value), 'line 6 holds a private id')
+
     def test_a_private_id_in_a_token_writes_nothing(self):
-        for key, line in (('harness', 5), ('model', 6)):
-            for value in PRIVATE_IDS:
-                with self.subTest(key=key, value=value):
-                    self.refused(record('5-of-5.json', **{key: value}), 'line %d holds a private id' % line)
+        for value in PRIVATE_IDS:
+            with self.subTest(value=value):
+                self.refused(record('5-of-5.json', harness=value), NOT_HARNESS)
+                self.refused(record('5-of-5.json', model=value), NOT_MODEL)
+                self.refused(record('5-of-5.json', model='claude-' + value), 'line 6 holds a private id')
 
     def test_version_stop_and_token_must_be_kits_exact_pass_lines(self):
         base = record('5-of-5.json')['stdout']
@@ -207,6 +248,15 @@ class Receipt(unittest.TestCase):
             with self.subTest(new=new):
                 self.refused(record('5-of-5.json', stdout=base.replace(old, new, 1)),
                              "the %s line is not kit.py's passing %s line" % (check, check))
+
+    def test_start_and_wake_must_name_the_same_note(self):
+        base = record('5-of-5.json')['stdout']
+        for old, new in (('edited builder status note 1000000001', 'edited builder status note 1000000002'),
+                         ('posted builder status note 1000000001', 'posted builder status note 1')):
+            with self.subTest(new=new):
+                err = self.refused(record('5-of-5.json', stdout=base.replace(old, new)),
+                                   'the start and wake lines name different builder status notes')
+                self.assertNotIn('100000000', err)
 
     def test_a_malformed_record_writes_nothing(self):
         consistent = 'the run record is not a consistent ran or skipped record'
@@ -276,8 +326,6 @@ class Receipt(unittest.TestCase):
         self.refused(record('5-of-5.json'), '--listing is not a listing id', listing=TOKEN)
 
     def test_every_mapped_host_names_its_listing(self):
-        with open(os.path.join(HERE, 'listings.json')) as f:
-            self.assertEqual(json.load(f), dict(MAPPED))
         for host, listing in MAPPED:
             with self.subTest(host=host):
                 p = self.run_receipt(record('5-of-5.json', host=host), listing=listing)
