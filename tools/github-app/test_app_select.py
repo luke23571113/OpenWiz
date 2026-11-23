@@ -16,8 +16,8 @@ import unittest
 HERE = Path(__file__).resolve().parent
 SELECTOR, SERVICE = HERE / "app-select.py", HERE / "token-service.py"
 SENTENCE = ("App selector refused: set OPENWIZ_APP_SELECT_CONFIG (default ~/.config/openwiz/app-select.json) "
-            "to an owner-only (0600) file naming one App state as \"state_dir\", or listing \"candidates\" "
-            "of which exactly one App is installed on every requested repository.\n")
+            "to a file you own with no group or other permission bits, naming one App state as \"state_dir\", "
+            "or \"routes\" that map every requested repository to the same App state.\n")
 PIN = json.loads(re.search(r"```json\n(.*?)\n```", (HERE.parents[1] / "contracts/token-service.v1.md").read_text(),
                           re.S).group(1))
 APPS = {"a": (1001, 2001, {"synthetic-owner/alpha", "synthetic-owner/shared"}),
@@ -27,6 +27,8 @@ HOOK = ("import json, runpy, sys\n"
         "def hook(event, args):\n"
         "    if event in ('subprocess.Popen', 'os.exec', 'os.posix_spawn'):\n"
         "        out.write(json.dumps([str(a) for a in args[1]]) + '\\n'); out.flush()\n"
+        "    if event == 'urllib.Request' or event == 'open' and str(args[0]).endswith('private-key.pem'):\n"
+        "        out.write(json.dumps(['SELECTOR', event]) + '\\n'); out.flush()\n"
         "sys.addaudithook(hook)\n"
         "sys.argv = sys.argv[2:]\n"
         "runpy.run_path(sys.argv[0], run_name='__main__')\n")
@@ -137,6 +139,9 @@ class SelectorTests(unittest.TestCase):
             return []
         return [json.loads(line) for line in self.argv_log.read_text().splitlines()]
 
+    def selector_touches(self):
+        return [argv for argv in self.started() if argv[0] == "SELECTOR"]
+
     def service_calls(self):
         return [argv for argv in self.started() if str(SERVICE) in argv]
 
@@ -151,11 +156,11 @@ class SelectorTests(unittest.TestCase):
         self.assertEqual(self.service_calls()[-1][-5:],
                          ["mint", "--state-dir", str(self.states[name]), "--api-base", url])
 
-    def assert_refused(self, done, calls, exit_code, refusal):
+    def assert_refused(self, done, calls, exit_code, refusal, sentence=SENTENCE):
         pinned = PIN["refusals"][refusal]
         self.assertEqual(pinned["exit"], exit_code)
         answer = {"schema": PIN["schema"], "kind": "refusal", "refusal": refusal, "message": pinned["message"]}
-        self.assertEqual((done.returncode, done.stdout, done.stderr), (exit_code, json.dumps(answer) + "\n", SENTENCE))
+        self.assertEqual((done.returncode, done.stdout, done.stderr), (exit_code, json.dumps(answer) + "\n", sentence))
         self.assertEqual([c for c in calls if c[0] == "POST"], [], "no token endpoint call")
         self.assertEqual(self.service_calls(), [], "no service call")
         self.assertEqual((self.logged("a"), self.logged("b")), ([], []))
@@ -170,12 +175,17 @@ class SelectorTests(unittest.TestCase):
             for secret in secrets:
                 self.assertNotIn(secret, content, f"a secret reached {place}")
         self.assertFalse(self.default.exists(), "the default state stays untouched")
+        self.assertEqual(self.selector_touches(), [], "the selector opens no key and asks GitHub nothing")
 
-    def test_resolved_reaches_the_app_installed_on_the_repository(self):
-        self.configure({"candidates": [str(self.states["a"]), str(self.states["b"])]})
+    def routes(self, *pairs):
+        return {"routes": [{"repository": r, "state_dir": str(self.states[n])} for r, n in pairs]}
+
+    def test_the_route_map_reaches_the_mapped_app(self):
+        self.configure(self.routes(("synthetic-owner/beta", "b"), ("synthetic-owner/*", "a")), mode=0o400)
         with fake_github() as (url, calls):
             self.assert_minted_by(self.select(url, request("synthetic-owner/beta")), url, "b")
-            self.assert_minted_by(self.select(url, request("Synthetic-Owner/Alpha")), url, "a")
+            self.assert_minted_by(self.select(url, request("Synthetic-Owner/Alpha", "synthetic-owner/shared")),
+                                  url, "a")
             self.assertEqual([c[2] for c in calls if c[0] == "POST"], [1002, 1001])
         self.assertEqual((len(self.logged("a")), len(self.logged("b"))), (1, 1))
 
@@ -186,18 +196,37 @@ class SelectorTests(unittest.TestCase):
             self.assertEqual({c[2] for c in calls}, {1002}, "the other App is never asked")
         self.assertEqual((len(self.logged("a")), len(self.logged("b"))), (0, 1))
 
-    def test_ambiguous_and_unknown_refuse_and_mint_nothing(self):
-        self.configure({"candidates": [str(self.states["a"]), str(self.states["b"])]})
+    def test_an_unmatched_or_split_route_refuses_and_mints_nothing(self):
+        self.configure(self.routes(("synthetic-owner/beta", "b"), ("synthetic-owner/*", "a")))
         with fake_github() as (url, calls):
-            self.assert_refused(self.select(url, request("synthetic-owner/shared")), calls, 1, "unavailable")
-            self.assert_refused(self.select(url, request("synthetic-owner/gamma")), calls, 3, "not-installed")
             self.assert_refused(self.select(url, request("synthetic-owner/alpha", "synthetic-owner/beta")),
-                                calls, 3, "not-installed")
+                                calls, 1, "unavailable")
+            self.configure(self.routes(("synthetic-owner/alpha", "a")))
+            self.assert_refused(self.select(url, request("synthetic-owner/beta")), calls, 3, "not-installed")
+            self.assertEqual(calls, [], "no GitHub call at all")
+
+    def test_every_mode_refuses_an_invalid_request_before_any_service_call(self):
+        bad = [(request("synthetic-owner/alpha", "other-owner/alpha"), "one-owner"),
+               ({**request("synthetic-owner/alpha"), "extra": 1}, "usage"), (request(), "usage")]
+        for config in ({"state_dir": str(self.states["a"])},
+                       self.routes(("synthetic-owner/*", "a"), ("other-owner/*", "a"))):
+            self.configure(config)
+            for message, refusal in bad:
+                with self.subTest(config=list(config), refusal=refusal), fake_github() as (url, calls):
+                    self.assert_refused(self.select(url, message), calls, 2, refusal, sentence="")
+                    self.assertEqual(calls, [], "no GitHub call at all")
 
     def test_a_missing_unsafe_or_unclear_config_refuses_before_any_call(self):
         a, b = str(self.states["a"]), str(self.states["b"])
         cases = [("missing", None, 0o600), ("group-readable", {"state_dir": a}, 0o640),
-                 ("both keys", {"state_dir": a, "candidates": [b]}, 0o600), ("not JSON", "{", 0o600),
+                 ("both keys", {"state_dir": a, "routes": []}, 0o600), ("not JSON", "{", 0o600),
+                 ("resolved mode is gone", {"candidates": [a, b]}, 0o600), ("no routes", {"routes": []}, 0o600),
+                 ("a route's extra key", {"routes": [{"repository": "synthetic-owner/*", "state_dir": a,
+                                                      "app_id": 1}]}, 0o600),
+                 ("a route's missing state", {"routes": [{"repository": "synthetic-owner/*",
+                                                          "state_dir": str(self.root / "absent")}]}, 0o600),
+                 *[(f"pattern {p}", {"routes": [{"repository": p, "state_dir": a}]}, 0o600)
+                   for p in ("*", "*/alpha", "synthetic-owner/al*", "synthetic-owner", "synthetic-owner/*/x")],
                  ("repeated key", '{"state_dir": "%s", "state_dir": "%s"}' % (a, b), 0o600),
                  ("relative", {"state_dir": "state-a"}, 0o600), ("no candidates", {"candidates": []}, 0o600),
                  ("named state missing", {"state_dir": str(self.root / "absent")}, 0o600)]
