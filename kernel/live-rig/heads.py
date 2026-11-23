@@ -40,6 +40,8 @@ TICKET_KEYS = {'id', 'ticket', 'pr', 'listing'}
 FROZEN = re.compile(r'launch-fleet: look: live run due at the approved frozen head of #([0-9]+): ([0-9a-f]{40})'
                     r'(?![0-9a-f])')
 ETAGS = 'heads-etags.json'
+CHECK_LINE = re.compile(r'(pass|fail) (version|start|wake|stop|token): ')
+PATH = re.compile(r'/[\w.~-]')
 CHECK_PREFIX = re.compile(r'^(?:pass|fail) (?:version|start|wake|stop|token): ', re.M)
 
 
@@ -71,6 +73,21 @@ def git(*args, cwd=None):
     except (OSError, subprocess.TimeoutExpired):
         return None
     return p.stdout.strip() if p.returncode == 0 else None
+
+
+def reviewed_hosts(folder):
+    """--hosts is a folder of tracked files in the clean checkout, so every status command is reviewed code (R9)."""
+    real, root = os.path.realpath(folder), os.path.realpath(ROOT)
+    if os.path.commonpath([real, root]) != root:
+        raise Refused('--hosts is not a folder inside this checkout')
+    try:
+        names = sorted(n for n in os.listdir(real) if n.endswith('.json'))
+    except OSError as e:
+        raise Refused('cannot read --hosts: %s' % e)
+    for n in names:
+        if git('ls-files', '--error-unmatch', '--', os.path.relpath(os.path.join(real, n), root)) is None:
+            raise Refused('--hosts holds %s, which is not a tracked file of this checkout' % n)
+    return real
 
 
 def record_authors():
@@ -139,18 +156,30 @@ def frozen_head(comments, authors):
     return head
 
 
-def run_kit(driver, entry, wait, settings, worktree):
+def public_stdout(stdout, private):
+    """Only the kit's five check lines, each withheld unless it is public (spec #2474's lead, ruling R2 on #2477)."""
+    kept = []
+    for line in stdout.splitlines():
+        m = CHECK_LINE.match(line)
+        if not m:
+            continue
+        # PRIVACY: a credential shape, a path (`/` then a name, so the worktree and checkout too), the settings'
+        # repository or owner, or the signed-in login withholds the whole line.
+        if holds_credential(line) or PATH.search(line) or any(p.lower() in line.lower() for p in private if p):
+            line = '%s %s: withheld' % m.groups()
+        kept.append(line + '\n')
+    return ''.join(kept)
+
+
+def run_kit(driver, entry, wait, settings, private):
     command = [sys.executable, '-I', rig.KIT, '--driver', driver, '--repo', settings['repo'],
                '--ticket', str(settings['ticket']), '--harness', entry['harness'], '--model', entry['model'],
                '--wait', str(wait)]
     p = subprocess.run(command, cwd=ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, text=True)
-    out = p.stdout
-    # PRIVACY: a record or comment names no path or repository, even where a kit message quoted one.
-    for path in sorted({worktree, os.path.realpath(worktree)}, key=len, reverse=True):
-        out = out.replace(path, '<worktree>')
-    for path in sorted({ROOT, os.path.realpath(ROOT)}, key=len, reverse=True):
-        out = out.replace(path, '<checkout>')
-    return p.returncode, out.replace(settings['repo'], '<repository>')
+    # The full kit output is the person's, on stderr; only the public check lines go into the record and comment.
+    sys.stderr.write(p.stdout)
+    sys.stderr.flush()
+    return p.returncode, public_stdout(p.stdout, private)
 
 
 def comment_for(ticket, passed, head, stdout):
@@ -252,8 +281,9 @@ class Session:
     def entry(self, name, ticket, config, entry, head, kit_head, settings, worktree):
         began = time.monotonic()
         day = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d')
+        owner = settings['repo'].split('/')[0]
         kit_exit, stdout = run_kit(os.path.join(worktree, config['driver']), entry, config['wait'], settings,
-                                   worktree)
+                                   [settings['repo'], owner, self.run_by()])
         record = {'host': config['host'], 'harness': entry['harness'], 'model': entry['model'], 'date': day,
                   'driver_commit': head, 'kit_commit': kit_head, 'outcome': 'ran', 'skipped': None,
                   'kit_exit': kit_exit, 'stdout': stdout, 'seconds': int(round(time.monotonic() - began))}
@@ -306,8 +336,8 @@ def run(args):
     if unknown:
         raise Refused('--allow-cost names %s, which --tickets does not list' % ', '.join(unknown))
     settings = rig.load_settings(args.settings)
-    configs = {h['host']: h for h in rig.load_hosts(args.hosts, None)}
     kit_head = rig.clean_head()
+    configs = {h['host']: h for h in rig.load_hosts(reviewed_hosts(args.hosts), None)}
     authors = record_authors()
     os.makedirs(args.out, exist_ok=True)
     cache_path = os.path.join(args.out, ETAGS)
