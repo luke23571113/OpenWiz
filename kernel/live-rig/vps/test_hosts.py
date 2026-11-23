@@ -31,6 +31,8 @@ CONFIGS = {
                   'harness': 'claude'},
     'cursor': {'host': 'Cursor', 'driver': 'adapters/cursor/driver', 'tool': 'curl', 'key': 'CURSOR_API_KEY', 'harness': 'cursor'},
 }
+GH_PROBE = ['gh', 'auth', 'status', '--hostname', 'github.com', '--active', '--no-refresh']
+BILLS = {'hermes': 'unknown', 'pane': 'unknown', 'factory': 'unknown', 'conductor': 'unknown', 'cursor': 'unknown'}
 SKIPS = {
     'hermes': {'tool missing': 'not installed: hermes', 'gh missing': 'not installed: gh', 'tool signed out': 'cost',
                'key name unset': 'cost', 'gh signed out': 'not signed in: gh', 'signed in': 'cost'},
@@ -77,7 +79,8 @@ class Configs(unittest.TestCase):
                 self.assertEqual(config['needs'], [want['tool'], 'gh'])
                 self.assertEqual(config['cost'], 'paid')
                 self.assertEqual([r['harness'] for r in config['runs']], [want['harness']])
-                self.assertIn(['gh', 'auth', 'status'], config['signed_in'])
+                self.assertEqual(config['signed_in'][-1], GH_PROBE)
+                self.assertEqual([c for c in config['signed_in'] if c[0] == 'gh'], [GH_PROBE])
 
 
 class Skips(unittest.TestCase):
@@ -110,8 +113,12 @@ class Skips(unittest.TestCase):
                 os.chmod(os.path.join(stubs, name), 0o755)
         for name in wired:
             out = name == 'gh' and situation == 'gh signed out' or name == tool and situation == 'tool signed out'
+            only = ' '.join(GH_PROBE[1:]) if name == 'gh' else ''
             with open(os.path.join(fakes, name), 'w') as f:
-                f.write('#!/bin/sh\necho "%s $*" >> "%s"\nexit %d\n' % (name, self.log, 1 if out else 0))
+                f.write('#!/bin/sh\necho "%s $*" >> "%s"\n' % (name, self.log))
+                if only:
+                    f.write('[ "$*" = "%s" ] || { echo "%s refused" >> "%s"; exit 2; }\n' % (only, name, self.log))
+                f.write('exit %d\n' % (1 if out else 0))
             os.chmod(os.path.join(fakes, name), 0o755)
         for name, real in (('git', shutil.which('git')), ('python3', sys.executable)):
             os.symlink(real, os.path.join(fakes, name))
@@ -156,7 +163,7 @@ class Skips(unittest.TestCase):
         if os.path.isfile(self.log):
             with open(self.log) as f:
                 calls = f.read().splitlines()
-        self.assertEqual(sorted(calls), sorted(['gh auth status'] * 5 + ['runpane repos list --json']))
+        self.assertEqual(sorted(calls), sorted([' '.join(GH_PROBE)] * 5 + ['runpane repos list --json']))
 
 
 class Page(unittest.TestCase):
@@ -166,14 +173,17 @@ class Page(unittest.TestCase):
             with open(PAGE) as f:
                 self.page = f.read()
         files = {c['host']: name for name, c in CONFIGS.items()}
+        self.row_names = []
         self.rows = {}
         for line in self.page.splitlines():
             cells = [c.strip() for c in line.strip().strip('|').split('|')] if line.startswith('|') else []
             if cells and cells[0].strip('`*') in files:
+                self.row_names.append(files[cells[0].strip('`*')])
                 self.rows[files[cells[0].strip('`*')]] = cells
+        self.code = '\n'.join(re.findall(r'```[a-z]*\n(.*?)```', self.page, re.S))
 
-    def test_the_page_has_one_row_per_host_in_hosts(self):
-        self.assertEqual(sorted(self.rows), host_names())
+    def test_the_page_has_exactly_one_row_per_host_in_hosts(self):
+        self.assertEqual(sorted(self.row_names), host_names())
 
     def test_every_row_cites_the_driver_readme_and_the_tools_docs_and_says_whether_it_bills(self):
         self.assertEqual(sorted(self.rows), sorted(CONFIGS))
@@ -183,18 +193,32 @@ class Page(unittest.TestCase):
                 self.assertIn('adapters/%s/README.md' % host, row)
                 self.assertIn('hosts/%s.json' % host, row)
                 self.assertRegex(row, r'\]\(https://[^)]+\)')
-                self.assertIn(cells[-2].strip('*`'), ('no', 'yes', 'unknown'))
+                self.assertEqual(cells[-2].strip('*`'), BILLS[host])
                 key = CONFIGS[host]['key']
                 if key:
                     self.assertIn('`%s`' % key, row)
 
     def test_the_session_is_written_out_in_order(self):
-        steps = ['kernel/live-rig/vps/bootstrap.sh', 'gh auth login',
+        steps = ['kernel/live-rig/vps/bootstrap.sh', '../../driver-kit/README.md#the-throwaway-ticket',
+                 'curl -fsSL https://claude.ai/install.sh | bash', 'runpane agents doctor --agent claude',
+                 'gh auth login',
                  'python3 -I kernel/live-rig/heads.py --tickets kernel/live-rig/vps/live-tickets.json '
                  '--hosts kernel/live-rig/vps/hosts --settings ']
         at = [self.page.find(s) for s in steps]
         self.assertNotIn(-1, at, steps)
         self.assertEqual(at, sorted(at))
+
+    def test_the_paid_command_is_given_once_with_post_and_no_shell_placeholder(self):
+        commands = [line for line in self.code.splitlines() if 'heads.py' in line]
+        self.assertEqual(len(commands), 1, commands)
+        self.assertIn(' --post', commands[0])
+        self.assertNotRegex(self.code, r'[<>]')
+        self.assertRegex(self.page, r'[Ww]ithout `--post`[^.]*bill')
+
+    def test_the_page_names_each_hand_check_the_probes_cannot_make(self):
+        self.assertIn('`Record authors`', self.page)
+        self.assertIn('claude auth status', self.page)
+        self.assertRegex(self.page, r'--allow-cost[^.]*only[^.]*(checked|signed in)')
 
     def test_the_page_holds_names_never_values(self):
         self.assertTrue(self.page, 'no sign-in page')
