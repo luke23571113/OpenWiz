@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
-import contextlib
 import datetime
 import hashlib
 import importlib.util
-import io
 import json
 import os
 from pathlib import Path
@@ -679,10 +677,7 @@ class Candidate(World):
         evidence = {'target': LINUX, 'downloads': [], 'steps': []}
 
         def shown():
-            out = io.StringIO()
-            with contextlib.redirect_stdout(out):
-                code = candidate.main(['status', '--state', str(state.path)])
-            result = json.loads(out.getvalue())
+            code, result = self.cli('status', '--state', state.path)
             return code, result['status'], [(a['attempts'], a['status'], a['reasons'], a['evidence']['record'])
                                             for a in result.get('install_attempts', [])] or result.get('reasons')
         first = candidate.install_attempt(state, LINUX, None, 100, evidence)
