@@ -6,19 +6,24 @@ $FAKE_ROOM_LOG.threads. `thread spawn` starts the program named by --provider as
 (`<provider> --model <m> -p <prompt>`) and answers a receipt; `thread tell` starts another turn
 with the message file's text; `thread archive` ends every process the thread's turns started, in any
 session, as archiving a Cloudroom thread ends its sandbox. FAKE_ROOM_REFUSE
-names a subcommand (spawn, tell, archive) to refuse, as Cloudroom does: a line on stderr, exit 1.
+names a subcommand (spawn, tell, archive, models) to refuse, as Cloudroom does: a line on stderr, exit 1.
 FAKE_ROOM_RECEIPT replaces the spawn receipt with that text, unchanged.
 FAKE_ROOM_BREAK names a folder that spawn replaces with a regular file once the thread exists, and
 FAKE_ROOM_READONLY one it makes read-only, as a full disk or a removed folder would break the caller's
 next write. FAKE_ROOM_HOLD names a file that `tell` waits for (it makes <file>.held first, and logs
 ["thread", "told"] once it is done). `thread list` answers the threads not archived, as Cloudroom does.
+`thread spawn` records `--reasoning-level` as the thread's `reasoning`, and its turns run with it in
+FAKE_ROOM_REASONING_LEVEL. `provider models <provider> --json` lists the models 'Opus 5.5' and 'Synthetic 1' with
+the levels low, medium and high for claude-code, codex and fake-harness, and for any other provider one row with
+a note and no levels, as Cloudroom does for a provider whose models it does not list; FAKE_ROOM_MODELS replaces
+that answer with its text, unchanged.
 """
 import json, os, shutil, signal, subprocess, sys, time
 
 args, log = sys.argv[1:], os.environ['FAKE_ROOM_LOG']
 with open(log, 'a') as f:
     f.write(json.dumps(args) + '\n')
-sub = args[1] if len(args) > 1 and args[0] == 'thread' else ''
+sub = args[1] if len(args) > 1 and args[0] in ('thread', 'provider') else ''
 if sub and os.environ.get('FAKE_ROOM_REFUSE') == sub:
     if os.environ.get('FAKE_ROOM_SAY'):
         print(json.dumps({'error': os.environ['FAKE_ROOM_SAY']}))
@@ -45,16 +50,25 @@ def mark(tid):
 def turn(thread, prompt):
     try:
         p = subprocess.Popen([thread['provider'], '--model', thread['model'], '-p', prompt], start_new_session=True,
-                             env=dict(os.environ, FAKE_ROOM_THREAD=mark(thread['id']).partition('=')[2]),
+                             env=dict(os.environ, FAKE_ROOM_THREAD=mark(thread['id']).partition('=')[2],
+                                      **({'FAKE_ROOM_REASONING_LEVEL': thread['reasoning']} if thread.get('reasoning')
+                                         else {})),
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         thread['turns'].append(p.pid)
     except FileNotFoundError:
         pass  # a provider with no local program: the thread exists, and runs nothing here
 
 
-if sub == 'spawn':
+if sub == 'models' and args[0] == 'provider':
+    levels = [{'reasoningEffort': e} for e in ('low', 'medium', 'high')]
+    out = os.environ.get('FAKE_ROOM_MODELS') or json.dumps(
+        [{'id': m, 'isDefault': False, 'model': m, 'supportedReasoningEfforts': levels} for m in ('Opus 5.5', 'Synthetic 1')]
+        if args[2] in ('claude-code', 'codex', 'fake-harness') else
+        {'id': args[2], 'model': 'default', 'note': 'Synthetic: models are named by the provider.'})
+elif sub == 'spawn':
     tid = 'thr_syn_%04d' % (len(threads) + 1)
-    threads[tid] = {'id': tid, 'provider': flag('--provider'), 'model': flag('--model'), 'title': flag('--title'), 'turns': []}
+    threads[tid] = {'id': tid, 'provider': flag('--provider'), 'model': flag('--model'), 'title': flag('--title'), 'turns': [],
+                    'reasoning': flag('--reasoning-level') if '--reasoning-level' in args else None}
     turn(threads[tid], flag('--prompt'))
     if os.environ.get('FAKE_ROOM_BREAK'):
         shutil.rmtree(os.environ['FAKE_ROOM_BREAK'], ignore_errors=True)

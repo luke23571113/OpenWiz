@@ -106,7 +106,8 @@ class Driver(unittest.TestCase):
     def test_an_effort_reaches_room_cli_as_reasoning_level(self):
         # catches: a start whose effort never reaches Cloudroom, so the builder runs at the host's default effort.
         for harness, model, effort, provider in (('claude', 'Opus 5.5', 'medium', 'claude-code'),
-                                                 ('codex', 'Synthetic 1', 'high', 'codex')):
+                                                 ('codex', 'Synthetic 1', 'high', 'codex'),
+                                                 ('fake-harness', 'Synthetic 1', 'medium', 'fake-harness')):
             with self.subTest(harness):
                 self.fresh()
                 code, out = self.call('start', dict(START, harness=harness, model=model, effort=effort))
@@ -118,6 +119,22 @@ class Driver(unittest.TestCase):
                 self.assertEqual(spawns[0][5:7], ['--provider', provider])
                 with open(self.log + '.threads') as f:
                     self.assertEqual(json.load(f)['thr_syn_0001']['reasoning'], effort)
+                if harness == 'fake-harness':  # where the kit's effort part looks: a process the run started
+                    self.assertTrue(self.a_turn_holds('FAKE_ROOM_REASONING_LEVEL=' + effort), 'no turn ran at ' + effort)
+
+    def a_turn_holds(self, entry, wait=10):
+        end = time.time() + wait
+        while time.time() < end:
+            for pid in filter(str.isdigit, os.listdir('/proc')):
+                try:
+                    with open('/proc/%s/environ' % pid, 'rb') as f:
+                        env = f.read().split(b'\0')
+                except OSError:
+                    continue
+                if ('KIT_TEST=' + self.mark).encode() in env and entry.encode() in env:
+                    return True
+            time.sleep(0.05)
+        return False
 
     def test_no_effort_runs_at_the_hosts_default(self):
         # catches: a start without effort that sends a default level, or asks Cloudroom anything more than before.
