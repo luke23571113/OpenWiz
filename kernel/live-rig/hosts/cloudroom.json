@@ -4,7 +4,7 @@
   "needs": ["room-cli", "gh"],
   "signed_in": [
     ["room-cli", "status"],
-    ["gh", "auth", "status", "--hostname", "github.com", "--active", "--no-refresh"]
+    ["gh", "config", "get", "-h", "github.com", "user"]
   ],
   "cost": "unknown",
   "runs": [
