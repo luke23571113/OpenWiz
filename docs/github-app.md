@@ -369,7 +369,33 @@ python3 -I tools/github-app/agent-token.py run $REQ -- git push origin HEAD
 
 ## Revoke
 
-In **Settings → Applications → Installed GitHub Apps → Configure**, choose
+**An agent's token.** Revoke a token the helper holds with the same request, never with gh
+and never by deleting its folder:
+
+```sh
+python3 -I tools/github-app/agent-token.py revoke $REQ
+```
+
+- It makes its own HTTPS call, `DELETE /installation/token` with the token in the
+  `Authorization` header, to `https://api.github.com` only, through no proxy and following no
+  redirect. It never runs gh, its guard or any shim, so a refused or missing gh can't stop it.
+  `OPENWIZ_GITHUB_API_BASE` exists for the tests and accepts only `http://127.0.0.1:PORT`.
+- It reads the token by name, from this run's snapshot (inside a `run`) and the request's
+  cache file, so it still works when the folder is partly gone, the cache file is unreadable,
+  or the folder was moved (point `OPENWIZ_AGENT_TOKEN_DIR` at its new place).
+- Only after GitHub confirms (`204`) does it remove the files holding that token, then the
+  folder if nothing else is left in it. Another request's token is never touched. This is the
+  helper's only way to remove a token folder.
+- It fails closed with exactly one line on standard error and exit 1, and never prints the
+  token: `openwiz: openwiz[bot] token not revoked (no token found)` when it holds no current
+  token, or `openwiz: openwiz[bot] token not revoked (<reason>); the token is kept where it was`
+  with `GitHub refused`, `GitHub unreachable` or `not the GitHub API`. The token then stays
+  where it was, so you can retry; never delete it, which leaves a live token nobody can revoke.
+- **Last resort.** GitHub revokes an installation token only with the token itself. If it is
+  lost or can't be revoked, the owner suspends the installation (**Settings → Applications →
+  Installed GitHub Apps → Configure → Suspend**), which stops every token it has minted.
+
+**The installation.** In **Settings → Applications → Installed GitHub Apps → Configure**, choose
 **Uninstall** to revoke the installation and its tokens. To retire the App too,
 open **Developer settings → GitHub Apps → your App → Advanced → Delete GitHub App**.
 Delete its private key in GitHub's App settings if rotating it. Remove the local

@@ -940,20 +940,24 @@ class Revoke(Helper):
                  "refused 404": ({"status": 404}, "GitHub refused"),
                  "server error": ({"status": 500}, "GitHub refused"),
                  "not a 204": ({"status": 200}, "GitHub refused"),
-                 "redirect": ({"status": 307, "location": "http://127.0.0.1:9/installation/token"},
-                              "GitHub refused")}
+                 "redirect": ({"status": 307}, "GitHub refused")}
+        elsewhere = self.api()
         for name, (kwargs, reason) in cases.items():
             with self.subTest(name):
                 shutil.rmtree(self.private, True)
                 held = self.minted()
                 before = held.read_bytes()
+                if kwargs["status"] == 307:
+                    kwargs["location"] = elsewhere.base() + "/installation/token"
                 api = self.api(**kwargs)
                 api.watch = held
                 done = self.revoke(api)
                 self.assertEqual((done.returncode, done.stdout, done.stderr),
                                  (1, "", NOT_REVOKED.format(reason)))
                 self.assert_revoked_once(api)
+                self.assertTrue(held.exists(), "the only copy of a live token is never deleted")
                 self.assertEqual(held.read_bytes(), before, "the token is kept where it was")
+                self.assertEqual(elsewhere.seen, [], "a redirect is never followed")
                 self.assert_never_exposed(done)
         with self.subTest("unreachable"):
             api = self.api()

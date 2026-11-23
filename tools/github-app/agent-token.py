@@ -43,7 +43,7 @@ GH_REFUSE = "openwiz-gh-child"
 GH_WITHHELD = "openwiz: openwiz[bot] token withheld from gh ({}); gh stops rather than use another account\n"
 TRANSPORTS = ("git-remote-http", "git-remote-https")
 CURL_TRACES = ("GIT_TRACE_CURL", "GIT_TRACE_CURL_NO_DATA", "GIT_CURL_VERBOSE")
-USAGE = ("agent-token.py start REQUEST | run REQUEST -- COMMAND [ARG...]; "
+USAGE = ("agent-token.py start REQUEST | run REQUEST -- COMMAND [ARG...] | revoke REQUEST; "
          "REQUEST is --requester LABEL --repository OWNER/NAME... [--read]")
 
 
@@ -676,8 +676,106 @@ def gh_checked(fd, path, refuse, args, env):
         raise Refused("cannot run gh")
 
 
+API_BASE = "https://api.github.com"
+NOT_REVOKED = "openwiz: openwiz[bot] token not revoked ({}); the token is kept where it was\n"
+NO_TOKEN = "openwiz: openwiz[bot] token not revoked (no token found)\n"
+
+
+def revoke_base(env):
+    base = env.get("OPENWIZ_GITHUB_API_BASE", API_BASE)
+    if base == API_BASE:
+        return base
+    parts = urllib.parse.urlsplit(base)
+    try:
+        port = parts.port
+    except ValueError:
+        return None
+    if (parts.scheme == "http" and port and parts.netloc == f"127.0.0.1:{port}"
+            and not (parts.path or parts.query or parts.fragment)):
+        return base
+    return None
+
+
+def held_tokens(private, wanted, env):
+    names = [cache_name(wanted)]
+    snapshot = env.get(RUN_MARK, "")
+    if (os.path.dirname(snapshot) == private.path
+            and re.fullmatch(r"run-[0-9a-f]{32}\.json", os.path.basename(snapshot))):
+        names.insert(0, os.path.basename(snapshot))
+    found, now = {}, time.time()
+    for name in names:
+        held = private.read(name)
+        if (isinstance(held, dict) and isinstance(held.get("token"), str)
+                and TOKEN.fullmatch(held["token"]) and type(held.get("expires_at")) is int
+                and held["expires_at"] > now):
+            found.setdefault(held["token"], []).append(name)
+    return found
+
+
+def revoke_call(base, token):
+    import urllib.error
+    import urllib.request
+
+    request = urllib.request.Request(base + "/installation/token", method="DELETE", headers={
+        "Accept": "application/vnd.github+json", "Authorization": "Bearer " + token,
+        "User-Agent": "OpenWiz-agent-token", "X-GitHub-Api-Version": "2022-11-28"})
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(request, timeout=TIMEOUT_S) as response:
+            return None if response.status == 204 else "GitHub refused"
+    except urllib.error.HTTPError:
+        return "GitHub refused"
+    except (OSError, ValueError):
+        return "GitHub unreachable"
+
+
+def remove_if_empty(private):
+    try:
+        found, held = os.stat(private.path, follow_symlinks=False), os.fstat(private.fd)
+        if (found.st_dev, found.st_ino) == (held.st_dev, held.st_ino) and not os.listdir(private.fd):
+            os.rmdir(private.path)
+    except OSError:
+        pass
+
+
+def revoke(args, env):
+    wanted, rest = parse_request(args)
+    if rest is not None:
+        raise Refused(f"usage: {USAGE}")
+    base = revoke_base(env)
+    if base is None:
+        sys.stderr.write(NOT_REVOKED.format("not the GitHub API"))
+        return 1
+    try:
+        private = Private(env, create=False)
+    except Refused:
+        sys.stderr.write(NO_TOKEN)
+        return 1
+    try:
+        found = held_tokens(private, wanted, env)
+        if not found:
+            sys.stderr.write(NO_TOKEN)
+            return 1
+        failed = None
+        for token, names in found.items():
+            reason = revoke_call(base, token)
+            if reason:
+                failed = failed or reason
+                continue
+            for name in names:
+                private.unlink(name)
+        if failed:
+            sys.stderr.write(NOT_REVOKED.format(failed))
+            return 1
+        remove_if_empty(private)
+        return 0
+    finally:
+        os.close(private.fd)
+
+
 def main(argv):
-    commands = {"start": start, "run": run, "credential": credential, "transport": transport, "gh": gh}
+    commands = {"start": start, "run": run, "credential": credential, "transport": transport, "gh": gh,
+                "revoke": revoke}
     try:
         if not argv or argv[0] not in commands:
             raise Refused(f"usage: {USAGE}")
