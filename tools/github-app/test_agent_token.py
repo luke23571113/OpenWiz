@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import base64
+import fcntl
 import hashlib
 import importlib.util
 import json
@@ -834,14 +835,14 @@ class SystemGh(Helper):
             rows[names[key]] = row
         return rows
 
-    def faked(self, rows, after_stat=None):
+    def faked(self, rows, before_lstat=None):
         real_stat, real_lstat = os.stat, os.lstat
 
         def fake(original):
             def call(target, *args, **kwargs):
+                if before_lstat and original is real_lstat:
+                    before_lstat(target)
                 info = original(target, *args, **kwargs)
-                if after_stat and original is real_stat:
-                    after_stat()
                 name = (os.readlink(f"/proc/self/fd/{target}") if isinstance(target, int)
                         else os.path.realpath(target) if original is real_stat
                         else os.path.normpath(os.fspath(target)))
@@ -878,9 +879,14 @@ class SystemGh(Helper):
                          "the same file, the same size and time: only its bytes changed")
         return text
 
-    def run_gh(self, rows, chosen=None, during=None):
+    def run_gh(self, rows, chosen=None, during=None, before_seal=None):
         helper, ran, looked_up = self.helper_module, [], []
-        load = helper.snapshot_token
+        load, seal = helper.snapshot_token, helper.sealed_gh
+
+        def seal_after(*args):
+            if before_seal:
+                before_seal()
+            return seal(*args)
 
         def load_then(*args, **kwargs):
             looked_up.append(True)
@@ -892,9 +898,14 @@ class SystemGh(Helper):
         def exec_boundary(path, args, child):
             token = child.get("GH_TOKEN")
             ran.append((path, Path(path).read_text(), list(args), token == TOKEN))
+            try:
+                self.seals = fcntl.fcntl(int(path.rsplit("/", 1)[1]), fcntl.F_GET_SEALS)
+            except (OSError, ValueError):
+                self.seals = None
             raise OSError("synthetic exec boundary")
 
         with self.faked(rows), mock.patch.object(helper, "snapshot_token", load_then), \
+                mock.patch.object(helper, "sealed_gh", seal_after), \
                 mock.patch.object(helper.sys, "platform", "linux"), \
                 mock.patch.object(helper.os, "execve", exec_boundary), \
                 mock.patch.object(helper.sys, "stderr") as stderr:
@@ -922,6 +933,8 @@ class SystemGh(Helper):
         path, content, args, token = ran[0]
         self.assertTrue(path.startswith("/proc/self/fd/"), "gh runs through a pinned fd")
         self.assertEqual((content, args, token), (self.checked, [str(self.real), "pr", "list"], True))
+        every = fcntl.F_SEAL_SEAL | fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_GROW | fcntl.F_SEAL_WRITE
+        self.assertEqual((self.seals or 0) & every, every, "what runs is a copy no one can change")
 
     def test_a_system_gh_owned_by_another_user_gets_the_token_through_its_pinned_fd(self):
         # comment-ok: catches: the owner rule refusing a gh the agent can't modify or replace, so no
@@ -981,23 +994,6 @@ class SystemGh(Helper):
         rows = dict(self.table(), **{str(other): (OTHER, 0o755)})
         self.assert_withheld(*self.run_gh(rows, chosen=str(other)), "not the gh this run chose", looked=False)
 
-    def test_a_system_gh_replaced_while_it_is_checked_is_refused(self):
-        # comment-ok: catches: the folder walk vouching for whatever file sits at the path now, not the file
-        # whose owner and mode were checked
-        swapped = []
-
-        def swap():
-            if not swapped:
-                swapped.append(True)
-                replacement = self.system / "gh.swap"
-                replacement.write_text("#!/bin/sh\n# synthetic replacement gh\nexit 0\n")
-                replacement.chmod(0o755)
-                os.replace(replacement, self.real)
-
-        with self.faked(self.table(), after_stat=swap):
-            self.assertIsNone(self.helper_module.gh_identity(str(self.real)), "the run binds no such gh")
-        self.assertEqual(swapped, [True])
-
     def test_a_system_gh_swapped_between_its_check_and_its_exec_never_gets_the_token(self):
         # comment-ok: catches: the widened owner rule bypassing R12's pinned exec, so a swapped-in file
         # gets the token
@@ -1027,6 +1023,42 @@ class SystemGh(Helper):
             self.rewrite_in_place("#!/bin/sh\n# synthetic rewritten gh\nexit 0\n"))))
         self.assertEqual(len(rewritten), 1)
         self.assertNotEqual(self.real.read_text(), self.checked, "the file really changed before the exec")
+
+    def test_a_system_gh_its_owner_rewrites_while_it_is_copied_gets_nothing(self):
+        # comment-ok: catches: the sealed copy trusted without its own digest check, so a rewrite between
+        # the fd's check and the copy gets the token
+        self.assertIsNotNone(self.bind(self.table()))
+        rewrite = lambda: self.rewrite_in_place("#!/bin/sh\n# synthetic rewritten gh\nexit 0\n")
+        self.assert_withheld(*self.run_gh(self.table(), before_seal=rewrite), "the gh this run chose was changed",
+                             looked=False)
+
+    def test_a_system_gh_moved_while_its_folders_are_checked_is_refused(self):
+        # comment-ok: catches: the folder walk from an open fd vouching for another file now at the fd's path
+        fd = os.open(self.real, os.O_RDONLY)
+        self.addCleanup(os.close, fd)
+        moved = []
+
+        def move(target):
+            if os.fspath(target) == str(self.real) and not moved:
+                moved.append(True)
+                replacement = self.system / "gh.swap"
+                replacement.write_text(self.checked)
+                replacement.chmod(0o755)
+                os.rename(self.real, self.system / "gh.old")
+                os.replace(replacement, self.real)
+
+        rows = dict(self.table(), **{str(self.system / "gh.old"): (OTHER, 0o755)})
+        with self.faked(rows, before_lstat=move):
+            self.assertIsNone(self.helper_module.gh_identity(fd), "an fd whose path now holds another file")
+        self.assertEqual(moved, [True])
+
+    def test_a_system_gh_is_refused_where_procfs_cannot_pin_it(self):
+        # comment-ok: catches: a system gh accepted on macOS or another system, where the run executes it by
+        # its path and can't seal it
+        with mock.patch.object(self.helper_module.sys, "platform", "darwin"):
+            self.assertIsNone(self.identity_of(self.table()), "the run binds no system gh off Linux")
+        self.assertIsNotNone(self.identity_of(self.table()), "on Linux it is accepted")
+
 
 if __name__ == "__main__":
     unittest.main()
