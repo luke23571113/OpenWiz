@@ -711,6 +711,33 @@ def row_commands_keep_the_drivers_environment(planted):
     return result[0] == 0 and got == 'local' and dict(os.environ) == before
 
 
+def row_command_ended_when_its_watch_fails(planted):
+    if not os.path.isdir('/proc/self'):
+        return True
+    looks, saved = [], (local.STATE, local.LINUX, local.ps)
+
+    def ps_fails_on_its_third_look(*args):
+        looks.append(args)
+        if len(looks) > 2:
+            raise OSError('ps did not run: synthetic')
+        return saved[2](*args)
+
+    with tempfile.TemporaryDirectory(prefix='watch-') as folder:
+        pid = os.path.join(folder, 'pid')
+        local.STATE, local.LINUX, local.ps = folder, False, ps_fails_on_its_third_look
+        try:
+            local.row_command('run-000000000000', ['/bin/sh', '-c', 'echo $$ > %s; exec sleep 300' % shlex.quote(pid)],
+                              {}, 30)
+            raised = False
+        except OSError:
+            raised = True
+        finally:
+            local.STATE, local.LINUX, local.ps = saved
+        with open(pid) as f:
+            child = int(f.read())
+    return raised and len(looks) == 3 and gone(child)
+
+
 def check_driver(rows):
     found = [("a broken row's D3 error names its row file and fits the error schema: a row folder with no row.json, "
               "a harness that is not a string, and a 60-character harness with a missing field",
@@ -734,7 +761,9 @@ def check_driver(rows):
              ("a row's stop gets only its run's own reported session, and is skipped, still ending the tree, when "
               "there is none or it starts with a dash", stop_uses_only_the_runs_own_session(rows)),
              ("a precheck's or stop's env reaches only its own process, never the driver's environment",
-              row_commands_keep_the_drivers_environment(rows))]
+              row_commands_keep_the_drivers_environment(rows)),
+             ("a precheck or stop is still ended when the driver's watch on it fails, as when ps fails on macOS",
+              row_command_ended_when_its_watch_fails(rows))]
     if os.path.isdir('/proc/self'):
         found.append(("a row's env and effort setting reach only the harness, never the turn's supervisor",
                       supervisor_keeps_the_drivers_environment(rows)))
