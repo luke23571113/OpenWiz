@@ -148,7 +148,7 @@ class Receipt(unittest.TestCase):
                 self.assertNotIn(str(abs(code)), err)
 
     def test_a_too_deep_record_is_one_fixed_line(self):
-        for raw in (b'[' * 50000, b'{"a": ' * 20000):
+        for raw in (b'[' * 50000, b'{"a": ' * 10000):
             with self.subTest(raw=raw[:8]):
                 self.refused(None, 'the run record is not readable JSON with each key once', raw=raw)
 
@@ -176,11 +176,11 @@ class Receipt(unittest.TestCase):
         self.refused(record('5-of-5.json', stdout=''.join(lines)[:-1]), "kit.py's stdout does not end in a newline")
 
     def test_a_credential_shape_in_a_token_writes_nothing(self):
-        shape = 'sk-' + 'synthetic0receipt0' * 2
+        shape = 'claude-sk-' + 'synthetic0receipt0' * 2
         self.refused(record('5-of-5.json', model=shape), 'line 6 holds a credential shape')
 
     def test_a_secret_from_the_environment_writes_nothing(self):
-        value = 'synthetic-environment-value-0001'
+        value = 'claude-synthetic-environment-value-0001'
         self.refused(record('5-of-5.json', model=value), 'line 6 holds a credential shape',
                      env={'EXAMPLE_SERVICE_TOKEN': value})
 
@@ -220,7 +220,7 @@ class Receipt(unittest.TestCase):
             with self.subTest(value=value):
                 self.refused(record('5-of-5.json', harness=value), NOT_HARNESS)
                 self.refused(record('5-of-5.json', model=value), NOT_MODEL)
-                self.refused(record('5-of-5.json', model='claude-' + value), 'line 6 holds a private id')
+                self.refused(record('5-of-5.json', model='claude-' + value), NOT_MODEL)
 
     def test_version_stop_and_token_must_be_kits_exact_pass_lines(self):
         base = record('5-of-5.json')['stdout']
@@ -350,7 +350,7 @@ class Receipt(unittest.TestCase):
         self.assertEqual(self.run_receipt(record('5-of-5.json')).returncode, 0)
         rel = os.path.join('receipts', 'local', '2026-11-01-aaaaaaaaaaaa.txt')
         first = self.written(rel)
-        p = self.run_receipt(record('5-of-5.json', harness='codex', model='other-model'))
+        p = self.run_receipt(record('5-of-5.json', harness='codex', model='gpt-5.1'))
         self.one_line(p, 1, 'a receipt is already at its path; the first one is kept')
         self.assertEqual(self.written(rel), first)
         self.assertEqual(files(self.out), [rel])

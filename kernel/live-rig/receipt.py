@@ -28,7 +28,14 @@ DATE = re.compile(r'[0-9]{4}-[0-9]{2}-[0-9]{2}\Z', re.ASCII)
 PUBLIC_TOKEN = re.compile(r'[a-z0-9][a-z0-9._-]{0,59}\Z', re.ASCII)
 LISTING_ID = re.compile(r'[a-z0-9-]{2,40}\Z', re.ASCII)
 LOGIN = re.compile(r'[A-Za-z0-9](?:-?[A-Za-z0-9]){0,38}\Z', re.ASCII)
-PRIVATE_ID = re.compile(r'\b(?:thr_[A-Za-z0-9]|(?:proj|prj|mch|usr|acct|auto)_[A-Za-z0-9]|cr_[0-9A-Za-z])', re.ASCII)
+PRIVATE_ID = re.compile(r'\b(?:thr_[A-Za-z0-9]|(?:proj|prj|mch|usr|acct|auto)_[A-Za-z0-9]|cr_[0-9A-Za-z]'
+                        r'|[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}\b)', re.ASCII)
+HARNESSES = frozenset(('claude codex cursor-agent agent cursor pi opencode copilot goose gemini kimi qwen cline kilo '
+                       'kilocode crush vibe auggie kiro-cli junie amp agy oz sculpt hermes acpx droid openhands devin '
+                       'warp grok').split())
+MODEL = re.compile(r'(?:(?:claude|gpt|gemini|grok|kimi|qwen|deepseek|glm|llama|mistral|codestral|devstral|composer|sol)'
+                   r'(?:[-.][a-z0-9]+)+|o[0-9]+(?:[-.][a-z0-9]+)*|example-model)\Z', re.ASCII)
+MAX_RECORD = 65536
 USAGE = 'usage: receipt.py <run record> --listing <id> --run-by <login> -o <dir>'
 UNREADABLE = 'the run record is not readable JSON with each key once'
 INCONSISTENT = 'the run record is not a consistent ran or skipped record'
@@ -74,8 +81,14 @@ def no_constant(name):
 def load(path):
     try:
         with open(path, 'rb') as f:
-            return json.loads(f.read().decode('utf-8'), object_pairs_hook=once_each, parse_constant=no_constant)
-    except (OSError, ValueError):
+            data = f.read(MAX_RECORD + 1)
+    except OSError:
+        raise Refused(UNREADABLE)
+    if len(data) > MAX_RECORD:
+        raise Refused('the run record is larger than 64 KiB')
+    try:
+        return json.loads(data.decode('utf-8'), object_pairs_hook=once_each, parse_constant=no_constant)
+    except (ValueError, RecursionError):
         raise Refused(UNREADABLE)
 
 
@@ -103,10 +116,14 @@ def checked(rec):
     if skipped:
         raise Refused('the run record is a skipped run')
     if rec['kit_exit'] != 0:
-        raise Refused('kit.py exited %d, not 0' % rec['kit_exit'])
+        raise Refused('kit.py exited non-zero, not 0')
     for key in ('harness', 'model'):
         if not isinstance(rec[key], str) or not PUBLIC_TOKEN.match(rec[key]):
             raise Refused('the run record %s is not a public token' % key)
+    if rec['harness'] not in HARNESSES:
+        raise Refused('the run record harness is not a known public harness')
+    if not MODEL.match(rec['model']):
+        raise Refused('the run record model is not a known public model name')
     for key in ('driver_commit', 'kit_commit'):
         if not isinstance(rec[key], str) or not HEX40.match(rec[key]):
             raise Refused('the run record %s is not a 40-hex lowercase commit' % key)
@@ -121,7 +138,7 @@ def kit_lines(stdout):
         raise Refused("kit.py's stdout does not end in a newline")
     lines = lines[:-1]
     if len(lines) != 5:
-        raise Refused("kit.py's stdout has %d lines, not its five" % len(lines))
+        raise Refused("kit.py's stdout does not have its five lines")
     names = [re.match(r'(?:pass|fail) (\w+): ', l, re.ASCII) for l in lines]
     if None in names:
         raise Refused("kit.py's stdout holds a line that is not a check line")
@@ -136,15 +153,19 @@ def kit_lines(stdout):
     if passed != 5:
         raise Refused('the run is %d of 5 pass, not 5 of 5' % passed)
     out = []
+    notes = set()
     for name, line in zip(CHECKS, lines):
         if name in KIT_NOTE_PASS:
             prefix = KIT_NOTE_PASS[name]
             if not (line.startswith(prefix) and NOTE_ID.match(line[len(prefix):])):
                 raise Refused("the %s line is not kit.py's passing %s line" % (name, name))
+            notes.add(line[len(prefix):])
             line = prefix + '<note>'
         elif line != KIT_PASS[name]:
             raise Refused("the %s line is not kit.py's passing %s line" % (name, name))
         out.append(line)
+    if len(notes) != 1:
+        raise Refused('the start and wake lines name different builder status notes')
     return out
 
 
