@@ -323,7 +323,8 @@ python3 -I tools/github-app/agent-token.py run $REQ -- git push origin HEAD
   sandbox's system gh, another non-root user. That last case works only on Linux, through
   `/proc/self/fd`: every folder from `/` down to it must be owned by root and writable by no
   one else, and the run records a SHA-256 of the gh it chose, then runs a sealed in-memory
-  copy that matches it, so the gh's owner can't change what runs.
+  copy that matches it, so the gh's owner can't change what runs; the kernel and sandbox must
+  allow executable memfds, or gh is refused with a message naming that restriction.
   For an allowed command, it reads
   the snapshot and starts that gh
   with `GH_TOKEN`, the owner's own `GH_CONFIG_DIR`, `GH_PAGER=cat`, and an editor and
