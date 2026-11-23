@@ -58,6 +58,7 @@ KEY_PASS = PASS[4] + ", and on start, wake and stop the devin key reached its ho
 KEY_HOST = os.path.join(FIXTURES, 'key-host', 'driver')
 NOT_RUN = ['fail wake: not run: start failed', 'fail stop: not run: start failed']
 NEVER = "fail token: the devin key never reached the kit's fake host"
+CHECKS = ('version', 'start', 'wake', 'stop', 'token')
 IN_ARGS = 'a process the driver started holds a credential on its command line'
 NO_HEADER = "a request reached the kit's fake host without the devin key in the helper's header"
 SCRIPT = "names DEVIN_API_KEY, the key's variable"
@@ -238,10 +239,10 @@ class Kit(unittest.TestCase):
             except OSError:
                 pass
 
-    def kit(self, driver, python=sys.executable, wait='8', extra=(), **env):
+    def kit(self, driver, python=sys.executable, wait='8', extra=(), script='kit.py', **env):
         env = dict(self.env, **env)
         no_real_harness(env['PATH'])
-        p = subprocess.run([python, '-I', os.path.join(HERE, 'kit.py'), '--driver', driver,
+        p = subprocess.run([python, '-I', os.path.join(HERE, script), '--driver', driver,
                             '--repo', 'example/site', '--ticket', '7', '--harness', 'fake-harness',
                             '--model', 'Synthetic 1', '--tracker', self.env['KIT_TRACKER'], '--wait', wait] + list(extra),
                            env=env, capture_output=True, text=True, timeout=120, cwd=os.path.join(HERE, '..', '..'))
@@ -628,6 +629,48 @@ class Kit(unittest.TestCase):
                 env = dict(env, PATH=NO_PROC + os.pathsep + self.env['PATH']) if env else {}
                 code, out, err = self.kit(os.path.join(FIXTURES, 'short-lived-driver'), python, **env)
                 self.assertEqual((code, out), (0, PASS), err)
+
+    def test_each_effort_form_samples_its_one_main_start_and_no_other_start(self):
+        plain, main = {'sampled': 0, 'effort': True, 'token': False, 'canary': False}, \
+            {'sampled': 1, 'effort': False, 'token': False, 'canary': False}
+        probe = dict(main, sampled=0, token=True)
+        forms = {'taken': (os.path.join(FIXTURES, 'effort', 'driver'), [dict(main, effort=True), probe]),
+                 'refused': (os.path.join(FIXTURES, 'effort-refused', 'driver'),
+                             [dict(plain, sampled=1), main, probe]),
+                 'undeclared': (BASE, [plain, main, probe]),
+                 'key-host': (os.path.join(FIXTURES, 'effort-key-host', 'driver'),
+                              [dict(plain, canary=True), dict(main, effort=True), probe, dict(main, canary=True)])}
+        for form, (driver, starts) in forms.items():
+            with self.subTest(form=form):
+                self.tearDown()
+                self.setUp()
+                calls = os.path.join(self.folder, 'calls')
+                if form == 'key-host':
+                    code, out, _ = self.keyed(driver, script=os.path.join('fixtures', 'recorded-kit'), KIT_CALLS=calls)
+                else:
+                    code, out, _ = self.kit(driver, script=os.path.join('fixtures', 'recorded-kit'), KIT_CALLS=calls)
+                self.assertEqual([line.partition(':')[0] for line in out], ['pass ' + n for n in CHECKS], out)
+                with open(calls) as f:
+                    self.assertEqual(json.load(f), starts)
+
+    def test_a_child_living_only_during_the_main_start_is_watched_in_every_effort_form_on_linux_and_macos(self):
+        macos = {'PATH': NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable}
+        for form in ('undeclared', 'refused', 'key-host'):
+            for python, env in ((sys.executable, {}), (os.path.join(NO_PROC, 'python3'), macos)):
+                with self.subTest(form=form, python=python):
+                    self.tearDown()
+                    self.setUp()
+                    starts = os.path.join(self.folder, 'starts')
+                    driver = os.path.join(FIXTURES, 'start-child', form, 'driver')
+                    if form == 'key-host':
+                        code, out, _ = self.keyed(driver, python=python, FAKE_STARTS=starts, **env)
+                    else:
+                        code, out, _ = self.kit(driver, python, FAKE_STARTS=starts, **env)
+                    self.assertEqual([line.partition(':')[0] for line in out],
+                                     ['pass ' + n for n in CHECKS[:4]] + ['fail token'], out)
+                    self.assertEqual(out[4], 'fail token: ' + IN_ARGS)
+                    with open(starts) as f:
+                        self.assertEqual(len(f.read().split()), 1, 'the kit took more than one main start')
 
     def test_the_kits_visibility_probe_signals_ready_through_the_macos_shim_and_runs_until_its_stdin_closes(self):
         p = subprocess.run([os.path.join(NO_PROC, 'python3')] + module(os.path.join(HERE, 'kit.py')).PROBE,
