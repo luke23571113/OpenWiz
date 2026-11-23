@@ -1,11 +1,4 @@
 #!/usr/bin/env python3
-"""Run the kit at each driver PR's frozen approved head, for every signed-in host, and post the results.
-
-python3 -I kernel/live-rig/heads.py --tickets kernel/live-rig/vps/live-tickets.json --hosts kernel/live-rig/vps/hosts
-    --settings <file> --out <dir> [--allow-cost <host>]... [--post]
-
-Without --post nothing is written to GitHub: it prints each comment and receipt it would post.
-"""
 import argparse
 import base64
 import datetime
