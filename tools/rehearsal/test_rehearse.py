@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
+import contextlib
 import hashlib
+import io
 import json
 import os
 import platform
@@ -9,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
@@ -89,6 +92,28 @@ class Rehearse(unittest.TestCase):
         self.assertEqual(done.returncode, 2)
         self.assertIsNone(receipt)
         self.assertIn('GH_TOKEN', done.stderr)
+
+
+    def test_an_agent_cli_on_the_strangers_path_is_refused(self):
+        tools = self.work / 'callers-bin'
+        tools.mkdir()
+        (tools / 'boat').write_text('#!/bin/sh\nexit 0\n')
+        (tools / 'boat').chmod(0o755)
+        skills = self.work / 'skills'
+        shutil.copytree(SKILLS, skills, symlinks=False)
+        archive = release.build(self.work / 'run', skills, source=SOURCE, target=TARGET)
+        output = self.work / 'rehearsal.json'
+        err = io.StringIO()
+        with mock.patch.object(rehearse, 'ALLOWED', rehearse.ALLOWED + ('boat',)), \
+                mock.patch.dict(os.environ, dict(caller_env(), PATH=str(tools) + os.pathsep + os.environ.get('PATH', '')),
+                                clear=True), \
+                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            code = rehearse.main(['--assets', str(archive.parent), '--target', TARGET, '--version', '0.0.99',
+                                  '--source', SOURCE, '--checkout', str(ROOT), '--skills', str(skills),
+                                  '--output', str(output)])
+        self.assertEqual(code, 2, err.getvalue())
+        self.assertFalse(output.exists())
+        self.assertIn("boat is on the stranger's PATH", err.getvalue())
 
 
 if __name__ == '__main__':
