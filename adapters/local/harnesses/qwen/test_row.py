@@ -1,0 +1,62 @@
+import json, os, re, subprocess, sys
+
+sys.dont_write_bytecode = True
+HERE = os.path.dirname(os.path.abspath(__file__))
+FAKE = os.path.join(HERE, 'fake')
+LIB = os.path.join(HERE, '..', '..', 'fixtures')
+SID = '123e4567-e89b-12d3-a456-426614174000'
+FIRST = 'Take up example/site#7 with the build-ticket skill.'
+WOKEN = 'You were woken: take up example/site#7 again, with the build-ticket skill.'
+START = ['--output-format', 'stream-json', '--session-id', SID, '--model', 'synthetic-1', '--approval-mode', 'yolo',
+         FIRST]
+WAKE = ['--output-format', 'stream-json', '--resume', SID, '--model', 'synthetic-1', '--approval-mode', 'yolo', WOKEN]
+GOOD = [START, WAKE] + [START[:7] + [m, FIRST] for m in ('plan', 'default', 'auto-edit', 'auto')]
+BAD = {
+    'the deprecated -p prompt flag': START[:8] + ['-p', FIRST],
+    'no prompt': START[:8],
+    'two prompts': START + ['again'],
+    'an approval mode qwen does not have': START[:7] + ['never', FIRST],
+    '--yolo with --approval-mode': START[:8] + ['--yolo', FIRST],
+    '--session-id with --resume': WAKE[:4] + ['--session-id', SID] + WAKE[4:],
+    'a session id that is not a UUID': START[:3] + ['fake-0123456789ab'] + START[4:],
+    'text output': ['--output-format', 'text'] + START[2:],
+    'an effort flag qwen does not have': START[:8] + ['--reasoning-effort', 'high', FIRST],
+    'the start prompt on a resume': WAKE[:8] + [FIRST],
+    'a wake prompt on a new session': START[:8] + [WOKEN],
+    'the serve subcommand': ['serve'],
+    'the removed auth subcommand': ['auth', 'qwen-oauth'],
+    'no --model': START[:4] + START[6:],
+}
+
+
+def run(argv, **env):
+    return subprocess.run([sys.executable, FAKE] + argv, capture_output=True, text=True, timeout=30,
+                          env=dict(os.environ, FAKE_CLI_LIB=LIB, **env))
+
+
+def main():
+    with open(os.path.join(HERE, 'row.json')) as f:
+        row = json.load(f)
+    failures = []
+    for name, argv in BAD.items():
+        p = run(argv, FAKE_CLI_SIGNED_OUT='1')
+        if p.returncode != 2 or p.stdout:
+            failures.append('the fake took %s (exit %d)' % (name, p.returncode))
+    for argv in GOOD:
+        p = run(argv, FAKE_CLI_SIGNED_OUT='1')
+        lines = p.stdout.splitlines()
+        if p.returncode != 1 or len(lines) != 1 or json.loads(lines[0])['type'] != 'result' or \
+                not any(re.search(s, lines[0], re.I) for s in row['signed_out']):
+            failures.append('the fake refused a documented line %r (exit %d)' % (argv[:8], p.returncode))
+    if sorted(row['modes']) != sorted(['plan', 'default', 'auto-edit', 'auto', 'yolo']) or \
+            any(v != ['--approval-mode', k] for k, v in row['modes'].items()):
+        failures.append("the row's modes are not qwen's five --approval-mode values")
+    for line in failures:
+        print('fail: ' + line)
+    print('test_row.py: %d bad lines refused, %d documented lines taken, modes checked: %s'
+          % (len(BAD), len(GOOD), 'fail' if failures else 'ok'))
+    return 1 if failures else 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
