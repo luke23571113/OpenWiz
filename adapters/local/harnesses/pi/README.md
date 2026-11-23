@@ -13,11 +13,11 @@ All facts below are from Pi 1.6.0: tag `v1.6.0` of [earendil-works/pi](https://g
 ## Commands
 
 - **Start:** `pi -p --mode json --session-id <uuid> --model <model> -- "<prompt>"`, in the run's worktree.
-- **Wake (same run):** `pi --session-id <uuid> -p --model <model> -- "<message>"`, in the same worktree.
+- **Wake (same run):** `pi --session-id <uuid> -p -- "<message>"`, in the same worktree. It passes no `--model`.
 - **Stop:** the driver ends the run's process tree.
 - **Session:** `{"chosen": "uuid"}`. The driver makes the id and passes it at start and at every wake.
 
-`-p` runs the prompt and exits. `--mode json` writes JSONL events to stdout, so the first turn's log keeps every event. `--` ends option parsing, so a prompt can never be read as an option ([cli.md](https://github.com/earendil-works/pi/blob/v1.6.0/packages/coding-agent/docs/cli.md#invocation-and-output); `pi -p -- "- Summarize these points"` in the `--help` examples of [`src/cli/args.ts`](https://github.com/earendil-works/pi/blob/v1.6.0/packages/coding-agent/src/cli/args.ts)). The driver's prompts never start with `@`, which Pi reads as a file even after `--`. Wake passes the same `--model` again. The session would restore it anyway, but passing it keeps the wake on the run's model if that restore falls back (`Could not restore model`, [`src/core/sdk.ts`](https://github.com/earendil-works/pi/blob/v1.6.0/packages/coding-agent/src/core/sdk.ts)).
+`-p` runs the prompt and exits. `--mode json` writes JSONL events to stdout, so the first turn's log keeps every event. `--` ends option parsing, so a prompt can never be read as an option ([cli.md](https://github.com/earendil-works/pi/blob/v1.6.0/packages/coding-agent/docs/cli.md#invocation-and-output); `pi -p -- "- Summarize these points"` in the `--help` examples of [`src/cli/args.ts`](https://github.com/earendil-works/pi/blob/v1.6.0/packages/coding-agent/src/cli/args.ts)). The driver's prompts never start with `@`, which Pi reads as a file even after `--`. Wake passes no `--model`: the session restores the provider and model it recorded ([`src/core/sdk.ts`](https://github.com/earendil-works/pi/blob/v1.6.0/packages/coding-agent/src/core/sdk.ts) `createAgentSession`). Passing the model again would resolve its name afresh, and a bare name two signed-in providers share is then ambiguous, so the wake would fail while the recorded model still works ([`src/core/model-resolver.ts`](https://github.com/earendil-works/pi/blob/v1.6.0/packages/coding-agent/src/core/model-resolver.ts) `resolveCliModel`).
 
 ## The census check: resolved, nothing blocks
 

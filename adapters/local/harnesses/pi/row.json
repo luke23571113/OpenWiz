@@ -17,8 +17,6 @@
     "--session-id",
     "{session}",
     "-p",
-    "--model",
-    "{model}",
     "{mode}",
     "--",
     "{prompt}"
