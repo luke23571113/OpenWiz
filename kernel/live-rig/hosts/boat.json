@@ -4,7 +4,7 @@
   "needs": ["boat", "gh"],
   "signed_in": [
     ["boat", "status", "--check"],
-    ["gh", "auth", "status", "--hostname", "github.com", "--active", "--no-refresh"]
+    ["env", "GH_TELEMETRY=0", "gh", "config", "get", "-h", "github.com", "user"]
   ],
   "cost": "unknown",
   "runs": [
