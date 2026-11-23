@@ -42,7 +42,7 @@ First differing element 1:
 
 + (0, ['skipped Cloudroom claude: cost'])
 ?                                 ^ +
- : 
+ :
 
 ======================================================================
 FAIL: test_the_config_checks_only_the_cited_read_only_status_commands (__main__.CloudroomHost.test_the_config_checks_only_the_cited_read_only_status_commands)
