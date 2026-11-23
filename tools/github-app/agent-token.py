@@ -693,10 +693,18 @@ def owner_only_gh_path(path, uid=None):
 
 
 def exec_gh(fd, path, args, env):
+    sealed = False
     if sys.platform.startswith("linux"):
         os.set_inheritable(fd, True)
         path = f"/proc/self/fd/{fd}"
-    os.execve(path, args, env)
+        sealed = os.readlink(path).startswith("/memfd:")
+    try:
+        os.execve(path, args, env)
+    except OSError:
+        if sealed:
+            raise Refused("cannot run gh's sealed in-memory copy: this kernel or sandbox does not allow "
+                          "executable memfds (vm.memfd_noexec, seccomp or a security module)") from None
+        raise
 
 
 def gh(args, env):
