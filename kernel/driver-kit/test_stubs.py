@@ -43,6 +43,7 @@ class StubPath(unittest.TestCase):
         names = set(json.loads(INVENTORY.read_text(encoding='utf-8')))
         self.assertTrue(names)
         self.assertFalse(names & TOOLS)
+        self.assertTrue(all(Path(name).name == name and name not in {'', '.', '..'} for name in names))
         with tempfile.TemporaryDirectory(prefix='synthetic tools ') as temporary:
             fake = Path(temporary)
             for name in names | TOOLS:

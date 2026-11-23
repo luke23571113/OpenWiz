@@ -25,7 +25,6 @@ def cli_names():
 
 
 def stub_path(path=None):
-    """Return a guarded PATH. The caller owns its new first directory."""
     names = cli_names()
     if path is None:
         path = os.environ.get('PATH', os.defpath)
