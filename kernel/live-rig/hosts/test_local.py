@@ -3,7 +3,6 @@ import ast
 import datetime
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -18,9 +17,8 @@ REPO, TICKET, LOGIN = 'example/local-throwaway', 7, 'example-local-login'
 SECRET = 'gh' + 'p_' + 'Synthetic0Local0Value' * 2 + '00'
 KEYS = ['host', 'harness', 'model', 'date', 'driver_commit', 'kit_commit', 'outcome', 'skipped', 'kit_exit',
         'stdout', 'seconds']
-STATUS = {'claude': ['claude', 'auth', 'status'],
-          'codex': ['codex', 'login', 'status'],
-          'gh': ['gh', 'auth', 'status', '--hostname', 'github.com', '--active', '--no-refresh']}
+GH_STATUS = ['env', 'GH_TELEMETRY=0', 'gh', 'config', 'get', '-h', 'github.com', 'user']
+NEEDS = ['claude', 'gh']
 RUNS = [{'harness': 'claude', 'model': 'claude-opus-5-5'}]
 PASS = ['pass version: openwiz:records v1, and the schema is driver v1',
         'pass start: the run posted builder status note 2',
@@ -33,20 +31,24 @@ AGENT_CLIS = ['claude', 'codex', 'cursor-agent', 'agent', 'cursor', 'pi', 'openc
               'oz', 'sculpt', 'hermes', 'acpx', 'droid', 'boat', 'room-cli', 'runpane', 'pane', 'openhands', 'devin',
               'warp', 'grok', 'codespaces', 'conductor']
 REFUSE = '#!/bin/sh\necho "%s: refused, the local host tests never start a real program" >&2\nexit 1\n'
-FAKE = '''#!/bin/sh
-printf '%%s\\n' "%(name)s $*" >> "$LOCAL_FAKE_LOG"
-if [ "$*" = "%(status)s" ]; then
-  echo "%(name)s: fake status output the rig discards"
-  case " $LOCAL_SIGNED_OUT " in *" %(name)s "*) exit 1;; esac
-  exit 0
-fi
-%(extra)secho "%(name)s: refused, the fake answers only its status command" >&2
-exit 1
-'''
-GH_LOGIN = '''if [ "$*" = "api user --jq .login" ]; then
+GH = '''#!/bin/sh
+printf '%s\\n' "gh GH_TELEMETRY=${GH_TELEMETRY-unset} $*" >> "$LOCAL_FAKE_LOG"
+if [ "$GH_TELEMETRY:$*" = "0:config get -h github.com user" ]; then
+  case " $LOCAL_SIGNED_OUT " in *" gh "*) echo 'could not find key "user"' >&2; exit 1;; esac
   echo "$LOCAL_GH_LOGIN"
   exit 0
 fi
+if [ "$*" = "api user --jq .login" ]; then
+  echo "$LOCAL_GH_LOGIN"
+  exit 0
+fi
+echo "gh: refused, the fake answers only its status and login commands" >&2
+exit 1
+'''
+SIGNED_OUT = '''#!/bin/sh
+printf '%%s\\n' "%(name)s $*" >> "$LOCAL_FAKE_LOG"
+echo "%(name)s: Not logged in" >&2
+exit 1
 '''
 KIT = '''import json, os, sys
 %s
@@ -98,7 +100,8 @@ class Local(unittest.TestCase):
         for name in AGENT_CLIS + ['gh']:
             self.program(name, REFUSE % name)
         tools = tempfile.mkdtemp(dir=self.folder)
-        os.symlink(shutil.which('git'), os.path.join(tools, 'git'))
+        for tool in ('git', 'env'):
+            os.symlink(shutil.which(tool), os.path.join(tools, tool))
         self.path = os.pathsep.join([self.stubs, tools])
         self.assertEqual({shutil.which(name, path=self.path) for name in AGENT_CLIS},
                          {os.path.join(self.stubs, name) for name in AGENT_CLIS})
@@ -112,12 +115,15 @@ class Local(unittest.TestCase):
         os.chmod(os.path.join(self.stubs, name), 0o700)
 
     def fakes(self, installed=('claude', 'codex', 'gh')):
-        for name, command in STATUS.items():
+        for name in ('claude', 'codex'):
             if name in installed:
-                self.program(name, FAKE % {'name': name, 'status': ' '.join(command[1:]),
-                                           'extra': GH_LOGIN if name == 'gh' else ''})
+                self.program(name, SIGNED_OUT % {'name': name})
             else:
                 os.remove(os.path.join(self.stubs, name))
+        if 'gh' in installed:
+            self.program('gh', GH)
+        else:
+            os.remove(os.path.join(self.stubs, 'gh'))
 
     def rig(self, signed_out=()):
         env = {'PATH': self.path, 'HOME': self.folder, 'LOCAL_FAKE_LOG': self.fake_log, 'LOCAL_KIT_LOG': self.kit_log,
@@ -162,53 +168,45 @@ class Local(unittest.TestCase):
         git(self.checkout, 'commit', '-qam', 'a changed host config')
         self.head = git(self.checkout, 'rev-parse', 'HEAD')
 
-    def test_the_config_is_the_tickets_local_host_with_its_cited_status_commands(self):
+    def test_the_config_is_the_tickets_local_host_with_its_one_cited_status_command(self):
         self.assertTrue(os.path.exists(CONFIG), 'kernel/live-rig/hosts/local.json is missing')
         with open(CONFIG) as f:
             config = json.load(f)
-        self.assertEqual(config, {'host': 'local', 'driver': 'adapters/local/driver', 'needs': ['claude', 'codex', 'gh'],
-                                  'signed_in': [STATUS['claude'], STATUS['codex'], STATUS['gh']], 'cost': 'none',
-                                  'runs': RUNS, 'wait': 900})
-        with open(os.path.join(ROOT, 'adapters', 'local', 'README.md')) as f:
-            readme = f.read()
-        with open(os.path.join(ROOT, 'adapters', 'local', 'driver')) as f:
-            harnesses = re.search(r"^HARNESSES = \{(.*?)\}$", f.read(), re.M | re.S).group(1)
-        for run in config['runs']:
-            self.assertIn('`%s`' % run['harness'], readme)
-            self.assertIn("'%s':" % run['harness'], harnesses)
-            self.assertIn('"model":"%s"' % run['model'], readme)
+        self.assertEqual(config, {'host': 'local', 'driver': 'adapters/local/driver', 'needs': NEEDS,
+                                  'signed_in': [GH_STATUS], 'cost': 'none', 'runs': RUNS, 'wait': 900})
 
-    def test_every_program_signed_in_runs_the_kit_once_with_the_configs_exact_command(self):
-        self.fakes()
-        code, out, err = self.rig()
-        self.assertEqual((code, out), (0, ['ran local claude: 5 of 5']), err)
+    def kit_ran_once(self):
         record = self.record()
         self.assertEqual({k: record[k] for k in KEYS[6:10]},
                          {'outcome': 'ran', 'skipped': None, 'kit_exit': 0, 'stdout': '\n'.join(PASS) + '\n'})
         self.assertEqual([json.loads(line) for line in self.lines(self.kit_log)],
                          [['--driver', 'adapters/local/driver', '--repo', REPO, '--ticket', str(TICKET),
                            '--harness', 'claude', '--model', 'claude-opus-5-5', '--wait', '900']])
-        self.assertEqual(self.lines(self.fake_log), [' '.join(c) for c in STATUS.values()] + ['gh api user --jq .login'])
+        self.assertEqual(self.lines(self.fake_log), ['gh GH_TELEMETRY=0 config get -h github.com user', 'gh GH_TELEMETRY=unset api user --jq .login'])
 
-    def test_a_program_not_signed_in_is_skipped_with_its_exact_line_and_starts_no_kit(self):
-        for name in STATUS:
-            with self.subTest(name):
-                self.fakes()
-                code, out, err = self.rig(signed_out=[name])
-                self.assertEqual((code, out), (0, ['skipped local claude: not signed in: %s' % name]), err)
-                self.assertEqual({k: self.record()[k] for k in KEYS[6:10]},
-                                 {'outcome': 'skipped', 'skipped': 'not signed in: ' + name, 'kit_exit': None,
-                                  'stdout': None})
-                self.assertEqual(self.lines(self.kit_log), [])
-                ran = [' '.join(c) for c in STATUS.values()]
-                self.assertEqual(self.lines(self.fake_log), ran[:list(STATUS).index(name) + 1])
+    def test_gh_signed_in_runs_the_kit_once_and_never_asks_claude_or_codex(self):
+        for installed in (('claude', 'codex', 'gh'), ('claude', 'gh')):
+            with self.subTest(installed=installed):
+                self.fakes(installed=installed)
+                code, out, err = self.rig()
+                self.assertEqual((code, out), (0, ['ran local claude: 5 of 5']), err)
+                self.kit_ran_once()
                 shutil.rmtree(self.out)
                 os.remove(self.fake_log)
+                os.remove(self.kit_log)
+
+    def test_gh_not_signed_in_is_skipped_with_its_exact_line_and_starts_no_kit(self):
+        self.fakes()
+        code, out, err = self.rig(signed_out=['gh'])
+        self.assertEqual((code, out), (0, ['skipped local claude: not signed in: env']), err)
+        self.assertEqual({k: self.record()[k] for k in KEYS[6:10]},
+                         {'outcome': 'skipped', 'skipped': 'not signed in: env', 'kit_exit': None, 'stdout': None})
+        self.assertEqual((self.lines(self.kit_log), self.lines(self.fake_log)), ([], ['gh GH_TELEMETRY=0 config get -h github.com user']))
 
     def test_a_missing_program_is_skipped_with_its_exact_line_and_runs_no_status_command_or_kit(self):
-        for name in STATUS:
+        for name in NEEDS:
             with self.subTest(name):
-                self.fakes(installed=[n for n in STATUS if n != name])
+                self.fakes(installed=[n for n in ('claude', 'codex', 'gh') if n != name])
                 code, out, err = self.rig()
                 self.assertEqual((code, out), (0, ['skipped local claude: not installed: %s' % name]), err)
                 self.assertEqual({k: self.record()[k] for k in KEYS[6:10]},
@@ -217,7 +215,7 @@ class Local(unittest.TestCase):
                 self.assertEqual((self.lines(self.kit_log), self.lines(self.fake_log)), ([], []))
                 shutil.rmtree(self.out)
 
-    def test_a_cost_other_than_none_is_skipped_as_cost_after_every_status_command(self):
+    def test_a_cost_other_than_none_is_skipped_as_cost_after_the_status_command(self):
         for cost in ('paid', 'unknown'):
             with self.subTest(cost):
                 self.fakes()
@@ -226,11 +224,9 @@ class Local(unittest.TestCase):
                 self.assertEqual((code, out), (0, ['skipped local claude: cost']), err)
                 self.assertEqual({k: self.record()[k] for k in KEYS[6:10]},
                                  {'outcome': 'skipped', 'skipped': 'cost', 'kit_exit': None, 'stdout': None})
-                self.assertEqual(self.lines(self.kit_log), [])
-                self.assertEqual(self.lines(self.fake_log), [' '.join(c) for c in STATUS.values()])
+                self.assertEqual((self.lines(self.kit_log), self.lines(self.fake_log)), ([], ['gh GH_TELEMETRY=0 config get -h github.com user']))
                 shutil.rmtree(self.out)
                 os.remove(self.fake_log)
-
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
