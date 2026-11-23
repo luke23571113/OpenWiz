@@ -291,7 +291,7 @@ def check_effort(env, row):
         if not (contains(got['argv'], setting) if isinstance(setting, list) else
                 all(got['env'].get(k) == v for k, v in setting['env'].items())):
             raise Fail('effort', 'effort %s did not reach the fake CLI\'s command line or environment' % value)
-    unlisted = next(v for v in ('medium', 'unlisted') if v not in table)
+    unlisted = next(v for v in ['unlisted'] + ['unlisted-%d' % i for i in range(len(table))] if v not in table)
     if not env.start_refused_starting_nothing(lambda out: out['next'] == CANT_SET_EFFORT, effort=unlisted, FAKE_CLI_RECORD_ONLY='1'):
         raise Fail('effort', 'a start with an effort the row can\'t take was not refused with the fixed next, '
                              'starting nothing')
