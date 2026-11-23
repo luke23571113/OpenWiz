@@ -345,7 +345,7 @@ class Kit:
             except (OSError, ValueError, IndexError, StopIteration):
                 continue
             try:
-                env, cmd = self.details(pid)
+                env, cmd = self.details(pid, HIDDEN_TRIES if uid == os.getuid() else 1)
             except PermissionError:
                 if state in 'ZX' or not self.running(pid):
                     continue
