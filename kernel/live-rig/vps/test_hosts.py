@@ -211,15 +211,15 @@ class Page(unittest.TestCase):
         self.assertEqual(at, sorted(at))
 
     def test_pane_doctor_follows_daemon_start_and_registration_of_the_same_checkout(self):
-        commands = re.findall(r'`([^`]+)`', self.page)
+        commands = re.findall(r'(?<!`)`([^`\n]+)`(?!`)', self.page)
         doctors = [command for command in commands if command.startswith('runpane agents doctor ')]
         self.assertEqual(len(doctors), 1)
         start = 'pane --daemon-headless'
         register = 'runpane repos add --path "$CHECKOUT"'
-        self.assertIn(start, commands)
         self.assertIn(register, commands)
-        self.assertLess(commands.index(start), commands.index(register))
-        self.assertLess(commands.index(register), commands.index(doctors[0]))
+        self.assertLess(commands.index(register), commands.index(doctors[0]), 'register before running doctor')
+        self.assertIn(start, commands)
+        self.assertLess(commands.index(start), commands.index(register), 'start Pane before registering')
         self.assertEqual(doctors[0], 'runpane agents doctor --agent claude --repo "$CHECKOUT" --json')
 
     def test_the_paid_command_is_given_once_with_post_and_no_shell_placeholder(self):
