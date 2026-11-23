@@ -33,7 +33,7 @@
   "env": {},
   "effort": "none: GitHub Copilot CLI v1.0.114 leaves unsupported model-specific --reasoning-effort levels unapplied (upstream changelog 1.0.88 and 1.0.110)",
   "login": "copilot's own login, saved by `copilot login` in the system credential store, or in plain text under ~/.copilot/ (or $COPILOT_HOME) when there is no store",
-  "daemon": "copilot may start a detached rem-agent memory pass (a second copilot -p, behind its COPILOT_SUBCONSCIOUS experiment) as a session shuts down; stop ends it with the process tree, on Linux",
+  "daemon": "none",
   "signed_out": [
     "no authentication information found"
   ],
