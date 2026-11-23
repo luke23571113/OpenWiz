@@ -23,7 +23,17 @@ The driver chooses the session id, a UUID (`{"chosen": "uuid"}`), and runs every
 - `-p` (`--prompt`) runs headless; `-o stream-json` prints JSONL events ([headless](https://github.com/google-gemini/gemini-cli/blob/v0.70.0/docs/cli/headless.md)).
 - `--session-id` "Start[s] a new session with a manually provided UUID"; it refuses an id that already exists ([`config.ts`](https://github.com/google-gemini/gemini-cli/blob/v0.70.0/packages/cli/src/config/config.ts), [`gemini.tsx` `resolveSessionId`](https://github.com/google-gemini/gemini-cli/blob/v0.70.0/packages/cli/src/gemini.tsx)). `--resume`, `--session-id` and `--session-file` are mutually exclusive, so start and wake each take one.
 - Sessions are saved per project folder ([sessions](https://github.com/google-gemini/gemini-cli/blob/v0.70.0/docs/cli/session-management.md)), so a wake must run in the same clone, which the driver does.
-- `daemon: none`: the CLI starts no background service of its own. MCP servers it starts are children of the turn, inside the tree stop ends.
+- MCP servers the CLI starts are children of the turn, inside the tree stop ends.
+
+## Background service, and Linux only
+
+**Platforms: Linux only.** The row declares one background service, the LiteRT-LM server.
+
+- When the user's own settings turn on the experimental Gemma model router (`experimental.gemmaModelRouter.enabled`) and leave its `autoStartServer` on, and the LiteRT-LM binary is installed, every Gemini CLI start, headless included, runs `LiteRtServerManager.ensureRunning` ([`gemini.tsx`](https://github.com/google-gemini/gemini-cli/blob/v0.70.0/packages/cli/src/gemini.tsx#L878-L901), [`liteRtServerManager.ts`](https://github.com/google-gemini/gemini-cli/blob/v0.70.0/packages/cli/src/services/liteRtServerManager.ts#L13-L48)). When no server answers on its port, it spawns `<binary> serve --port=<port>` with `detached: true`, its output redirected to its own log file, and unreferences it ([`start.ts`](https://github.com/google-gemini/gemini-cli/blob/v0.70.0/packages/cli/src/commands/gemma/start.ts#L39-L61)). The server then outlives the turn by design.
+- **On Linux** the turn's supervisor keeps every process the turn starts (a subreaper), so the driver's stop ends the server with the rest of the run. That also ends a server the user's other Gemini sessions had started using since.
+- **On macOS** a process that leaves its turn's group, redirects its output and is orphaned before the supervisor's next look is out of `stop`'s reach (the [local README](../../README.md)), which is exactly this spawn. So the row claims Linux only.
+- **No setting keeps headless from starting it.** At v0.70.0 there is no flag or environment variable for it: `autoStartServer` and the binary path are read from the user's settings scope only, which a run's clone or the row's `env` can't set. The only environment route is `GEMINI_CLI_SYSTEM_SETTINGS_PATH`, which points at a whole settings file and would replace the user's system settings, so the row doesn't use it. A user who wants no service under OpenWiz sets `autoStartServer` to `false` in their own `~/.gemini/settings.json`.
+- The fake starts a detached service on its first turn, and the runner checks that stop ends it. The live check, #2513, must run on Linux with the service started, and see stop end it there.
 
 ## Modes
 
