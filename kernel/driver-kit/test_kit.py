@@ -113,6 +113,7 @@ EFFORT = {
     'planted/effort-no-readme': EFFORT_FAIL + [PASS[4]],
     'planted/effort-refuses-listed': EFFORT_FAIL + [PASS[4]],
     'planted/effort-word-elsewhere': EFFORT_FAIL + [PASS[4]],
+    'planted/effort-cant-harness-taken': EFFORT_FAIL + [PASS[4]],
 }
 EFFORT_WHY = {
     'planted/effort-dropped': 'medium never reached a process the run started',
@@ -124,8 +125,9 @@ EFFORT_WHY = {
     'planted/effort-refuses-listed': 'start refused medium for fake-harness, but its README says that harness takes '
                                      'medium',
     'planted/effort-word-elsewhere': 'medium never reached a process the run started',
+    'planted/effort-cant-harness-taken': "its README says fake-harness can't set effort, but a start with it was taken",
 }
-HARNESS_EFFORTS = {'effort': 2, 'planted/effort-taken-without-can': 1}
+HARNESS_EFFORTS = {'effort': 2, 'planted/effort-taken-without-can': 1, 'planted/effort-cant-harness-taken': 1}
 EFFORT_KEY = {
     'effort-key-host': [PASS[0], "pass start: the run posted builder status note 3; effort: medium reached the kit's "
                         "fake devin host", 'pass wake: the run edited builder status note 3', PASS[3], KEY_PASS],

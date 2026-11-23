@@ -55,3 +55,10 @@ Ran 10 tests in 37.708s
 FAILED (failures=9; one, error-without-next, was a stdin slip in that fixture, fixed before the fix commit, so it is left out here)
 
 R7 is fixture-side: at the reviewed head, error-without-next and refuses-with-credential failed start on the effort probe, so their stop assertions never ran (the reviewed expected lines in test_kit.py).
+
+3. A start taken for a harness the README says can't (found in this round's self-check): the new planted/effort-cant-harness-taken, with that guard in kit.py switched off.
+$ python3 -I kernel/driver-kit/test_kit.py Kit.test_each_effort_driver_prints_its_own_start_line
+FAIL: test_each_effort_driver_prints_its_own_start_line (__main__.Kit.test_each_effort_driver_prints_its_own_start_line) [planted/effort-cant-harness-taken]
+AssertionError: Tuples differ: (0, ['pass version: openwiz:records v1, an[295 chars]er']) != (1, ['pass version: openwiz:records v1, an[254 chars]er'])
+Ran 1 test in 5.019s
+FAILED (failures=1)
