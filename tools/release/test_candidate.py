@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
+import contextlib
 import datetime
 import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -672,7 +674,17 @@ class Candidate(World):
     def test_install_status_never_reads_a_held_or_interrupted_attempt_record(self):
         import candidate
         state = candidate.State(self.root / 'attempts')
+        state.write('record.json', {'candidate_sha256': 'c' * 64, 'publication': {'status': 'complete'}, 'timing': {
+            'original_ship_at': 10, 'preparation_started_at': 5, 'finished_at': 90, 'phases': []}})
         evidence = {'target': LINUX, 'downloads': [], 'steps': []}
+
+        def shown():
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = candidate.main(['status', '--state', str(state.path)])
+            result = json.loads(out.getvalue())
+            return code, result['status'], [(a['attempts'], a['status'], a['reasons'], a['evidence']['record'])
+                                            for a in result.get('install_attempts', [])] or result.get('reasons')
         first = candidate.install_attempt(state, LINUX, None, 100, evidence)
         code = candidate.install_attempt.__code__
 
@@ -689,22 +701,17 @@ class Candidate(World):
 
         held = []
 
-        def status(_):
-            try:
-                [attempt] = candidate.install_attempts(state)
-                held.append(attempt['attempts'])
-            except ValueError as error:
-                held.append(f'unreadable: {error}')
-        sys.settrace(at_each_line(status))
+        sys.settrace(at_each_line(lambda _: held.append(shown())))
         try:
             second = candidate.install_attempt(state, LINUX, 'install_refused', 200, evidence)
         finally:
             sys.settrace(None)
+        one = (0, 'complete', [(1, 'passed', [], first['evidence']['record'])])
+        two = (0, 'incomplete', [(2, 'blocked', ['install_refused'], second['evidence']['record'])])
         self.assertGreater(len(held), 3)
-        self.assertLessEqual(set(held), {1, 2})
-        self.assertEqual(held, sorted(held))
-        self.assertIn(1, held)
-        self.assertEqual(candidate.install_attempts(state)[0]['evidence'], second['evidence'])
+        self.assertEqual(held, [one] * held.count(one) + [two] * held.count(two))
+        self.assertIn(one, held)
+        self.assertEqual(shown(), two)
         interrupted = 0
         for at, stop in enumerate(sorted({n for _, _, n in code.co_lines() if n}), 300):
             fired = []
@@ -720,13 +727,14 @@ class Candidate(World):
                 interrupted += 1
             finally:
                 sys.settrace(None)
-            try:
-                [attempt] = candidate.install_attempts(state)
-            except ValueError as error:
-                self.fail(f'status after an interrupt at line {stop}: {error}')
-            self.assertIn(attempt['attempts'], (2, 3))
-            if attempt['attempts'] == 3:
-                saved = state.file(attempt['evidence']['record'])
+            got, status, rows = shown()
+            self.assertEqual((got, status, [row[1:3] for row in rows]),
+                             (0, 'incomplete', [('blocked', ['install_refused'])]), f'status after an interrupt at {stop}')
+            [(attempts, _, _, record)] = rows
+            self.assertIn((attempts, record), ((2, second['evidence']['record']),
+                                               (3, f'evidence/install-{LINUX}/3.json')))
+            if attempts == 3:
+                saved = state.file(record)
                 self.assertEqual(json.loads(saved.read_bytes())['at'], at)
                 saved.unlink()
         self.assertGreater(interrupted, 3)
