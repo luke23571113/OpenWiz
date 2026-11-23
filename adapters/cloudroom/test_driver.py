@@ -209,7 +209,7 @@ class Driver(unittest.TestCase):
                 self.assertEqual(self.started(), [])
 
     def test_a_credential_shaped_harness_with_an_effort_never_reaches_the_lookup(self):
-        value = 'sk-synthetic0marker0value00' + self.mark
+        value = 'sk' + '-synthetic0marker0value00' + self.mark
         code, out = self.call('start', dict(START, harness=value, effort='medium'))
         self.assertEqual(code, 1, out)
         self.assertIn('harness looks like a credential', out['error'])

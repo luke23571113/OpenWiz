@@ -32,7 +32,7 @@ test_version_lists_effort_and_the_readme_says_how (__main__.Driver.test_version_
 test_wake_is_the_fleet_routes_queued_delivery (__main__.Driver.test_wake_is_the_fleet_routes_queued_delivery) ... ok
 
 ----------------------------------------------------------------------
-Ran 31 tests in 27.611s
+Ran 31 tests in 26.825s
 
 OK
 exit: 0
