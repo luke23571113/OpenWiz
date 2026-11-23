@@ -378,7 +378,7 @@ def run(args, env):
     no_legacy_app_key(env)
     close_channel(env)
     private = Private(env, create=True)
-    name = f"run-{secrets.token_hex(16)}.json"
+    name = f"{snapshot_prefix(cache_name(wanted))}{secrets.token_hex(8)}.json"
     token, expires_at = token_for(private, wanted, env, snapshot=name)
     child = without_inherited(env)
     if not token:
@@ -864,11 +864,14 @@ def kept_tokens(private, cache):
     return found
 
 
+def snapshot_prefix(cache):
+    return "run-" + cache[len("token-"):][:16]
+
+
 def retire(private, cache):
     drop(private, cache, cache, retire=True)
     for name in listed(private):
-        held = private.read(name) if SNAPSHOT.fullmatch(name) else None
-        if isinstance(held, dict) and held.get("request") == cache:
+        if SNAPSHOT.fullmatch(name) and name.startswith(snapshot_prefix(cache)):
             drop(private, name, cache, retire=True)
 
 
