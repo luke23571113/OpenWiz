@@ -1740,6 +1740,39 @@ class SystemGh(Helper):
                              looked=False)
         self.assertEqual(written, [rogue], "the copy really held other bytes when it was sealed")
 
+    def test_a_system_gh_whose_copy_reports_a_missing_seal_gets_nothing(self):
+        # comment-ok: catches: skipping or weakening the seal read-back so a copy reported incompletely sealed reaches the token lookup
+        helper = self.helper_module
+        rows = self.table()
+        self.assertIsNotNone(self.bind(rows))
+        real_seal, real_fcntl = helper.sealed_gh, fcntl.fcntl
+        get_seals = getattr(fcntl, "F_GET_SEALS", 1034)
+        seal_bits = (("seal", 1), ("shrink", 2), ("grow", 4), ("write", 8))
+        all_seals = 1 | 2 | 4 | 8
+
+        for missing, bit in (*seal_bits, ("none", 0)):
+            with self.subTest(missing=missing):
+                read_back = []
+
+                def report_seals(fd, command, *args):
+                    result = real_fcntl(fd, command, *args)
+                    if command == get_seals:
+                        read_back.append(result & all_seals)
+                        return result & ~bit
+                    return result
+
+                def seal_with_report(*args):
+                    with mock.patch.object(helper.fcntl, "fcntl", report_seals):
+                        return real_seal(*args)
+
+                with mock.patch.object(helper, "sealed_gh", seal_with_report):
+                    outcome = self.run_gh(rows)
+                if bit:
+                    self.assert_withheld(*outcome, "the gh this run chose was changed", looked=False)
+                else:
+                    self.assert_ran_checked(*outcome)
+                self.assertEqual(read_back, [all_seals], "one read-back of a fully sealed copy")
+
     def test_the_token_reaches_no_output_log_or_file_outside_the_private_directory(self):
         # comment-ok: catches: a leak check that can't see a seeded leak, or a token that a run writes to stdout,
         # stderr, the call log or a file outside the private directory
