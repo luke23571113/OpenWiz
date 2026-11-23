@@ -230,34 +230,40 @@ mint`): the selector reads the same request, chooses one App's state directory, 
 and exit back unchanged. Start each App's service as above, with its own `--state-dir`.
 
 Its config is `OPENWIZ_APP_SELECT_CONFIG`, by default
-`~/.config/openwiz/app-select.json`: a regular file you own, mode 0600, holding exactly
-one of:
+`~/.config/openwiz/app-select.json`: a regular file you own, with one link and no
+group or other permission bits (0600 or 0400, say), opened without following a
+symlink. It holds exactly one of:
 
 ```json
 {"state_dir": "/home/someone/.local/state/openwiz-agents"}
-{"candidates": ["/home/someone/.local/state/openwiz-agents", "/home/someone/.local/state/openwiz"]}
+{"routes": [{"repository": "someone/private-tool", "state_dir": "/home/someone/.local/state/openwiz"},
+            {"repository": "someone/*", "state_dir": "/home/someone/.local/state/openwiz-agents"}]}
 ```
 
-- **Named** (`state_dir`): every mint goes to exactly that App. The selector asks
-  GitHub nothing itself.
-- **Resolved** (`candidates`): the selector asks each listed App's own installation
-  lookup (`GET /repos/<owner>/<name>/installation`, signed with that App's JWT) and
-  picks the one App installed on every requested repository. It never calls the token
-  endpoint; only the service mints.
-- **Fails closed.** A missing, unreadable, symlinked or not-owner-only config, one with
-  both or neither key, a relative or missing state directory, no matching App or more
-  than one, or a lookup that fails: the selector answers the contract's refusal
-  (`unavailable`, exit 1; or `not-installed`, exit 3, when no App is installed) and
-  writes one fixed sentence to standard error naming `OPENWIZ_APP_SELECT_CONFIG`. It
-  starts no service and mints nothing. An invalid request gets the service's own
-  `usage` or `one-owner` refusal.
-- **Never exposed.** The selector never reads a private key: `app.py` hands the key to
-  `openssl` as a file descriptor to sign the lookup's JWT. No key or token reaches its
+- **Named** (`state_dir`): every mint goes to exactly that App.
+- **Route map** (`routes`): each route's `repository` is an exact `owner/name` or an
+  owner glob `owner/*`, matched without regard to case; no other glob is accepted.
+  Each requested repository takes the first route that matches it, and every
+  requested repository must land on the same state directory. A repository no route
+  matches, or a request split across two state directories, mints nothing.
+- **The request is checked first, in both modes.** An invalid request gets the
+  service's own `usage` refusal, and repositories of more than one owner its
+  `one-owner` refusal (exit 2), before any config is read or service started.
+- **Fails closed.** A missing, unreadable, symlinked or not-owner-only config, one
+  with both or neither key, an unknown key, a route pattern outside the two forms, a
+  relative or missing state directory, an unmatched repository or a split request:
+  the selector answers the contract's refusal (`not-installed`, exit 3, when a
+  repository matches no route; otherwise `unavailable`, exit 1) and writes one fixed
+  sentence to standard error naming `OPENWIZ_APP_SELECT_CONFIG`. It starts no
+  service and mints nothing.
+- **Never exposed.** The selector opens no private key, signs nothing and makes no
+  GitHub call: only the service it starts does. No key or token reaches its
   arguments, standard error or any file. The token crosses only in the service's
   answer, which the selector passes through on standard output.
 - **Tests.** `python3 -I tools/github-app/test_app_select.py` runs two fake App states
-  with throwaway keys against a fake GitHub: resolved, named, ambiguous, unknown and
-  unsafe-config cases.
+  with throwaway keys against a fake GitHub: named, routed, unmatched, split, invalid
+  request and unsafe-config cases, with an audit hook showing the selector opens no
+  key and makes no request.
 
 ## Agent tokens (G2)
 

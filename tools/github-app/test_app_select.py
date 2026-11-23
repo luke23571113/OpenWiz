@@ -203,6 +203,8 @@ class SelectorTests(unittest.TestCase):
                                 calls, 1, "unavailable")
             self.configure(self.routes(("synthetic-owner/alpha", "a")))
             self.assert_refused(self.select(url, request("synthetic-owner/beta")), calls, 3, "not-installed")
+            self.assert_refused(self.select(url, request("synthetic-owner/alpha", "synthetic-owner/beta")),
+                                calls, 3, "not-installed")
             self.assertEqual(calls, [], "no GitHub call at all")
 
     def test_every_mode_refuses_an_invalid_request_before_any_service_call(self):

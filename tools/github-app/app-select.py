@@ -6,28 +6,29 @@ hand the mint to the token service there, under contracts/token-service.v1.md.
                        state directory, run `token-service.py mint --state-dir`
                        on it and pass its one JSON line and exit back unchanged
 
-The owner points OPENWIZ_TOKEN_SERVICE at this file. Its owner-only (0600) config,
-OPENWIZ_APP_SELECT_CONFIG or ~/.config/openwiz/app-select.json, holds exactly one of:
+The owner points OPENWIZ_TOKEN_SERVICE at this file. Its config,
+OPENWIZ_APP_SELECT_CONFIG or ~/.config/openwiz/app-select.json, is a regular file the
+owner owns with no group or other permission bits (0600 or 0400, say), holding one of:
 
   {"state_dir": "/abs/state"}                named: that App, and only it
-  {"candidates": ["/abs/a", "/abs/b"]}       resolved: the one App installed on
-                                             every requested repository
+  {"routes": [{"repository": "owner/*", "state_dir": "/abs/a"},
+              {"repository": "owner/name", "state_dir": "/abs/b"}]}
+                                             route map: each requested repository
+                                             takes its first matching route, and
+                                             all of them must land on one state
 
-A missing, unsafe or unclear config, or no App or more than one, is the contract's
-refusal with one fixed sentence on stderr: no service call and no token. Resolving
-asks each candidate App's own installation lookup with its JWT, signed by app.py
-(the key goes to openssl as a file descriptor, never into this process). It never
-calls the token endpoint and never touches the default state.
+An invalid request gets the service's own usage or one-owner refusal before any
+service call. A missing, unsafe or unclear config, a repository no route matches or
+a request split across two states is the contract's refusal with one fixed sentence
+on stderr: no service call and no token. The selector opens no key, asks GitHub
+nothing and never touches the default state.
 """
 import argparse
 import importlib.util
-import json
 import os
 from pathlib import Path
 import subprocess
 import sys
-import time
-import urllib.parse
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -40,8 +41,8 @@ _spec.loader.exec_module(service)
 
 CONFIG, CONFIG_LIMIT, BUDGET_S = "OPENWIZ_APP_SELECT_CONFIG", 4096, 55
 SENTENCE = ("App selector refused: set OPENWIZ_APP_SELECT_CONFIG (default ~/.config/openwiz/app-select.json) "
-            "to an owner-only (0600) file naming one App state as \"state_dir\", or listing \"candidates\" "
-            "of which exactly one App is installed on every requested repository.")
+            "to a file you own with no group or other permission bits, naming one App state as \"state_dir\", "
+            "or \"routes\" that map every requested repository to the same App state.")
 
 
 def config_path():
@@ -58,6 +59,14 @@ def app_state(value):
     return path
 
 
+def pattern(value):
+    app.require(isinstance(value, str))
+    owner, _, name = value.partition("/")
+    app.require(name == "*" and app.REPOSITORY.fullmatch(owner + "/x") is not None or
+                app.REPOSITORY.fullmatch(value) is not None and name not in (".", ".."))
+    return value.lower()
+
+
 def configured():
     path = config_path()
     app.require(path.is_absolute())
@@ -69,29 +78,22 @@ def configured():
     finally:
         os.close(fd)
     if set(value) == {"state_dir"}:
-        return [app_state(value["state_dir"])], False
-    app.require(set(value) == {"candidates"} and isinstance(value["candidates"], list) and value["candidates"])
-    states = [app_state(item) for item in value["candidates"]]
-    app.require(len(set(states)) == len(states))
-    return states, True
+        return [("*", app_state(value["state_dir"]))]
+    app.require(set(value) == {"routes"} and isinstance(value["routes"], list) and value["routes"])
+    for route in value["routes"]:
+        app.require(isinstance(route, dict) and set(route) == {"repository", "state_dir"})
+    return [(pattern(route["repository"]), app_state(route["state_dir"])) for route in value["routes"]]
 
 
-def installed(state, repositories, base):
-    directory = app.app_directory(state)
-    try:
-        config = app.parse_json(app.read_file(directory, "app.json", 1024))
-        app.require(set(config) == {"app_id"})
-        jwt = app.jwt(directory, config["app_id"])
-    finally:
-        os.close(directory)
-    status, found = app.get(base, "/app", jwt)
-    app.require(status == 200 and found.get("id") == config["app_id"])
+def route(routes, repositories):
+    chosen = set()
     for name in repositories:
-        status, held = app.get(base, "/repos/" + urllib.parse.quote(name, safe="/") + "/installation", jwt)
-        app.require(status in (200, 404))
-        if status == 404 or held.get("app_id") != config["app_id"]:
-            return False
-    return True
+        owner = name.split("/")[0].lower() + "/*"
+        found = [state for match, state in routes if match in ("*", owner, name.lower())]
+        if not found:
+            return None
+        chosen.add(found[0])
+    return chosen
 
 
 def refuse(code, sentence=True):
@@ -101,7 +103,6 @@ def refuse(code, sentence=True):
 
 
 def main():
-    started = time.monotonic()
     parser = argparse.ArgumentParser(description=USAGE, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", choices=("mint",))
     parser.add_argument("--api-base", default="https://api.github.com",
@@ -110,27 +111,22 @@ def main():
     base = app.api_base(args.api_base)
     data = sys.stdin.buffer.read(service.REQUEST_LIMIT + 1)
     try:
-        states, resolve = configured()
+        repositories = service.request_of(data)["repositories"]
+    except service.Refused:
+        return refuse("usage", sentence=False)
+    if len({name.split("/")[0].lower() for name in repositories}) != 1:
+        return refuse("one-owner", sentence=False)
+    try:
+        states = route(configured(), repositories)
     except Exception:
         return refuse("unavailable")
-    if resolve:
-        try:
-            request = service.request_of(data)
-        except service.Refused:
-            return refuse("usage", sentence=False)
-        repositories = request["repositories"]
-        if len({name.split("/")[0].lower() for name in repositories}) != 1:
-            return refuse("one-owner", sentence=False)
-        try:
-            states = [state for state in states if installed(state, repositories, base)]
-        except Exception:
-            return refuse("unavailable")
-        if len(states) != 1:
-            return refuse("not-installed" if not states else "unavailable")
+    if not states:
+        return refuse("not-installed")
+    if len(states) != 1:
+        return refuse("unavailable")
     try:
-        done = subprocess.run([sys.executable, "-I", str(SERVICE), "mint", "--state-dir", str(states[0]),
-                               "--api-base", base], input=data, stdout=subprocess.PIPE,
-                              timeout=max(1, BUDGET_S - (time.monotonic() - started)))
+        done = subprocess.run([sys.executable, "-I", str(SERVICE), "mint", "--state-dir", str(states.pop()),
+                               "--api-base", base], input=data, stdout=subprocess.PIPE, timeout=BUDGET_S)
     except (OSError, subprocess.TimeoutExpired):
         return service.answer(service.refusal("unavailable"), 1)
     sys.stdout.buffer.write(done.stdout)
