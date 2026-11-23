@@ -71,4 +71,47 @@ with runner.ThrowawayMachine(ROWS, 'goose', 'goose', FAKE, 'auto', ['GOOSE_MODE'
           not re.search(r'(?i)api.?key|token|secrets\.yaml', json.dumps([row['start'], row['wake'], row['env'],
                                                                           row['modes']])))
 
+
+
+def stat(pid):
+    try:
+        with open('/proc/%d/stat' % pid) as f:
+            fields = f.read().rpartition(')')[2].split()
+        return {'ppid': int(fields[1]), 'pgid': int(fields[2])}
+    except OSError:
+        return None
+
+
+def fd(pid, n):
+    try:
+        return os.readlink('/proc/%d/fd/%d' % (pid, n))
+    except OSError:
+        return ''
+
+
+def group(pgid):
+    return [int(p) for p in os.listdir('/proc') if p.isdigit() and (stat(int(p)) or {}).get('pgid') == pgid]
+
+
+check('the row declares the shell background process and claims Linux only',
+      row['daemon'] != 'none' and 'Linux only' in row['daemon'])
+if not os.path.isdir('/proc/self'):
+    check('the shell background process check runs on Linux, the only platform the row claims', False)
+else:
+    with runner.ThrowawayMachine(ROWS, 'goose', 'goose', FAKE, 'auto', ['GOOSE_MODE']) as env:
+        code, out = env.start()
+        runner.until(lambda: any('daemon' in t for t in env.records()))
+        bg = [t['daemon'] for t in env.records() if 'daemon' in t]
+        pid, at = bg[0] if len(bg) == 1 else (0, None)
+        s = stat(pid) if pid else None
+        check('a start leaves one background process, as a backgrounded shell command does',
+              code == 0 and len(bg) == 1 and s is not None and runner.since(pid) == at)
+        check("it is in the shell's own process group, whose leader, the shell, has exited",
+              s is not None and s['pgid'] != pid and stat(s['pgid']) is None and group(s['pgid']) == [pid])
+        check('its stdin is closed and its stdout and stderr are the shell\'s own pipes',
+              s is not None and fd(pid, 0) == os.devnull and fd(pid, 1).startswith('pipe:') and
+              fd(pid, 2).startswith('pipe:'))
+        stopped = env.driver('stop', out)
+        check('stop ends it on Linux', stopped[0] == 0 and pid and runner.until(lambda: runner.since(pid) != at))
+
 sys.exit(1 if failures else 0)
