@@ -104,7 +104,6 @@ class Driver(unittest.TestCase):
         return sorted(os.listdir(state)) if os.path.isdir(state) else []
 
     def test_an_effort_reaches_room_cli_as_reasoning_level(self):
-        # catches: a start whose effort never reaches Cloudroom, so the builder runs at the host's default effort.
         for harness, model, effort, provider in (('claude', 'Opus 5.5', 'medium', 'claude-code'),
                                                  ('codex', 'Synthetic 1', 'high', 'codex'),
                                                  ('fake-harness', 'Synthetic 1', 'medium', 'fake-harness')):
@@ -119,7 +118,7 @@ class Driver(unittest.TestCase):
                 self.assertEqual(spawns[0][5:7], ['--provider', provider])
                 with open(self.log + '.threads') as f:
                     self.assertEqual(json.load(f)['thr_syn_0001']['reasoning'], effort)
-                if harness == 'fake-harness':  # where the kit's effort part looks: a process the run started
+                if harness == 'fake-harness':
                     self.assertTrue(self.a_turn_holds('FAKE_ROOM_REASONING_LEVEL=' + effort), 'no turn ran at ' + effort)
 
     def a_turn_holds(self, entry, wait=10):
@@ -137,18 +136,17 @@ class Driver(unittest.TestCase):
         return False
 
     def test_no_effort_runs_at_the_hosts_default(self):
-        # catches: a start without effort that sends a default level, or asks Cloudroom anything more than before.
         code, out = self.call('start', START)
         self.assertEqual(code, 0, out)
         self.assertEqual([c[:2] for c in self.calls()], [['thread', 'spawn']])
         self.assertNotIn('--reasoning-level', self.calls()[0])
 
     def test_an_effort_it_cannot_set_is_refused_and_starts_nothing(self):
-        # catches: an effort Cloudroom does not list for the harness and model that is dropped, swapped for a nearby
-        # level or left to Cloudroom, instead of refused with the contract's exact words before anything starts.
         cases = {'a provider with no levels': dict(harness='pi', model='Synthetic 1', effort='medium'),
                  'a provider Cloudroom does not know': dict(harness='gemini', model='Synthetic 1', effort='medium'),
                  'a level the model does not list': dict(effort='ultra'),
+                 'a level only Synthetic 1 lists': dict(effort='xhigh'),
+                 'a level only Opus 5.5 lists': dict(harness='codex', model='Synthetic 1', effort='low'),
                  'a model Cloudroom does not list': dict(model='Synthetic Unlisted', effort='medium')}
         for name, case in cases.items():
             with self.subTest(name):
@@ -163,7 +161,6 @@ class Driver(unittest.TestCase):
                 self.assertEqual(self.started(), [], 'a refused start saved a run')
 
     def test_a_start_whose_levels_cannot_be_read_starts_nothing(self):
-        # catches: a failed level lookup that is spawned anyway, or that repeats room-cli's own words.
         for effort, env in (('medium', {'FAKE_ROOM_REFUSE': 'models', 'FAKE_ROOM_SAY': 'Synthetic: not signed in'}),
                             ('medium', {'FAKE_ROOM_MODELS': 'Synthetic plain table'}), ('Medium', {})):
             with self.subTest(effort=effort, env=env):
@@ -176,7 +173,6 @@ class Driver(unittest.TestCase):
                 self.assertEqual(self.started(), [])
 
     def test_version_lists_effort_and_the_readme_says_how(self):
-        # catches: a driver that passes effort but hides it from callers, or a README without its Effort: line.
         self.assertIn('effort', self.call('version', {})[1]['can'])
         with open(os.path.join(HERE, 'README.md')) as f:
             lines = f.read().splitlines()

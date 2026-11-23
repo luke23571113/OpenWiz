@@ -54,7 +54,7 @@ def turn(thread, prompt):
         pass  # a provider with no local program: the thread exists, and runs nothing here
 
 
-LEVELS_BY_MODEL = {'Opus 5.5': ('low', 'medium', 'high'), 'Synthetic 1': ('low', 'medium', 'high')}
+LEVELS_BY_MODEL = {'Opus 5.5': ('low', 'medium', 'high'), 'Synthetic 1': ('medium', 'high', 'xhigh')}
 PROVIDERS_WITH_MODELS, PROVIDERS_WITH_A_NOTE = ('claude-code', 'codex', 'fake-harness'), ('pi',)
 if sub == 'models' and args[0] == 'provider':
     if not os.environ.get('FAKE_ROOM_MODELS') and args[2] not in PROVIDERS_WITH_MODELS + PROVIDERS_WITH_A_NOTE:

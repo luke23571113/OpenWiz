@@ -2,9 +2,7 @@
 """The Cloudroom driver (kernel/driver.v1.md): each run is one Cloudroom thread, made through the user's own
 signed-in `room-cli` from inside a Cloudroom thread of the project.
 
-start: `room-cli thread spawn --parent-self --project $ROOM_PROJECT_ID ...`, a child thread in its own sandbox,
-       with `--reasoning-level <effort>` when the start carries an effort that `room-cli provider models` lists
-       for its harness and model; any other effort is refused before anything is saved or started.
+start: `room-cli thread spawn --parent-self --project $ROOM_PROJECT_ID ...`, a child thread in its own sandbox.
 wake:  `room-cli thread tell <thread> --mode queue --message-file <file>`, the delivery the fleet's GitHub
        event route uses, answered as woken only when room-cli accepts it.
 stop:  `room-cli thread archive <thread>`, which stops the thread and archives it.
@@ -25,7 +23,7 @@ VERSION = {'driver': 'cloudroom', 'records': ['openwiz:records v1'],
 START = {'repository': r'[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}', 'ticket': None,
          'skill': r'(?=.{1,60}$)[a-z0-9]+(-[a-z0-9]+)*', 'harness': r'[a-z0-9][a-z0-9._-]{0,59}',
          'model': r'[A-Za-z0-9][A-Za-z0-9 ._:@+-]{0,59}'}
-EFFORT = {'effort': r'[a-z][a-z0-9-]{0,19}'}  # optional in start
+START_OPTIONAL = {'effort': r'[a-z][a-z0-9-]{0,19}'}
 CANT = ("this host can't set effort: remove the effort for this harness in your Models table or Roster to run it at "
         "the host's default")
 RUN = {'run': r'run-[0-9a-f]{12}'}
@@ -39,6 +37,8 @@ LOOKUP = ("Read 'skills/{s}/SKILL.md' if present, otherwise find '*/skills/{s}/S
           ".claude-plugin/plugin.json manifest name openwiz and entry ./skills/{s}; report missing, unreadable or "
           "ambiguous matches, otherwise read the unique matching file and follow it.")
 KIT = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit', 'kit.py')
+UNKNOWN_PROVIDER = re.compile(r'Unknown provider ([a-z0-9][a-z0-9._-]{0,59})\. See room-cli provider list\.')
+NO_SUCH_PROVIDER = 'room-cli knows no provider %s'
 SIGNED_OUT = re.compile(r'\b(?:not signed in|signed out|sign in|sign-in|not logged in|logged out|log in)\b', re.I)
 
 
@@ -56,17 +56,16 @@ def unique(pairs):
     return dict(pairs)
 
 
-def read(fields, optional=None):
-    """The request on stdin, with exactly these fields (and any of the optional ones), each valid, or Refused."""
+def read(required, optional=None):
     optional = optional or {}
     try:
         req = json.loads(sys.stdin.read(), object_pairs_hook=unique)
     except ValueError:
         raise Refused('the input is not JSON', 'send one JSON object on stdin, as `driver schema` shows')
-    if not isinstance(req, dict) or not set(fields) <= set(req) <= set(fields) | set(optional):
-        raise Refused('the input needs exactly ' + ', '.join(fields) + ''.join(', and optionally ' + k for k in optional),
+    if not isinstance(req, dict) or not set(required) <= set(req) <= set(required) | set(optional):
+        raise Refused('the input needs exactly ' + ', '.join(required) + ''.join(', and optionally ' + k for k in optional),
                       'send only those fields; never a login')
-    for key, pattern in dict(fields, **optional).items():
+    for key, pattern in dict(required, **optional).items():
         if key not in req:
             continue
         v = req[key]
@@ -112,7 +111,9 @@ def room_said(out, err):
         out = said['error'] if isinstance(said, dict) and isinstance(said.get('error'), str) else out
     except ValueError:
         pass
-    told = out + ' ' + err
+    told, unknown = out + ' ' + err, UNKNOWN_PROVIDER.fullmatch(err.strip())
+    if unknown and not out.strip():
+        return NO_SUCH_PROVIDER % unknown.group(1)
     if SIGNED_OUT.search(told):
         return 'room-cli is not signed in'
     return 'room-cli gave an error the driver does not repeat' if told.strip() else 'room-cli gave no answer'
@@ -139,28 +140,26 @@ def provider(req):
     return PROVIDERS.get(req['harness'], req['harness'])
 
 
-def settable(req):
-    """Refused unless Cloudroom lists the start's effort for its harness and model (E1): it is passed exactly, or the
-    start is refused before anything is saved or started. A start without an effort asks nothing (E2)."""
+def refuse_unlisted_effort(req):
     if 'effort' not in req:
         return req
     try:
         code, out, said = room('provider', 'models', provider(req), '--json')
     except Unknown:
         code, said = 1, 'room-cli gave no answer'
-    if code != 0:
+    provider_unknown = code != 0 and said == NO_SUCH_PROVIDER % provider(req)
+    if code != 0 and not provider_unknown:
         raise Refused('Cloudroom did not list the levels of harness %s: %s; nothing was saved or started'
                       % (req['harness'], said), 'check `room-cli provider models %s`, then start again' % provider(req))
     try:
-        models = json.loads(out)
+        models = [] if provider_unknown else json.loads(out)
     except ValueError:
         models = None
-    if isinstance(models, dict):
-        models = []  # one row with a note: a provider whose models, and so whose levels, Cloudroom does not list
-    if not isinstance(models, list):
+    a_note_without_models = isinstance(models, dict)
+    if not (a_note_without_models or isinstance(models, list)):
         raise Refused('Cloudroom\'s level list for harness %s could not be read; nothing was saved or started'
                       % req['harness'], 'check `room-cli provider models %s --json`, then start again' % provider(req))
-    for m in models:
+    for m in [] if a_note_without_models else models:
         if isinstance(m, dict) and req['model'] in (m.get('id'), m.get('model')):
             levels = m.get('supportedReasoningEfforts')
             if isinstance(levels, list) and any(isinstance(l, dict) and l.get('reasoningEffort') == req['effort']
@@ -440,7 +439,7 @@ def answer(cmd):
             return json.load(f)
     if cmd == 'start':
         holds_credential = credential_check()
-        req = settable(no_credentials(read(START, EFFORT), holds_credential))
+        req = refuse_unlisted_effort(no_credentials(read(START, START_OPTIONAL), holds_credential))
         return start(req, 'run-' + secrets.token_hex(6), holds_credential)
     if cmd in ('wake', 'stop'):
         run = read(RUN)['run']
