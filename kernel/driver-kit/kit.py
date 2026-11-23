@@ -541,8 +541,8 @@ class Kit:
                     try:
                         listings[folder] = [folded(n) for n in os.listdir(folder)]
                     except OSError:
-                        listings[folder] = []
-                if not any(n.startswith(folded(name)) for n in listings[folder]):
+                        listings[folder] = None
+                if listings[folder] is not None and not any(n.startswith(folded(name)) for n in listings[folder]):
                     break
             if not resolved and words[i].startswith(PATH_ARGUMENT):
                 self.leak('the kit could not resolve a file a process of the driver ran, so it cannot check it')
