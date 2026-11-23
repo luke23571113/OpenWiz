@@ -437,7 +437,7 @@ class Kit(unittest.TestCase):
                                     '--tracker', self.env['KIT_TRACKER'], '--wait', '8'], env=self.env,
                                    capture_output=True, text=True, timeout=120)
                 self.assertEqual(p.returncode, want, p.stdout + p.stderr)
-                note = {KEY_HOST: NOT_DECLARED, TEMPLATE: template_expected()[1]}.get(driver, NOT_DECLARED)
+                note = {KEY_HOST: '', TEMPLATE: template_expected()[1]}.get(driver, NOT_DECLARED)
                 if want:
                     self.assertEqual(p.stderr, note + 'kit.py: the key helper kernel/driver-kit/hostkey.py is missing, '
                                                       'so the kit cannot check host keys\n')
@@ -704,7 +704,7 @@ class Kit(unittest.TestCase):
                 self.env['KIT_LEAK'] = name
                 self.assertFalse(any(sample in v for v in self.env.values()))
                 code, out, err = self.kit(os.path.join(FIXTURES, 'planted', 'leaks-format'))
-                self.assertEqual((code, out), (1, PASS[:4] + ['fail token: the driver printed a credential']))
+                self.assertEqual((code, out), (1, CANT_PASS[:4] + ['fail token: the driver printed a credential']))
                 self.assertNotIn(sample, '\n'.join(out) + err)
 
     def test_template_and_schema_refuse_the_same_starts(self):

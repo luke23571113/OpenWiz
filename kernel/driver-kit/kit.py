@@ -49,6 +49,8 @@ REFUSAL = ("this host can't set effort: remove the effort for this harness in yo
            "at the host's default")
 CANT = "Effort: the host can't set it"
 NOT_DECLARED = 'not declared yet; required from EF14'
+PLACEHOLDER = re.compile(r'<[a-z][a-z-]*>')
+LISTED = re.compile(r'\bfor ([a-z][a-z0-9-]*(?:, [a-z][a-z0-9-]*)*(?:,? and [a-z][a-z0-9-]*)?)')
 PROBE = ['-I', '-c', "import sys; sys.stdout.write('.'); sys.stdout.flush(); sys.stdin.read()"]
 
 
@@ -298,7 +300,7 @@ class Kit:
         self.since = started_at('self') if PROC else 0
         self.seen = PROC
         self.blind = None if PROC else self.unseen()
-        self.can, self.effort_word, self.effort_seen = [], None, False
+        self.can, self.setting, self.effort_seen = [], None, False
 
     def leak(self, what):
         with self.lock:
@@ -553,11 +555,14 @@ class Kit:
         for cmd, env in self.started():
             if any(holds_credential(a) for a in cmd):
                 self.leak('a process the driver started holds a credential on its command line')
-            if self.effort_word and any(self.effort_word.search(a) for a in cmd):
-                self.effort_seen = True
+            if self.setting and self.setting[0] == 'argv':
+                _, flag, want = self.setting
+                argv = cmd if PROC else ' '.join(cmd).split()
+                if any(x == want and (flag is None or i and argv[i - 1] == flag) for i, x in enumerate(argv)):
+                    self.effort_seen = True
             for entry in env:
                 name, _, value = entry.partition('=')
-                if self.effort_word and self.env.get(name) != value and self.effort_word.search(value):
+                if self.setting == ('argv', None, entry) and self.env.get(name) != value:
                     self.effort_seen = True
                 if holds_credential(value) and os.environ.get(name) != value:
                     self.leak('a process the driver started holds a credential in %s, which the kit never gave it'
@@ -592,30 +597,41 @@ class Kit:
         request = {'repository': a.repo, 'ticket': a.ticket, 'skill': a.skill, 'harness': a.harness, 'model': a.model}
         before = set(self.ticket.builder_notes())
         line, rows = self.effort_readme()
-        cant = bool(line) and line.startswith(CANT) or rows.get(a.harness, '').startswith("can't")
+        row = rows.get(a.harness, '')
+        cant = bool(line) and line.startswith(CANT) or row.startswith("can't")
+        said = re.sub(r'`[^`]*`', '', row or line or '')
+        listed = LISTED.search(said)
+        unlisted = bool(listed) and a.effort not in re.split(r',? and |, ', listed.group(1))
         if 'effort' in self.can:
-            if not line or not (re.match(r'Effort: passed as \S', line) or rows):
+            self.setting = setting(row if row and not cant else line, a.effort)
+            if not line or not (line.startswith('Effort: passed as ') or rows) or not (self.setting or cant):
                 return 'fail', "effort: its can lists effort, but its README has no Effort: line naming the flag"
             hosts = self.key_hosts()
             if hosts:
-                kind, v = self.effort_on_host(hosts[0], dict(request, effort=a.effort))
-                if kind == 'ok' and not v:
+                kind, v, posted, reached = self.effort_on_host(hosts[0], dict(request, effort=a.effort))
+                self.setting = None
+                if kind == 'refused' and posted:
+                    return 'fail', "effort: start refused %s with the refusal text after it sent the kit's fake %s " \
+                                   "host a start request" % (a.effort, hosts[0])
+                if kind == 'ok' and not reached:
                     return 'fail', "effort: %s never reached the kit's fake %s host" % (a.effort, hosts[0])
                 effort = "%s reached the kit's fake %s host" % (a.effort, hosts[0])
             else:
-                kind, v = self.call('start', dict(request, effort=a.effort))
+                kind, v = self.sampled('start', dict(request, effort=a.effort), None, None)
                 effort = '%s reached a process the run started' % a.effort
-                self.effort_word = re.compile(r'(?<![A-Za-z0-9_-])%s(?![A-Za-z0-9_-])' % re.escape(a.effort))
             if kind == 'bad':
                 return 'fail', 'effort: ' + v
+            if kind == 'ok' and cant:
+                return 'fail', "effort: its README says %s can't set effort, but a start with it was taken" % a.harness
             if kind == 'refused':
-                self.effort_word = None
+                self.setting = None
                 if v['next'] != REFUSAL:
                     return 'fail', 'effort: start refused %s without the refusal text: %s' % (a.effort, v['error'])
-                if not cant:
-                    return 'fail', "effort: start refused %s for %s, but its README does not say that harness " \
-                                   "can't" % (a.effort, a.harness)
-                effort = 'refused for %s with the refusal text, as the README says' % a.harness
+                if not cant and not unlisted:
+                    return 'fail', 'effort: start refused %s for %s, but its README says that harness takes %s' % (
+                        a.effort, a.harness, a.effort)
+                effort = 'refused for %s with the refusal text, as the README says' % a.harness if cant else \
+                    'refused %s with the refusal text, a word its README does not list for %s' % (a.effort, a.harness)
             elif not hosts:
                 return self.started_run(before, (kind, v), effort)
             else:
@@ -652,7 +668,7 @@ class Kit:
             return 'fail', 'builder status note %d is %s, not live' % (self.note, fields['state'])
         if self.args.skill not in [s.partition('@')[0] for s in fields['skills'].split(', ')]:
             return 'fail', 'builder status note %d does not name the %s skill' % (self.note, self.args.skill)
-        if self.effort_word:
+        if self.setting:
             self.scan()
             if not self.effort_seen:
                 return 'fail', 'effort: %s never reached a process the run started' % self.args.effort
@@ -732,9 +748,9 @@ class Kit:
         for row in rest:
             if not row.startswith('|'):
                 break
-            cells = [c.strip().strip('`') for c in row.strip().strip('|').split('|')]
+            cells = [c.strip() for c in row.strip().strip('|').split('|')]
             if len(cells) >= 2:
-                rows[cells[0]] = cells[1]
+                rows[cells[0].strip('`')] = cells[1]
         return lines[at].rstrip(), rows
 
     def effort_on_host(self, name, request):
@@ -747,16 +763,16 @@ class Kit:
         try:
             kind, v = self.call('start', request, env, canary)
             with host.lock:
-                sent = [body.decode('utf-8', 'replace') for _, _, body in host.requests]
+                posted = any(line.startswith('POST ') for line, _, _ in host.requests)
             if kind == 'ok':
                 self.call('stop', {'run': v['run']}, env, canary)
                 self.wait(lambda: not any(True for _ in self.started()))
         finally:
             host.close()
-        if kind != 'ok':
-            return kind, v
-        word = re.compile(r'(?<![A-Za-z0-9_-])%s(?![A-Za-z0-9_-])' % re.escape(request['effort']))
-        return kind, any(word.search(body) for body in sent)
+        with host.lock:
+            bodies = [body for _, _, body in host.requests]
+        field = self.setting and self.setting[0] == 'field' and self.setting[1]
+        return kind, v, posted, bool(field) and any(holds_field(b, field, request['effort']) for b in bodies)
 
     def key_hosts(self):
         try:
@@ -1034,6 +1050,34 @@ class Kit:
         finally:
             self.stop_the_started_run_unchecked()
         yield 'token', self.token()
+
+
+def setting(text, word):
+    span = re.search(r'`([^`]+)`', text or '')
+    if not span:
+        return None
+    tokens = span.group(1).split()
+    at = next((i for i, x in enumerate(tokens) if PLACEHOLDER.search(x)), None)
+    if at is None:
+        return ('field', tokens[0]) if len(tokens) == 1 else None
+    return 'argv', tokens[at - 1] if at else None, PLACEHOLDER.sub(word, tokens[at])
+
+
+def holds_field(body, name, word):
+    try:
+        value = json.loads(body)
+    except ValueError:
+        return False
+    found = [value]
+    while found:
+        value = found.pop()
+        if isinstance(value, dict):
+            if value.get(name) == word:
+                return True
+            found.extend(value.values())
+        elif isinstance(value, list):
+            found.extend(value)
+    return False
 
 
 def effort(word):

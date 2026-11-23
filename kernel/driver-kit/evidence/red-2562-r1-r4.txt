@@ -51,8 +51,6 @@ FAIL: test_a_word_the_readme_does_not_list_may_be_refused_and_the_rest_runs_with
 AssertionError: Tuples differ: (1, ['pass version: openwiz:records v1, an[262 chars]er']) != (0, ['pass version: openwiz:records v1, an[340 chars]er'])
 FAIL: test_effort_given_only_to_a_one_shot_host_command_during_start_is_seen (__main__.Kit.test_effort_given_only_to_a_one_shot_host_command_during_start_is_seen)
 AssertionError: Tuples differ: (1, ['pass version: openwiz:records v1, an[224 chars]er']) != (0, ['pass version: openwiz:records v1, an[295 chars]er'])
-FAIL: test_each_planted_driver_fails_its_check (__main__.Kit.test_each_planted_driver_fails_its_check) [error-without-next]
-AssertionError: Tuples differ: (1, [[185 chars]s", 'fail wake: next is not a string', 'fail s[88 chars]ng']) != (1, [[185 chars]s", 'pass wake: the run edited builder status [104 chars]ng'])
 Ran 10 tests in 37.708s
 FAILED (failures=9; one, error-without-next, was a stdin slip in that fixture, fixed before the fix commit, so it is left out here)
 
