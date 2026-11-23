@@ -12,15 +12,17 @@ WAKE = 'You were woken: take up example/site#7 again, with the build-ticket skil
 REFUSED = {
     'a --session-id that starts with a dot': ['-p', '--mode', 'json', '--session-id', '.' + ID, '--model', 'm', '--', START],
     'a --session-id with a slash': ['-p', '--mode', 'json', '--session-id', 'a/b', '--model', 'm', '--', START],
-    '--session-id with --continue': ['-c', '--session-id', ID, '-p', '--model', 'm', '--', WAKE],
+    '--session-id with --continue': ['-c', '--session-id', ID, '-p', '--', WAKE],
+    'a wake that passes --model again, which re-resolves the saved model': ['--session-id', ID, '-p', '--model', 'm',
+                                                                           '--', WAKE],
     'an unknown --mode': ['-p', '--mode', 'yaml', '--session-id', ID, '--model', 'm', '--', START],
     'a prompt that starts with @, which pi reads as a file': ['-p', '--mode', 'json', '--session-id', ID, '--model', 'm',
                                                              '--', '@' + START],
     'an unknown short option': ['-p', '-x', '--mode', 'json', '--session-id', ID, '--model', 'm', '--', START],
     'a start with no prompt': ['-p', '--mode', 'json', '--session-id', ID, '--model', 'm', '--'],
-    'a wake with no session id': ['-p', '--model', 'm', '--', WAKE],
+    'a wake with no session id': ['-p', '--', WAKE],
     'a wake prompt on a start line': ['-p', '--mode', 'json', '--session-id', ID, '--model', 'm', '--', WAKE],
-    'a start prompt on a wake line': ['--session-id', ID, '-p', '--model', 'm', '--', START],
+    'a start prompt on a wake line': ['--session-id', ID, '-p', '--', START],
 }
 failures = []
 
