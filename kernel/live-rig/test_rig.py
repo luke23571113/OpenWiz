@@ -360,6 +360,7 @@ class Rig(unittest.TestCase):
         probe = [['sh', '-c', 'touch "$0"; exit 1', marker]]
         self.commit_host('paid.json', dict(config, host='fixture-paid', cost='paid', signed_in=probe))
         self.commit_host('cost-unknown.json', dict(config, signed_in=probe))
+        self.head = git(self.checkout, 'rev-parse', 'HEAD')
         rig = self.module()
         for host, name in (('fixture-cost', 'cost-unknown.json'), ('fixture-paid', 'paid.json')):
             with self.subTest(host):

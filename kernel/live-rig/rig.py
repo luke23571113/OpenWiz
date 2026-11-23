@@ -91,12 +91,23 @@ def _inside(path):
 
 def load_hosts(folder, only):
     parts = os.path.join(os.getcwd(), folder).split(os.sep)
+    try:
+        if not stat.S_ISDIR(os.stat(folder).st_mode):
+            raise Refused('--hosts is not a folder')
+    except OSError as e:
+        raise Refused('cannot read --hosts as written: %s' % e.strerror)
     folder = os.path.realpath(folder)
     if os.path.commonpath([folder, ROOT]) != ROOT:
         raise Refused('--hosts is not a folder inside this checkout, so its host configs are not reviewed code')
     for i in range(2, len(parts) + 1):
         given = os.sep.join(parts[:i])
-        if parts[i - 1] not in ('', '.', '..') and os.path.islink(given) and _inside(os.path.dirname(given)):
+        if parts[i - 1] in ('', '.', '..'):
+            continue
+        try:
+            link = stat.S_ISLNK(os.lstat(given).st_mode)
+        except OSError as e:
+            raise Refused('cannot look up a step of --hosts: %s' % e.strerror)
+        if link and _inside(os.path.dirname(given)):
             raise Refused('--hosts goes through a symlink inside the checkout, so its host configs are not '
                           'reviewed code')
     try:
@@ -167,11 +178,11 @@ def check_host(host):
     for program in host['needs']:
         if shutil.which(program) is None:
             return 'not installed: ' + program
+    if host['cost'] != 'none':
+        return 'cost'
     for command in host['signed_in']:
         if not signed_in(command):
             return 'not signed in: ' + command[0]
-    if host['cost'] != 'none':
-        return 'cost'
     return None
 
 
