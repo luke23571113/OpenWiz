@@ -2288,10 +2288,18 @@ def kept_history(current, raw):
             found.append(tuple(map(int, rl6_entry.curated_section(lines[start:end]).split('.'))))
         except rl6_entry.Refused as error:
             raise AssertionError(f'inserted changelog text: {error}') from None
-    kept = re.search(rb'^## ([0-9]+)\.([0-9]+)\.([0-9]+) ', raw[cut:], re.M)
-    order = found + [tuple(map(int, kept.groups()))]
+    kept = [tuple(map(int, v)) for v in re.findall(rb'^## ([0-9]+)\.([0-9]+)\.([0-9]+) ', raw[cut:], re.M)]
+    order = found + kept[:1]
     if not all(x > y for x, y in zip(order, order[1:])):
         raise AssertionError('inserted changelog versions are not newest first and newer than the kept history')
+    for k, start in enumerate(starts):
+        end = starts[k + 1] - 1 if k + 1 < len(starts) else len(lines)
+        older = ['v%d.%d.%d' % v for v in found[k + 1:] + kept]
+        try:
+            rl6_entry.curated(raw[:cut].decode('utf-8') + '\n'.join(lines[start:end]) + '\n',
+                              ['%d.%d.%d' % found[k]], older)
+        except rl6_entry.Refused as error:
+            raise AssertionError(f'inserted changelog text: {error}') from None
     return found
 
 
