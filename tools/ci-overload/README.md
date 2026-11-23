@@ -1,12 +1,13 @@
 # Queue and API overload guard
 
-`alarm.py` reads one bounded snapshot of the CI queue and the GitHub API budgets and says whether a non-essential fleet action may start. It makes no network call and cancels nothing. `supply.py` writes that snapshot from the war room collector's `queue` fact ([collector.v1.md](../collector/collector.v1.md)).
+`alarm.py` reads one bounded snapshot of the CI queue and the GitHub API budgets and says whether a non-essential fleet action may start. It makes no network call and cancels nothing. `supply.py` writes that snapshot from one `gh api` read of the repository's active `ci.yml` and `privacy.yml` runs, their jobs and both rate-limit pools (`read_queue.py`, #2882). A job page, run, attempt, status or start it can't establish makes the snapshot incomplete; a run listing or rate-limit read that fails writes nothing.
 
 ```sh
 python3 -I tools/ci-overload/supply.py --repository OWNER/NAME --output /abs/private/observation.json
 python3 -I tools/ci-overload/alarm.py --repository OWNER/NAME \
   --input /abs/private/observation.json --state /abs/private/pause.json --action merge-batch
-python3 -I tools/ci-overload/test.py                  # offline proofs; `Supplier`, `Fleet Scheduled` run slices
+python3 -I tools/ci-overload/test.py                  # offline proofs; `Fleet`, `Scheduled` need the installed skills
+python3 -I tools/ci-overload/test_supply.py           # the supplier from a clean copy, on a fake gh
 ```
 
 `alarm.py` prints one JSON decision: exit 0 admits, 1 refuses, 2 is a bad invocation. `supply.py` exits 0 when it wrote an observation, 1 when it couldn't (the guard then refuses as unknown), 2 on a bad invocation. `fixtures/healthy.json` is an example input; it must be at most 60 seconds old (`--max-age`), complete across every page of required jobs, and at most 2 MiB and 10,000 jobs.

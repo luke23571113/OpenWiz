@@ -1,0 +1,9 @@
+test_a_clean_checkout_supplies_a_complete_observation_the_guard_admits (__main__.Supply.test_a_clean_checkout_supplies_a_complete_observation_the_guard_admits) ... ok
+test_a_failing_reader_exits_1_and_writes_nothing (__main__.Supply.test_a_failing_reader_exits_1_and_writes_nothing) ... ok
+test_a_partial_read_keeps_its_known_exhaustion (__main__.Supply.test_a_partial_read_keeps_its_known_exhaustion) ... ok
+test_an_unestablished_page_run_or_attempt_writes_complete_false (__main__.Supply.test_an_unestablished_page_run_or_attempt_writes_complete_false) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests
+
+OK
