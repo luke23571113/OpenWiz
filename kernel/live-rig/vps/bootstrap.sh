@@ -177,7 +177,9 @@ def install(tool, file, prefix, work):
     if kind == 'installer':
         return run_installer(tool, path, prefix, work)
     staged = os.path.join(prefix, 'lib', 'openwiz-vps', 'staged', name)
-    wheel = os.path.join(prefix, 'lib', 'openwiz-vps', '%s-%s.whl' % (name, tool['version']))
+    # A wheel lives at a path named by its sha256, so a repin never rewrites the one a working launcher imports.
+    wheels = os.path.join(prefix, 'lib', 'openwiz-vps', 'wheels', name)
+    wheel = os.path.join(wheels, file['sha256'] + '.whl')
     new_wheel = False
     try:
         if kind == 'binary':
@@ -189,7 +191,8 @@ def install(tool, file, prefix, work):
                 raise Refused('cannot unpack %s: %s' % (file['member'], type(e).__name__))
         elif kind == 'wheel':
             new_wheel = not os.path.exists(wheel)
-            place(open(path, 'rb').read(), wheel)
+            if new_wheel:
+                place(open(path, 'rb').read(), wheel)
             code = 'import importlib, sys; sys.path.insert(0, sys.argv.pop(1)); ' \
                    'sys.exit(importlib.import_module(%r).main())' % tool['module']
             place(('#!/bin/sh\nexec %s -I -c %s %s "$@"\n' % (shlex.quote(sys.executable), shlex.quote(code),
@@ -203,6 +206,10 @@ def install(tool, file, prefix, work):
         raise
     os.makedirs(os.path.dirname(dst), exist_ok=True)
     os.replace(staged, dst)
+    if kind == 'wheel':
+        for old in os.listdir(wheels):
+            if os.path.join(wheels, old) != wheel:
+                os.remove(os.path.join(wheels, old))
 
 
 def stamp_path(prefix, name):

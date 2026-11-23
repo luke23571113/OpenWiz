@@ -5,12 +5,13 @@ test_existing_launcher_is_never_replaced (__main__.BootstrapTest.test_existing_l
 test_fixture_install_into_home_prefix (__main__.BootstrapTest.test_fixture_install_into_home_prefix) ... ok
 test_home_only_installer_is_refused_under_another_prefix (__main__.BootstrapTest.test_home_only_installer_is_refused_under_another_prefix) ... ok
 test_real_tools_plan_offline_on_refusing_downloads (__main__.BootstrapTest.test_real_tools_plan_offline_on_refusing_downloads) ... ok
+test_same_version_repin_that_fails_keeps_the_working_wheel (__main__.BootstrapTest.test_same_version_repin_that_fails_keeps_the_working_wheel) ... ok
 test_second_run_installs_nothing (__main__.BootstrapTest.test_second_run_installs_nothing) ... ok
 test_too_old_system_tool_is_left_out_with_its_reason (__main__.BootstrapTest.test_too_old_system_tool_is_left_out_with_its_reason) ... ok
 test_wrong_version_keeps_the_working_tool (__main__.BootstrapTest.test_wrong_version_keeps_the_working_tool) ... ok
 test_every_tool_names_its_source_exact_version_checksum_and_why (__main__.ToolsJsonTest.test_every_tool_names_its_source_exact_version_checksum_and_why) ... ok
 
 ----------------------------------------------------------------------
-Ran 10 tests in 0.975s
+Ran 11 tests in <t>s
 
 OK
