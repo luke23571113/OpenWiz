@@ -30,5 +30,9 @@
   },
   "effort": "none: kimi has no effort flag, and KIMI_MODEL_THINKING_EFFORT is dropped for any model not on the kimi provider (Kimi Code CLI 2.7.2, packages/core/src/llm/thinking.ts resolveForcedThinkingEffort)",
   "login": "kimi's own login, saved by `kimi login` under ~/.kimi-code/credentials/ (or $KIMI_CODE_HOME/credentials/)",
-  "daemon": "kimi -p starts no service under KIMI_CODE_NO_AUTO_UPDATE=1, which turns off its detached background updater; Bash tasks the agent sends to the background stay under the turn, and stop ends them with the process tree"
+  "daemon": "kimi -p starts no service under KIMI_CODE_NO_AUTO_UPDATE=1, which turns off its detached background updater; Bash tasks the agent sends to the background stay under the turn, and stop ends them with the process tree",
+  "signed_out": [
+    "provider managed:kimi-code has no credential configured"
+  ],
+  "login_command": "kimi login"
 }

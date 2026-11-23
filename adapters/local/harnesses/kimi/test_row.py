@@ -71,7 +71,7 @@ def main():
         bad += signed_out(folder)
     for line in bad:
         print('fail: ' + line)
-    print('fail' if bad else 'pass: the fake takes only the documented kimi command lines')
+    print('fail' if bad else 'pass: the fake takes only the documented kimi command lines, and signed_out matches only kimi\'s missing login')
     return 1 if bad else 0
 
 
