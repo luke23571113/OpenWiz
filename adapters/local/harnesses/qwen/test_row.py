@@ -3,7 +3,7 @@ import json, os, re, subprocess, sys
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 FAKE = os.path.join(HERE, 'fake')
-LIB = os.path.join(HERE, '..', '..', 'fixtures')
+LIB = os.environ.get('FAKE_CLI_LIB') or os.path.join(HERE, '..', '..', 'fixtures')
 SID = '123e4567-e89b-12d3-a456-426614174000'
 FIRST = 'Take up example/site#7 with the build-ticket skill.'
 WOKEN = 'You were woken: take up example/site#7 again, with the build-ticket skill.'
