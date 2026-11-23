@@ -8,6 +8,6 @@ test_each_config_gives_its_exact_skip_line_and_starts_nothing (__main__.Skips.te
 test_status_checks_call_only_read_only_status_commands (__main__.Skips.test_status_checks_call_only_read_only_status_commands) ... ok
 
 ----------------------------------------------------------------------
-Ran 7 tests in 1.448s
+Ran 7 tests in 1.515s
 
 OK
