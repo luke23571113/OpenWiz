@@ -31,7 +31,8 @@ resume = a[3:4] == ['--resume']
 if resume:
     a = a[:3] + a[4:]
 if len(a) != 9 or a[:2] != ['run', '-n'] or not re.fullmatch(UUID, a[2]) or a[3] != '--model' or \
-        a[5:8] != ['--output-format', 'json', '-t'] or os.environ.get('GOOSE_MODE') != 'auto':
+        a[5:8] != ['--output-format', 'json', '-t'] or a[4].startswith('-') or a[8].startswith('-') or \
+        os.environ.get('GOOSE_MODE') != 'auto':
     fake_cli.refuse()
 if resume != a[8].startswith('You were woken'):
     fake_cli.refuse()
