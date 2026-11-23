@@ -9,7 +9,7 @@ HELP = '''The fake pi (1.6.0 forms): its synthetic --help allows only:
   pi --session-id <id> -p -- <prompt>
 where <id> starts and ends with a letter or digit and holds only letters, digits, ".", "_" and "-",
 and <prompt> does not start with "@" (pi reads that as a file).
-A wake restores the model its session recorded at start.'''
+<m> is not empty or blank, and a wake restores the model its session recorded at start.'''
 SESSION_ID = r'[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?'
 
 
@@ -33,8 +33,9 @@ elif len(a) == 5 and a[0] == '--session-id' and a[2:4] == ['-p', '--']:
     session, model, prompt, woken = a[1], None, a[4], True
 else:
     fake_cli.refuse()
-if not re.fullmatch(SESSION_ID, session) or (model or '').startswith('-') or prompt.startswith('@') or \
-        woken != prompt.startswith('You were woken'):
+if not re.fullmatch(SESSION_ID, session) or prompt.startswith('@') or woken != prompt.startswith('You were woken') \
+        or (not woken and (not model.strip() or model.startswith('-'))):
     fake_cli.refuse()
 model = restored(session) if woken else model
-fake_cli.turn(prompt, model, session, daemon='tree', signed_out='No API key found for anthropic.\n\nUse /login to log into a provider via OAuth or API key.')
+fake_cli.turn(prompt, model, session, daemon='tree',
+              signed_out='No API key found for anthropic.\n\nUse /login to log into a provider via OAuth or API key.')
