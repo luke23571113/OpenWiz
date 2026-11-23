@@ -326,11 +326,11 @@ class Kit:
             yield from self.listed()
             return
         table = self.table()
-        for pid, (ppid, uid, env, cmd) in table.items():
+        for pid, (ppid, uid, env, cmd, group) in table.items():
             if env is not None and self.mark in env:
                 yield cmd, env
-        for pid, (ppid, uid, env, cmd) in table.items():
-            if env is None and uid == os.getuid() and self.under_run(table, ppid):
+        for pid, (ppid, uid, env, cmd, group) in table.items():
+            if env is None and uid == os.getuid() and (group == os.getpgrp() or self.under_run(table, ppid)):
                 self.leak('a process of the driver hides its details, so the kit cannot check it')
 
     def table(self):
@@ -339,7 +339,7 @@ class Kit:
             try:
                 with open('/proc/%s/stat' % pid) as f:
                     fields = f.read().rpartition(')')[2].split()
-                state, ppid, since = fields[0], int(fields[1]), fields[19]
+                state, ppid, group, since = fields[0], int(fields[1]), int(fields[2]), fields[19]
                 with open('/proc/%s/status' % pid) as f:
                     uid = int(next(row for row in f if row.startswith('Uid:')).split()[1])
             except (OSError, ValueError, IndexError, StopIteration):
@@ -354,7 +354,7 @@ class Kit:
                 env = cmd = None
             except OSError:
                 continue
-            found[pid] = (ppid, uid, env, cmd)
+            found[pid] = (ppid, uid, env, cmd, group)
         return found
 
     @staticmethod
@@ -392,7 +392,7 @@ class Kit:
         seen = set()
         while str(pid) in table and pid not in seen:
             seen.add(pid)
-            ppid, _, env, _ = table[str(pid)]
+            ppid, _, env, _, _ = table[str(pid)]
             if env is not None and self.mark in env:
                 return True
             pid = ppid
@@ -472,7 +472,7 @@ class Kit:
 
     def run_processes(self):
         if PROC:
-            for pid, (_, _, env, cmd) in self.table().items():
+            for pid, (_, _, env, cmd, _) in self.table().items():
                 if env is None or self.mark not in env:
                     continue
                 try:
