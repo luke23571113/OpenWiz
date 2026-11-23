@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import importlib.machinery, importlib.util, json, os, shutil, signal, socket, subprocess, sys, tempfile, threading, time
+import contextlib, importlib.machinery, importlib.util, json, os, shutil, signal, socket, subprocess, sys, tempfile, threading, time
 
 sys.dont_write_bytecode = True
 USAGE = '''usage: test_harnesses.py            the planted rows, then every row in adapters/local/harnesses/
@@ -314,8 +314,37 @@ def check(rows, name):
         return 'fail %s: %s' % (name, ': '.join(x for x in e.args if x))
 
 
-def check_driver_unknown_harness_and_early_wake(rows):
-    found = []
+@contextlib.contextmanager
+def example_variant(name, drop=(), **fields):
+    with tempfile.TemporaryDirectory(prefix='variant-') as rows:
+        folder = os.path.join(rows, name)
+        shutil.copytree(os.path.join(FIXTURES, 'rows', 'example'), folder)
+        with open(os.path.join(folder, 'row.json')) as f:
+            row = json.load(f)
+        row.update(fields)
+        for key in drop:
+            del row[key]
+        with open(os.path.join(folder, 'row.json'), 'w') as f:
+            json.dump(row, f)
+        yield rows
+
+
+def broken_rows_name_their_file(planted):
+    long = 'a' * 60
+    with ThrowawayMachine(planted, 'row-missing', mode='auto') as env:
+        ok = env.start_refused_starting_nothing(lambda out: 'harnesses/row-missing/row.json' in out['error'])
+    for name, drop, fields in (('example', (), {'harness': ['example']}), (long, ('login',), {'harness': long})):
+        with example_variant(name, drop, **fields) as rows, ThrowawayMachine(rows, name, mode='auto') as env:
+            ok = env.start_refused_starting_nothing(
+                lambda out: 'harnesses/%s/row.json' % name in out['error'] and 'harnesses/%s/row.json' % name
+                in out['next']) and ok
+    return ok
+
+
+def check_driver(rows):
+    found = [("a broken row's D3 error names its row file and fits the error schema: a row folder with no row.json, "
+              "a harness that is not a string, and a 60-character harness with a missing field",
+              broken_rows_name_their_file(rows))]
     with ThrowawayMachine(rows, 'example', 'example-cli', os.path.join(rows, 'example', 'fake'), 'auto') as env:
         lists = lambda out: out['next'].startswith('use one of: claude, codex, ') and 'example-none' in out['next']
         found.append(('an unknown harness is a D3 error that lists the built-ins and the row folders, and starts '
@@ -352,7 +381,7 @@ def main(argv):
         if got != PLANTED[name]:
             print('unexpected: planted row %s should give: %s' % (name, PLANTED[name]))
             ok = False
-    for line in check_driver_unknown_harness_and_early_wake(planted):
+    for line in check_driver(planted):
         print(line)
         ok = ok and line.startswith('pass ')
     rows = folders(ROWS)
