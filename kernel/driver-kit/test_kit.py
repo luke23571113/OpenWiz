@@ -19,6 +19,7 @@ sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURES = os.path.join(HERE, 'fixtures')
 TEMPLATE = os.path.join(HERE, '..', '..', 'adapters', 'template', 'driver')
+BASE = os.path.join(FIXTURES, 'base', 'driver')
 NO_PROC = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit', 'fixtures', 'no-proc')
 REPO = os.path.realpath(os.path.join(HERE, '..', '..'))
 HARNESSES = ('claude', 'claude-code', 'codex', 'gemini', 'opencode', 'openclaw', 'cursor-agent', 'amp', 'aider',
@@ -32,21 +33,23 @@ PASS = ['pass version: openwiz:records v1, and the schema is driver v1',
         'pass wake: the run edited builder status note 2',
         'pass stop: the run ended, and a wake after it is refused',
         'pass token: no login or token passed through the driver']
+CANT = STARTED + "; effort: a start with it was refused, as the README's Effort: line says"
+CANT_PASS = [PASS[0], CANT] + PASS[2:]
 PLANTED = {
-    'token-in-args': PASS[:4] + ['fail token: a process the driver started holds a credential on its command line'],
-    'token-in-env': PASS[:4] + ['fail token: a process the driver started holds a credential in OPENWIZ_GITHUB, '
-                                'which the kit never gave it'],
-    'echoes-token': PASS[:4] + ['fail token: the driver printed a credential'],
-    # takes-token takes any field, and error-without-next refuses without a next: the start with effort shows both.
+    'token-in-args': CANT_PASS[:4] + ['fail token: a process the driver started holds a credential on its command '
+                                      'line'],
+    'token-in-env': CANT_PASS[:4] + ['fail token: a process the driver started holds a credential in OPENWIZ_GITHUB, '
+                                     'which the kit never gave it'],
+    'echoes-token': CANT_PASS[:4] + ['fail token: the driver printed a credential'],
     'takes-token': [PASS[0], 'fail start: effort: its can does not list effort, but a start with it was taken',
                     'fail wake: not run: start failed', 'fail stop: not run: start failed',
                     'fail token: start took a token field instead of refusing it'],
-    'stop-leaves-run': PASS[:3] + ['fail stop: a process the run started still runs after stop', PASS[4]],
-    'wake-does-nothing': PASS[:2] + ['fail wake: builder status note 2 did not change after the wake'] + PASS[3:],
-    'old-records': ['fail version: it names no openwiz:records v1'] + PASS[1:],
-    'error-without-next': [PASS[0], 'fail start: effort: next is not a string', 'fail wake: not run: start failed',
-                           'fail stop: not run: start failed',
-                           'fail token: its answer to a token field: next is not a string'],
+    'stop-leaves-run': CANT_PASS[:3] + ['fail stop: a process the run started still runs after stop', PASS[4]],
+    'wake-does-nothing': CANT_PASS[:2] + ['fail wake: builder status note 2 did not change after the wake']
+    + PASS[3:],
+    'old-records': ['fail version: it names no openwiz:records v1'] + CANT_PASS[1:],
+    'error-without-next': CANT_PASS[:3] + ['fail stop: next is not a string',
+                                           'fail token: its answer to a token field: next is not a string'],
 }
 
 
@@ -98,6 +101,7 @@ PLANTED_KEY = {
 EFFORT_FAIL = [PASS[0], 'fail start: effort: %s'] + NOT_RUN
 EFFORT = {
     'effort': [PASS[0], STARTED + '; effort: medium reached a process the run started'] + PASS[2:],
+    'effort-one-shot': [PASS[0], STARTED + '; effort: medium reached a process the run started'] + PASS[2:],
     'effort-refused': [PASS[0], STARTED + '; effort: refused for fake-harness with the refusal text, as the README '
                        'says'] + PASS[2:],
     'effort-cant': [PASS[0], STARTED + "; effort: a start with it was refused, as the README's Effort: line says"]
@@ -106,6 +110,9 @@ EFFORT = {
     'planted/effort-wrong-next': EFFORT_FAIL + [PASS[4]],
     'planted/effort-no-readme-line': EFFORT_FAIL + [PASS[4]],
     'planted/effort-taken-without-can': EFFORT_FAIL + [PASS[4]],
+    'planted/effort-no-readme': EFFORT_FAIL + [PASS[4]],
+    'planted/effort-refuses-listed': EFFORT_FAIL + [PASS[4]],
+    'planted/effort-word-elsewhere': EFFORT_FAIL + [PASS[4]],
 }
 EFFORT_WHY = {
     'planted/effort-dropped': 'medium never reached a process the run started',
@@ -113,14 +120,20 @@ EFFORT_WHY = {
                                  'effort medium',
     'planted/effort-no-readme-line': "its can lists effort, but its README has no Effort: line naming the flag",
     'planted/effort-taken-without-can': 'its can does not list effort, but a start with it was taken',
+    'planted/effort-no-readme': "its can lists effort, but its README has no Effort: line naming the flag",
+    'planted/effort-refuses-listed': 'start refused medium for fake-harness, but its README says that harness takes '
+                                     'medium',
+    'planted/effort-word-elsewhere': 'medium never reached a process the run started',
 }
 HARNESS_EFFORTS = {'effort': 2, 'planted/effort-taken-without-can': 1}
 EFFORT_KEY = {
-    # The effort start against the kit's fake host also runs the fixture's local harness, which posts note 2.
     'effort-key-host': [PASS[0], "pass start: the run posted builder status note 3; effort: medium reached the kit's "
                         "fake devin host", 'pass wake: the run edited builder status note 3', PASS[3], KEY_PASS],
     'planted/effort-dropped-key-host': [PASS[0], "fail start: effort: medium never reached the kit's fake devin host"]
     + NOT_RUN + [KEY_PASS],
+    'planted/effort-key-host-starts-then-refuses': [PASS[0], "fail start: effort: start refused medium with the "
+                                                    "refusal text after it sent the kit's fake devin host a start "
+                                                    "request"] + NOT_RUN + [KEY_PASS],
 }
 LINUX_ONLY = {'key-undumpable-child': PASS[:4] + ['fail token: a process of the driver hides its details, so the kit '
                                                   'cannot check it']}
@@ -146,6 +159,14 @@ def efforts(path):
 def started_at(pid):
     with open('/proc/%s/stat' % pid) as f:
         return int(f.read().rpartition(')')[2].split()[19])
+
+
+def template_expected():
+    with open(os.path.join(os.path.dirname(TEMPLATE), 'README.md')) as f:
+        line = any(x.startswith('Effort:') for x in f.read().splitlines())
+    if 'effort' in module(TEMPLATE).VERSION['can']:
+        return [PASS[0], STARTED + '; effort: medium reached a process the run started'] + PASS[2:], ''
+    return (CANT_PASS, '') if line else (PASS, NOT_DECLARED)
 
 
 def planted(name):
@@ -408,7 +429,7 @@ class Kit(unittest.TestCase):
         bare = os.path.join(self.folder, 'bare')
         os.makedirs(bare)
         for name in ('driver', 'schema.json'):
-            shutil.copy(os.path.join(os.path.dirname(TEMPLATE), name), bare)
+            shutil.copy(os.path.join(os.path.dirname(BASE), name), bare)
         for driver, want in ((KEY_HOST, 2), (TEMPLATE, 2), (os.path.join(bare, 'driver'), 0)):
             with self.subTest(driver):
                 p = subprocess.run([sys.executable, '-I', os.path.join(kit, 'kit.py'), '--driver', driver, '--repo',
@@ -416,7 +437,7 @@ class Kit(unittest.TestCase):
                                     '--tracker', self.env['KIT_TRACKER'], '--wait', '8'], env=self.env,
                                    capture_output=True, text=True, timeout=120)
                 self.assertEqual(p.returncode, want, p.stdout + p.stderr)
-                note = NOT_DECLARED if driver != KEY_HOST else ''
+                note = {KEY_HOST: NOT_DECLARED, TEMPLATE: template_expected()[1]}.get(driver, NOT_DECLARED)
                 if want:
                     self.assertEqual(p.stderr, note + 'kit.py: the key helper kernel/driver-kit/hostkey.py is missing, '
                                                       'so the kit cannot check host keys\n')
@@ -466,7 +487,10 @@ class Kit(unittest.TestCase):
                 self.assertEqual((schema, helper), (schema, schema))
 
     def test_template_passes_all_five(self):
-        self.assertEqual(self.kit(TEMPLATE), (0, PASS, NOT_DECLARED))
+        self.assertEqual(self.kit(TEMPLATE), (0,) + template_expected())
+
+    def test_the_fixed_undeclared_driver_passes_all_five_with_the_note_on_stderr(self):
+        self.assertEqual(self.kit(BASE), (0, PASS, NOT_DECLARED))
 
     def test_a_declared_driver_gets_no_note(self):
         for name in ('effort', 'effort-cant'):
@@ -503,8 +527,47 @@ class Kit(unittest.TestCase):
                                   FAKE_ARGS=args)
         self.assertEqual((code, out[1]), (0, STARTED + '; effort: xhigh reached a process the run started'), err)
         self.assertEqual(efforts(args), ['xhigh', 'xhigh'])
-        code, out, err = self.kit(TEMPLATE, extra=['--effort', 'Not A Word'])
+        code, out, err = self.kit(BASE, extra=['--effort', 'Not A Word'])
         self.assertEqual((code, out), (2, []), err)
+
+    def test_changing_only_the_effort_changes_what_the_kit_saw(self):
+        for word in ('low', 'high'):
+            with self.subTest(word):
+                self.tearDown()
+                self.setUp()
+                args = os.path.join(self.folder, 'args')
+                code, out, err = self.kit(os.path.join(FIXTURES, 'effort', 'driver'), extra=['--effort', word],
+                                          FAKE_ARGS=args)
+                self.assertEqual((code, out[1]), (0, STARTED + '; effort: %s reached a process the run started'
+                                                  % word), err)
+                self.assertEqual(efforts(args), [word, word])
+
+    def test_the_effort_word_in_another_input_is_no_receipt(self):
+        why = 'fail start: effort: medium never reached a process the run started'
+        for name, extra in (('planted/effort-dropped', ['--model', 'medium']), ('planted/effort-word-elsewhere', [])):
+            with self.subTest(name):
+                self.tearDown()
+                self.setUp()
+                code, out, err = self.kit(os.path.join(FIXTURES, name, 'driver'), extra=extra)
+                self.assertEqual((code, out), (1, [PASS[0], why] + NOT_RUN + [PASS[4]]), err)
+
+    def test_a_word_the_readme_does_not_list_may_be_refused_and_the_rest_runs_without_effort(self):
+        args = os.path.join(self.folder, 'args')
+        code, out, err = self.kit(os.path.join(FIXTURES, 'effort', 'driver'), extra=['--effort', 'turbo'],
+                                  FAKE_ARGS=args)
+        self.assertEqual((code, out), (0, [PASS[0], STARTED + '; effort: refused turbo with the refusal text, a word '
+                                           'its README does not list for fake-harness'] + PASS[2:]), err)
+        self.assertEqual(efforts(args), [])
+
+    def test_effort_given_only_to_a_one_shot_host_command_during_start_is_seen(self):
+        args = os.path.join(self.folder, 'args')
+        code, out, err = self.kit(os.path.join(FIXTURES, 'effort-one-shot', 'driver'), FAKE_ARGS=args)
+        self.assertEqual((code, out), (0, EFFORT['effort-one-shot']), err)
+        with open(args) as f:
+            calls = [json.loads(x) for x in f]
+        self.assertEqual([c for c in calls if c[:2] == ['thread', 'spawn']],
+                         [['thread', 'spawn', '--reasoning-level', 'medium']])
+        self.assertEqual(efforts(args), [])
 
     def test_each_key_host_effort_driver_prints_its_own_start_line(self):
         for name, lines in EFFORT_KEY.items():
@@ -516,7 +579,8 @@ class Kit(unittest.TestCase):
 
     def test_without_proc_as_on_macos_the_template_passes_all_five(self):
         macos = {'PATH': NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable}
-        self.assertEqual(self.kit(TEMPLATE, os.path.join(NO_PROC, 'python3'), **macos)[:2], (0, PASS))
+        self.assertEqual(self.kit(TEMPLATE, os.path.join(NO_PROC, 'python3'), **macos)[:2],
+                         (0, template_expected()[0]))
         for name in ('stop-leaves-run', 'token-in-env'):
             with self.subTest(name):
                 self.tearDown()
@@ -551,15 +615,16 @@ class Kit(unittest.TestCase):
                  'NO_PROC_PROBE_ONLY': "ps -E never showed a process of this run, so the kit cannot tell which "
                                        "processes the driver started"}
         for hide, why in cases.items():
-            for name in ('template', 'stop-leaves-run', 'token-in-env'):
+            for name in ('base', 'stop-leaves-run', 'token-in-env'):
                 with self.subTest(hide=hide, driver=name):
                     self.tearDown()
                     self.setUp()
-                    driver = TEMPLATE if name == 'template' else os.path.join(FIXTURES, 'planted', name)
+                    driver = BASE if name == 'base' else os.path.join(FIXTURES, 'planted', name)
                     code, out, err = self.kit(driver, os.path.join(NO_PROC, 'python3'), **{hide: '1'},
                                               PATH=NO_PROC + os.pathsep + self.env['PATH'],
                                               NO_PROC_PYTHON=sys.executable)
-                    self.assertEqual((code, out), (1, PASS[:3] + ['fail stop: ' + why, 'fail token: ' + why]), err)
+                    start = PASS[:3] if name == 'base' else CANT_PASS[:3]
+                    self.assertEqual((code, out), (1, start + ['fail stop: ' + why, 'fail token: ' + why]), err)
                     self.assertEqual(bool(self.left()), name == 'stop-leaves-run',
                                      "the driver's own stop lost its baseline under the kit's hidden view")
 
@@ -583,7 +648,7 @@ class Kit(unittest.TestCase):
         with open(os.path.join(sleepy, 'fake-harness'), 'w') as f:
             f.write('#!%s\nimport time\ntime.sleep(120)\n' % sys.executable)
         os.chmod(os.path.join(sleepy, 'fake-harness'), 0o700)
-        code, out, err = self.kit(TEMPLATE, wait='2', PATH=sleepy + os.pathsep + self.env['PATH'])
+        code, out, err = self.kit(BASE, wait='2', PATH=sleepy + os.pathsep + self.env['PATH'])
         self.assertEqual((code, out), (1, [PASS[0], 'fail start: no builder status note appeared within 2 seconds',
                                            'fail wake: not run: start failed', 'fail stop: not run: start failed',
                                            PASS[4]]), err)
@@ -605,7 +670,7 @@ class Kit(unittest.TestCase):
         self.assertIsNone(shutil.which('claude', path=self.env['PATH']), 'the PATH reaches a real claude')
         self.assertEqual(shutil.which('fake-harness', path=self.env['PATH']), os.path.join(FIXTURES, 'fake-harness'))
         with self.assertRaisesRegex(AssertionError, 'could launch a real harness'):
-            self.kit(TEMPLATE, PATH=outside + os.pathsep + self.env['PATH'])
+            self.kit(BASE, PATH=outside + os.pathsep + self.env['PATH'])
 
     def test_each_planted_driver_fails_its_check(self):
         for name, lines in PLANTED.items():
@@ -624,9 +689,8 @@ class Kit(unittest.TestCase):
                 self.assertFalse(any(sample in v for v in self.env.values()))
                 code, out, err = self.kit(os.path.join(FIXTURES, 'planted', 'refuses-with-credential'))
                 self.assertNotIn(sample, '\n'.join(out) + err)
-                self.assertEqual((code, out), (1, [
-                    PASS[0], 'fail start: effort: its start output held a credential, which the kit does not show',
-                    'fail wake: not run: start failed', 'fail stop: not run: start failed',
+                self.assertEqual((code, out), (1, CANT_PASS[:3] + [
+                    'fail stop: its stop output held a credential, which the kit does not show',
                     'fail token: the driver printed a credential; its answer to a token field: its start output '
                     'held a credential, which the kit does not show']))
 

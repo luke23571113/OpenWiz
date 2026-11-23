@@ -1,2 +1,2 @@
 #!/bin/sh
-exec "$(dirname "$0")/../../../../adapters/template/driver" "$@"
+exec "$(dirname "$0")/../base/driver" "$@"

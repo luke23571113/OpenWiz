@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import importlib.machinery, importlib.util, io, json, os, sys
 sys.dont_write_bytecode = True
-path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', '..', 'adapters', 'template', 'driver')
+path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'base', 'driver')
 REFUSAL = ("this host can't set effort: remove the effort for this harness in your Models table or Roster to run it "
            "at the host's default")
 
@@ -13,8 +13,12 @@ def template():
     return t
 
 
+EFFORTS = ('low', 'medium', 'high', 'xhigh', 'max')
+
+
 def refuse(t, req):
-    pass
+    if req['effort'] not in EFFORTS:
+        raise t.Refused('harness %s cannot run at effort %s' % (req['harness'], req['effort']), REFUSAL)
 
 
 def pass_effort(req):
