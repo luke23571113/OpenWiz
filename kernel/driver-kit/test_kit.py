@@ -36,12 +36,16 @@ PLANTED = {
     'token-in-env': PASS[:4] + ['fail token: a process the driver started holds a credential in OPENWIZ_GITHUB, '
                                 'which the kit never gave it'],
     'echoes-token': PASS[:4] + ['fail token: the driver printed a credential'],
-    'takes-token': PASS[:4] + ['fail token: start took a token field instead of refusing it'],
+    # takes-token takes any field, and error-without-next refuses without a next: the start with effort shows both.
+    'takes-token': [PASS[0], 'fail start: effort: its can does not list effort, but a start with it was taken',
+                    'fail wake: not run: start failed', 'fail stop: not run: start failed',
+                    'fail token: start took a token field instead of refusing it'],
     'stop-leaves-run': PASS[:3] + ['fail stop: a process the run started still runs after stop', PASS[4]],
     'wake-does-nothing': PASS[:2] + ['fail wake: builder status note 2 did not change after the wake'] + PASS[3:],
     'old-records': ['fail version: it names no openwiz:records v1'] + PASS[1:],
-    'error-without-next': PASS[:3] + ['fail stop: next is not a string',
-                                      'fail token: its answer to a token field: next is not a string'],
+    'error-without-next': [PASS[0], 'fail start: effort: next is not a string', 'fail wake: not run: start failed',
+                           'fail stop: not run: start failed',
+                           'fail token: its answer to a token field: next is not a string'],
 }
 
 
@@ -105,7 +109,9 @@ EFFORT_WHY = {
 }
 HARNESS_EFFORTS = {'effort': 2, 'planted/effort-taken-without-can': 1}
 EFFORT_KEY = {
-    'effort-key-host': [PASS[0], STARTED + "; effort: medium reached the kit's fake devin host"] + PASS[2:4] + [KEY_PASS],
+    # The effort start against the kit's fake host also runs the fixture's local harness, which posts note 2.
+    'effort-key-host': [PASS[0], "pass start: the run posted builder status note 3; effort: medium reached the kit's "
+                        "fake devin host", 'pass wake: the run edited builder status note 3', PASS[3], KEY_PASS],
     'planted/effort-dropped-key-host': [PASS[0], "fail start: effort: medium never reached the kit's fake devin host"]
     + NOT_RUN + [KEY_PASS],
 }
@@ -353,6 +359,16 @@ class Kit(unittest.TestCase):
                 self.assertEqual((code, out), (0 if all(x.startswith('pass') for x in lines) else 1, lines), err)
                 self.assertEqual(efforts(args), ['medium'] * HARNESS_EFFORTS.get(name, 0), name)
 
+    def test_without_proc_as_on_macos_effort_on_a_command_line_is_seen(self):
+        for name in ('effort', 'planted/effort-dropped'):
+            with self.subTest(name):
+                self.tearDown()
+                self.setUp()
+                lines = [x % EFFORT_WHY.get(name, '') if x.startswith('fail start') else x for x in EFFORT[name]]
+                code, out, err = self.kit(os.path.join(FIXTURES, name, 'driver'), os.path.join(NO_PROC, 'python3'),
+                                          PATH=NO_PROC + os.pathsep + self.env['PATH'], NO_PROC_PYTHON=sys.executable)
+                self.assertEqual((code, out), (int(name != 'effort'), lines), err)
+
     def test_the_effort_flag_names_the_value_the_kit_sends(self):
         args = os.path.join(self.folder, 'args')
         code, out, err = self.kit(os.path.join(FIXTURES, 'effort', 'driver'), extra=['--effort', 'xhigh'],
@@ -480,8 +496,9 @@ class Kit(unittest.TestCase):
                 self.assertFalse(any(sample in v for v in self.env.values()))
                 code, out, err = self.kit(os.path.join(FIXTURES, 'planted', 'refuses-with-credential'))
                 self.assertNotIn(sample, '\n'.join(out) + err)
-                self.assertEqual((code, out), (1, PASS[:3] + [
-                    'fail stop: its stop output held a credential, which the kit does not show',
+                self.assertEqual((code, out), (1, [
+                    PASS[0], 'fail start: effort: its start output held a credential, which the kit does not show',
+                    'fail wake: not run: start failed', 'fail stop: not run: start failed',
                     'fail token: the driver printed a credential; its answer to a token field: its start output '
                     'held a credential, which the kit does not show']))
 

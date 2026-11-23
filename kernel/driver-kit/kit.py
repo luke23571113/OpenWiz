@@ -43,6 +43,11 @@ KEYWORDS = {'$schema', 'type', 'required', 'additionalProperties', 'properties',
             'maxLength', 'minimum', 'items', 'minItems', 'uniqueItems', 'enum', 'const', 'allOf', 'contains'}
 TYPES = {'object': dict, 'array': list, 'string': str, 'boolean': bool}
 PROC = os.path.isdir('/proc/self')
+EFFORT = re.compile(r'[a-z][a-z0-9-]{0,19}')
+REFUSAL = ("this host can't set effort: remove the effort for this harness in your Models table or Roster to run it "
+           "at the host's default")
+CANT = "Effort: the host can't set it"
+NOT_DECLARED = 'not declared yet; required from EF14'
 PROBE = ['-I', '-c', "import sys; sys.stdout.write('.'); sys.stdout.flush(); sys.stdin.read()"]
 
 
@@ -290,6 +295,7 @@ class Kit:
         self.runtime, self.listed_pids = set(), set()
         self.seen = PROC
         self.blind = None if PROC else self.unseen()
+        self.can, self.effort_word, self.effort_seen = [], None, False
 
     def leak(self, what):
         with self.lock:
@@ -468,8 +474,12 @@ class Kit:
         for cmd, env in self.started():
             if any(holds_credential(a) for a in cmd):
                 self.leak('a process the driver started holds a credential on its command line')
+            if self.effort_word and any(self.effort_word.search(a) for a in cmd):
+                self.effort_seen = True
             for entry in env:
                 name, _, value = entry.partition('=')
+                if self.effort_word and self.env.get(name) != value and self.effort_word.search(value):
+                    self.effort_seen = True
                 if holds_credential(value) and os.environ.get(name) != value:
                     self.leak('a process the driver started holds a credential in %s, which the kit never gave it'
                               % shown(name))
@@ -488,6 +498,7 @@ class Kit:
         kind, v = self.call('version')
         if kind != 'ok':
             return 'fail', v['error'] if kind == 'refused' else v
+        self.can = v['can']
         if records not in v['records']:
             return 'fail', 'it names no ' + records
         kind, s = self.call('schema')
@@ -498,25 +509,75 @@ class Kit:
         return 'pass', '%s, and the schema is driver v1' % records
 
     def start(self):
-        before = set(self.ticket.builder_notes())
         a = self.args
-        kind, v = self.call('start', {'repository': a.repo, 'ticket': a.ticket, 'skill': a.skill,
-                                      'harness': a.harness, 'model': a.model})
+        request = {'repository': a.repo, 'ticket': a.ticket, 'skill': a.skill, 'harness': a.harness, 'model': a.model}
+        before = set(self.ticket.builder_notes())
+        line, rows = self.effort_readme()
+        cant = bool(line) and line.startswith(CANT) or rows.get(a.harness, '').startswith("can't")
+        if 'effort' in self.can:
+            if not line or not (re.match(r'Effort: passed as \S', line) or rows):
+                return 'fail', "effort: its can lists effort, but its README has no Effort: line naming the flag"
+            hosts = self.key_hosts()
+            if hosts:
+                kind, v = self.effort_on_host(hosts[0], dict(request, effort=a.effort))
+                if kind == 'ok' and not v:
+                    return 'fail', "effort: %s never reached the kit's fake %s host" % (a.effort, hosts[0])
+                effort = "%s reached the kit's fake %s host" % (a.effort, hosts[0])
+            else:
+                kind, v = self.call('start', dict(request, effort=a.effort))
+                effort = '%s reached a process the run started' % a.effort
+                self.effort_word = re.compile(r'(?<![A-Za-z0-9_-])%s(?![A-Za-z0-9_-])' % re.escape(a.effort))
+            if kind == 'bad':
+                return 'fail', 'effort: ' + v
+            if kind == 'refused':
+                self.effort_word = None
+                if v['next'] != REFUSAL:
+                    return 'fail', 'effort: start refused %s without the refusal text: %s' % (a.effort, v['error'])
+                if not cant:
+                    return 'fail', "effort: start refused %s for %s, but its README does not say that harness " \
+                                   "can't" % (a.effort, a.harness)
+                effort = 'refused for %s with the refusal text, as the README says' % a.harness
+            elif not hosts:
+                return self.started_run(before, (kind, v), effort)
+            else:
+                request = dict(request, effort=a.effort)
+        else:
+            kind, v = self.call('start', dict(request, effort=a.effort))
+            if kind == 'ok':
+                self.call('stop', {'run': v['run']})
+                return 'fail', 'effort: its can does not list effort, but a start with it was taken'
+            if kind == 'bad':
+                return 'fail', 'effort: ' + v
+            if line and not line.startswith(CANT):
+                return 'fail', "effort: its can does not list effort, but its README's Effort: line does not say " \
+                               "the host can't set it"
+            effort = "a start with it was refused, as the README's Effort: line says" if line else NOT_DECLARED
+        if not self.wait(lambda: not any(True for _ in self.started())):
+            return 'fail', 'effort: a process the start with effort began still runs'
+        before = set(self.ticket.builder_notes())
+        return self.started_run(before, self.call('start', request), effort)
+
+    def started_run(self, before, answer, effort):
+        kind, v = answer
         if kind != 'ok':
             return 'fail', v['error'] if kind == 'refused' else v
         self.run = v['run']
         new = self.wait(lambda: sorted(set(self.ticket.builder_notes()) - before))
         if not new:
-            return 'fail', 'no builder status note appeared within %d seconds' % a.wait
+            return 'fail', 'no builder status note appeared within %d seconds' % self.args.wait
         if len(new) > 1:
             return 'fail', 'the run posted %d builder notes; it keeps one' % len(new)
         self.note = new[0]
         fields = self.ticket.builder_notes()[self.note][2]
         if fields['state'] not in ('working', 'asking'):
             return 'fail', 'builder status note %d is %s, not live' % (self.note, fields['state'])
-        if a.skill not in [s.partition('@')[0] for s in fields['skills'].split(', ')]:
-            return 'fail', 'builder status note %d does not name the %s skill' % (self.note, a.skill)
-        return 'pass', 'the run posted builder status note %d' % self.note
+        if self.args.skill not in [s.partition('@')[0] for s in fields['skills'].split(', ')]:
+            return 'fail', 'builder status note %d does not name the %s skill' % (self.note, self.args.skill)
+        if self.effort_word:
+            self.scan()
+            if not self.effort_seen:
+                return 'fail', 'effort: %s never reached a process the run started' % self.args.effort
+        return 'pass', 'the run posted builder status note %d; effort: %s' % (self.note, effort)
 
     def wake(self):
         notes = self.ticket.builder_notes()
@@ -571,6 +632,49 @@ class Kit:
         return 'pass', 'no login or token passed through the driver' + ''.join(
             ", and on start, wake and stop the %s key reached its host only from the key helper, in its header" % name
             for name in hosts)
+
+    def effort_readme(self):
+        try:
+            with open(os.path.join(os.path.dirname(os.path.abspath(self.args.driver)), 'README.md'), 'rb') as f:
+                lines = f.read().decode('utf-8').splitlines()
+        except FileNotFoundError:
+            return None, {}
+        except (OSError, UnicodeDecodeError) as e:
+            raise Unusable("cannot read the driver's README.md: %s" % type(e).__name__)
+        at = next((i for i, x in enumerate(lines) if x.startswith('Effort:')), None)
+        if at is None:
+            return None, {}
+        rows, rest = {}, lines[at + 1:]
+        while rest and not rest[0].strip():
+            rest.pop(0)
+        for row in rest:
+            if not row.startswith('|'):
+                break
+            cells = [c.strip().strip('`') for c in row.strip().strip('|').split('|')]
+            if len(cells) >= 2:
+                rows[cells[0]] = cells[1]
+        return lines[at].rstrip(), rows
+
+    def effort_on_host(self, name, request):
+        canary, server = (name, 'kit-canary-' + secrets.token_hex(16)), []
+        host = FakeHost(answers=self.lifecycle(), test_key=canary[1],
+                        trust=lambda port: self.trusted_helper(port, server[0]))
+        server.append(host.server.server_address[1])
+        env = {k: v for k, v in self.env.items() if k != self.hosts[name]['variable']}
+        env[OVERRIDE] = host.origin
+        try:
+            kind, v = self.call('start', request, env, canary)
+            with host.lock:
+                sent = [body.decode('utf-8', 'replace') for _, _, body in host.requests]
+            if kind == 'ok':
+                self.call('stop', {'run': v['run']}, env, canary)
+                self.wait(lambda: not any(True for _ in self.started()))
+        finally:
+            host.close()
+        if kind != 'ok':
+            return kind, v
+        word = re.compile(r'(?<![A-Za-z0-9_-])%s(?![A-Za-z0-9_-])' % re.escape(request['effort']))
+        return kind, any(word.search(body) for body in sent)
 
     def key_hosts(self):
         try:
@@ -818,12 +922,19 @@ class Kit:
         yield 'token', self.token()
 
 
+def effort(word):
+    if not EFFORT.fullmatch(word):
+        raise argparse.ArgumentTypeError('one plain lower-case word, such as medium')
+    return word
+
+
 def main(argv):
     ap = argparse.ArgumentParser(prog='kit.py')
     for name in ('--driver', '--repo', '--harness', '--model'):
         ap.add_argument(name, required=True)
     ap.add_argument('--ticket', type=int, required=True)
     ap.add_argument('--skill', default='build-ticket')
+    ap.add_argument('--effort', default='medium', type=effort, help="the start's effort word (default medium)")
     ap.add_argument('--tracker', help='a local throwaway tracker file, read instead of GitHub')
     ap.add_argument('--wait', type=int, default=900, help='seconds to wait for each note change')
     args = ap.parse_args(argv)

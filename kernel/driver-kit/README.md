@@ -4,12 +4,20 @@ Runs the five checks of [driver v1](../driver.v1.md) against one driver, on one 
 
 ```sh
 python3 -I kernel/driver-kit/kit.py --driver adapters/<host>/driver \
-  --repo <owner>/<throwaway> --ticket <n> --harness <h> --model <m> [--skill build-ticket] [--wait 900]
+  --repo <owner>/<throwaway> --ticket <n> --harness <h> --model <m> [--skill build-ticket] [--effort medium] [--wait 900]
 python3 -I kernel/driver-kit/test_kit.py     # the kit's own tests: the template passes, each planted driver fails
 python3 -I kernel/driver-kit/test_hostkey.py # the key helper's own tests: every refusal, and the key never leaks
 ```
 
 It prints one line per check, in the order version, start, wake, stop, token: `pass <check>: <what>` or `fail <check>: <why>`. Exit 0: all five pass. 1: a check failed. 2: the kit could not run; it says why on stderr, `kit.py: <why>`. The wake and stop checks run only after start passes. Once `start` has answered a run id, the kit always calls the driver's `stop` for that run before it goes on or exits, even when the start check failed; that stop is not the stop check.
+
+## Effort
+
+The `start` check also checks effort ([driver v1](../driver.v1.md#effort)); its line ends `; effort: <what>`, and a failed effort part fails `start`. `--effort` is the word the kit sends (default `medium`). The kit reads the `Effort:` line in the `README.md` beside the driver, and the table of harness and flag (or `can't (<why>)`) right after it.
+
+- **`can` lists `effort`:** the README needs an `Effort:` line naming the flag (`Effort: passed as <flag>`, or a table). The kit's start carries `effort`, and it must reach the host: as a word in the command line or environment of a process the run started (the processes the token check watches; a variable the kit gave unchanged doesn't count). For a key-host driver ([Key hosts](#key-hosts)), the kit first sends that start against its loopback fake host, then stops it, and the word must be in a request body the fake host received: the helper takes its request on stdin, so the command line doesn't count. Or the start is refused with exactly the contract's refusal `next`, nothing is left running, and the README says this harness can't (`Effort: the host can't set it`, or `can't` in the harness's row); then the kit runs the start without `effort`.
+- **`can` doesn't list `effort`:** the kit sends one extra start with `effort` first. It must be refused (D1), with nothing left running, and the README's `Effort:` line must say `Effort: the host can't set it (<why>)`.
+- **No `Effort:` line, and `can` doesn't list `effort`:** the start still passes, with the note `not declared yet; required from EF14`. EF14 removes this.
 
 ## Key hosts
 
@@ -34,7 +42,8 @@ On macOS, with no `/proc`, the kit lists processes with `ps -A`, and reads each 
 ## Fixtures
 
 - `fixtures/no-proc/`: runs Python as on macOS, on Linux: no `/proc`, no `prctl` and no pidfd, `sys.platform` `darwin`, and a `ps` that takes macOS's `-E` (with `NO_PROC_HIDE_ENV` set, it shows no environment at all; with `NO_PROC_PROBE_ONLY` set, only the kit's own probe's, and only in the kit's own listing: a caller with `OPENWIZ_KIT_RUN` set, as the driver is, keeps its own view). The drivers' and the kit's tests put it first on `PATH` to run the macOS path (#2010).
-- `fixtures/fake-harness`: a synthetic harness. It posts one builder note into the tracker named by `KIT_TRACKER`, edits it when woken, then waits to be stopped.
-- `fixtures/planted/<name>`: the template with one planted break each. `test_kit.py` names the exact lines each must print.
+- `fixtures/fake-harness`: a synthetic harness. It posts one builder note into the tracker named by `KIT_TRACKER`, edits it when woken, then waits to be stopped. With `FAKE_ARGS` set, it appends its arguments to that file, one JSON list per turn.
+- `fixtures/effort/`: the template with `effort` in `can`, passing it to the harness as `--effort`. `fixtures/effort-refused/` refuses it for `fake-harness` with the refusal text, as its README's table says; `fixtures/effort-cant/` is the template with `Effort: the host can't set it`; `fixtures/effort-key-host/` is the key-host fixture, with effort in `can`, sending it in its start request.
+- `fixtures/planted/<name>`: the template with one planted break each. `test_kit.py` names the exact lines each must print. The effort ones: `effort-dropped` lists effort but never passes it, `effort-wrong-next` refuses it with another `next`, `effort-no-readme-line` passes it with no `Effort:` line, `effort-taken-without-can` takes it without listing it, and `effort-dropped-key-host` passes it to the harness but drops it from its start request.
 - `fixtures/key-host/`: a fake key-host driver, the template sending each start, wake and stop to host `devin` through the helper. `fixtures/planted/key-*/` are it with one key break each: it reads the key itself (in the driver, in a `test_*` file it imports, or in a script it runs, `fixtures/runtime-reader`), names the variable in its README (or twice on the login line), keeps it behind a symbolic link or in a script it runs by a relative or a credential-shaped path, passes the key in an argument, in another variable, in a variable's name or in a request body, prints it, sends it to the host itself, impersonates the helper (a Perl process with the helper's arguments), asks for an unregistered host or for a path with a host in it, calls the keychain tool, names a key host under a local login line, or meets a fake host whose `fixtures/kit-host.json` refuses start. `fixtures/key-host-dumps-env/` records its environment, to show the canary never reaches the driver. `test_kit.py` also runs it against a fake host that answers a redirect: start fails, and the redirect's target gets no request.
-- `evidence/`: the red run and the green run; `red-1586.txt`, `red-1586-r1.txt` and `green-1586.txt` are those of the credential fixes. `red-2039.txt` and `green-2039.txt` are those of the run-seen rule on macOS. `red-2379-*.txt` and `green-2379.txt` are those of the key helper and the key check; `red-2379-review-*.txt` and `green-2379-review.txt` are those of its review round.
+- `evidence/`: the red run and the green run; `red-1586.txt`, `red-1586-r1.txt` and `green-1586.txt` are those of the credential fixes. `red-2039.txt` and `green-2039.txt` are those of the run-seen rule on macOS. `red-2379-*.txt` and `green-2379.txt` are those of the key helper and the key check; `red-2379-review-*.txt` and `green-2379-review.txt` are those of its review round. `red-2562.txt` and `green-2562.txt` are those of the effort check.
