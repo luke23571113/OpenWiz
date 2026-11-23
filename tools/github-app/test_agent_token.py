@@ -843,6 +843,7 @@ class SystemGh(Helper):
                 if after_stat and original is real_stat:
                     after_stat()
                 name = (os.readlink(f"/proc/self/fd/{target}") if isinstance(target, int)
+                        else os.path.realpath(target) if original is real_stat
                         else os.path.normpath(os.fspath(target)))
                 if name not in rows:
                     return info
