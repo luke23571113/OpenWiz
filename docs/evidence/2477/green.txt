@@ -1,4 +1,4 @@
-$ PATH=<stubs>:$PATH env -u OPENWIZ_GITHUB_APP_KEY python3 -I kernel/live-rig/test_rig.py   # at 7ee0ffd515aae78032bfdf34c918cc00c47b6a11 (the same tree as the green commit), agent-CLI stubs first on PATH
+$ PATH=<stubs>:$PATH env -u OPENWIZ_GITHUB_APP_KEY python3 -I kernel/live-rig/test_rig.py   # at 0a8e9a88e79da25d9bab724874d56da03f4425db (the same tree as the green commit), agent-CLI stubs first on PATH
 test_a_dirty_checkout_exits_2_and_runs_nothing (__main__.Rig.test_a_dirty_checkout_exits_2_and_runs_nothing) ... ok
 test_a_held_lock_exits_0_and_runs_nothing (__main__.Rig.test_a_held_lock_exits_0_and_runs_nothing) ... ok
 test_a_kit_line_quoting_the_checkout_or_the_repository_is_withheld_from_the_record_and_shown_on_stderr (__main__.Rig.test_a_kit_line_quoting_the_checkout_or_the_repository_is_withheld_from_the_record_and_shown_on_stderr) ... ok
@@ -16,6 +16,6 @@ test_load_host_and_check_host_are_importable_and_give_the_exact_skip_reasons (__
 test_the_record_keeps_only_the_five_check_lines_each_free_of_paths_the_repository_the_login_and_shapes (__main__.Rig.test_the_record_keeps_only_the_five_check_lines_each_free_of_paths_the_repository_the_login_and_shapes) ... ok
 
 ----------------------------------------------------------------------
-Ran 15 tests in 105.261s
+Ran 15 tests in 105.412s
 
 OK
