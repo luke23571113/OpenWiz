@@ -407,6 +407,10 @@ class Receipt(unittest.TestCase):
     def test_a_checkout_git_cannot_read_is_one_fixed_line(self):
         dest, receipt = self.own_checkout(init=False)
         self.refused(record('5-of-5.json'), 'the tracked host configs could not be read', receipt=receipt)
+        git(self.tmp, 'init', '-q')
+        git(self.tmp, 'add', 'checkout')
+        git(self.tmp, 'commit', '-q', '-m', 'an outer repository tracks the checkout')
+        self.refused(record('5-of-5.json'), 'the tracked host configs could not be read', receipt=receipt)
 
     def test_a_git_dir_from_the_environment_is_not_trusted(self):
         added = config('local', 'claude', 'claude-' + LOGIN)
