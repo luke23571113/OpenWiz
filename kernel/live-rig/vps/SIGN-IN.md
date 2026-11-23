@@ -2,6 +2,8 @@
 
 For Jake, once, on the VPS. Spec #2474 ("VPS session files"). Everything below is yours to run: no agent signs in, exports a key or passes `--allow-cost` for you. This page holds names only, never a value.
 
+**No real `heads.py` run may happen, with or without `--post`, until both #2689 (receipt writer fixes) and #2755 (frozen-head command fixes) have merged.**
+
 ## The session, in order
 
 1. **Bootstrap** the free tools into `~/.local` (#2580): first `kernel/live-rig/vps/bootstrap.sh --dry-run` to read the plan, then `kernel/live-rig/vps/bootstrap.sh`. It never signs in or spends.
