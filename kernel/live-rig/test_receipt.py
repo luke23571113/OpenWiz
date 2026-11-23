@@ -423,6 +423,40 @@ class Receipt(unittest.TestCase):
         dest, receipt = self.own_checkout({'kernel/live-rig/vps/hosts/broken.json': '{"host": "Conductor"}\n'})
         self.refused(record('5-of-5.json'), 'a tracked host config is not a valid host config', receipt=receipt)
 
+    def test_a_worktree_edit_hidden_from_git_cannot_add_a_triple(self):
+        login = record('5-of-5.json', model='claude-' + LOGIN)
+        rel = os.path.join('kernel', 'live-rig', 'hosts', 'local.json')
+        edited = config('local', *CONFIGURED[0], more=CONFIGURED[1:] + [('claude', 'claude-' + LOGIN)])
+        for flag in ('--assume-unchanged', '--skip-worktree'):
+            with self.subTest(flag=flag):
+                dest, receipt = self.own_checkout()
+                with open(os.path.join(dest, rel), 'w') as f:
+                    f.write(edited)
+                git(dest, 'update-index', flag, rel)
+                self.assertEqual(git(dest, 'diff', '--name-only', 'HEAD'), '')
+                self.fresh()
+                self.refused(login, NOT_CONFIGURED, receipt=receipt)
+        dest, receipt = self.own_checkout()
+        with open(os.path.join(dest, rel), 'w') as f:
+            f.write(edited)
+        git(dest, 'add', rel)
+        self.fresh()
+        self.refused(login, NOT_CONFIGURED, receipt=receipt)
+        git(dest, 'checkout', 'HEAD', '--', rel)
+        old = git(dest, 'rev-parse', 'HEAD:' + rel)
+        with open(os.path.join(self.tmp, 'replacement.json'), 'w') as f:
+            f.write(edited)
+        git(dest, 'replace', old, git(dest, 'hash-object', '-w', os.path.join(self.tmp, 'replacement.json')))
+        self.fresh()
+        self.refused(login, NOT_CONFIGURED, receipt=receipt)
+        self.assertEqual(self.run_receipt(record('5-of-5.json'), receipt=receipt).returncode, 0)
+
+    def test_a_too_deep_tracked_config_is_one_fixed_line(self):
+        for text in ('[' * 1500 + ']' * 1500, '{"host": ' * 1500 + '0' + '}' * 1500):
+            with self.subTest(text=text[:8]):
+                dest, receipt = self.own_checkout({'kernel/live-rig/vps/hosts/deep.json': text + '\n'})
+                self.refused(record('5-of-5.json'), 'a tracked host config is not a valid host config', receipt=receipt)
+
     def test_a_configured_private_id_or_credential_still_writes_nothing(self):
         shape = 'claude-sk-' + 'synthetic0receipt0' * 2
         for model, why in (('claude-' + UUID, 'line 6 holds a private id'),
