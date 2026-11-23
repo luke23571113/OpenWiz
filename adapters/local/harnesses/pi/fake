@@ -37,4 +37,4 @@ if not re.fullmatch(SESSION_ID, session) or (model or '').startswith('-') or pro
         woken != prompt.startswith('You were woken'):
     fake_cli.refuse()
 model = restored(session) if woken else model
-fake_cli.turn(prompt, model, session, daemon='tree', signed_out='No API key found for anthropic.')
+fake_cli.turn(prompt, model, session, daemon='tree', signed_out='No API key found for anthropic.\n\nUse /login to log into a provider via OAuth or API key.')
