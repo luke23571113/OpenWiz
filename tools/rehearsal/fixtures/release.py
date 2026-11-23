@@ -5,6 +5,8 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / 'tools/release'))
+from product_identity import mode
 TOOLS = {
     'runtime/install.py': 'tools/install/install.py',
     'runtime/pull.py': 'tools/install/pull.py',
@@ -57,10 +59,6 @@ sys.exit(2)
 
 def sha(data):
     return hashlib.sha256(data).hexdigest()
-
-
-def mode(path):
-    return '0700' if path == 'openwiz' or path.endswith('.sh') or path.endswith('/driver') else '0600'
 
 
 def products(skills, version, source, target, planted):
