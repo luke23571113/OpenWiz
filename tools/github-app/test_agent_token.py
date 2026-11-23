@@ -879,9 +879,17 @@ class SystemGh(Helper):
                          "the same file, the same size and time: only its bytes changed")
         return text
 
-    def run_gh(self, rows, chosen=None, during=None, before_seal=None):
+    def run_gh(self, rows, chosen=None, during=None, before_seal=None, at_seal=None):
         helper, ran, looked_up = self.helper_module, [], []
         load, seal = helper.snapshot_token, helper.sealed_gh
+        seals = types.SimpleNamespace(**{k: getattr(fcntl, k) for k in dir(fcntl) if k.isupper()})
+
+        def seal_call(fd, command, *args):
+            if at_seal and command == fcntl.F_ADD_SEALS:
+                at_seal(fd)
+            return fcntl.fcntl(fd, command, *args)
+
+        seals.fcntl = seal_call
 
         def seal_after(*args):
             if before_seal:
@@ -905,7 +913,7 @@ class SystemGh(Helper):
             raise OSError("synthetic exec boundary")
 
         with self.faked(rows), mock.patch.object(helper, "snapshot_token", load_then), \
-                mock.patch.object(helper, "sealed_gh", seal_after), \
+                mock.patch.object(helper, "sealed_gh", seal_after), mock.patch.object(helper, "fcntl", seals), \
                 mock.patch.object(helper.sys, "platform", "linux"), \
                 mock.patch.object(helper.os, "execve", exec_boundary), \
                 mock.patch.object(helper.sys, "stderr") as stderr:
@@ -1031,6 +1039,22 @@ class SystemGh(Helper):
         rewrite = lambda: self.rewrite_in_place("#!/bin/sh\n# synthetic rewritten gh\nexit 0\n")
         self.assert_withheld(*self.run_gh(self.table(), before_seal=rewrite), "the gh this run chose was changed",
                              looked=False)
+
+    def test_a_system_gh_whose_copy_is_written_before_it_is_sealed_gets_nothing(self):
+        # comment-ok: catches: the digest taken from the bytes read, not from the sealed copy, so a same-user
+        # process holding a writable fd to the copy rewrites it before the seals and the rewrite gets the token
+        self.assertIsNotNone(self.bind(self.table()))
+        rogue = "#!/bin/sh\n# synthetic rogue gh\nexit 0\n".ljust(len(self.checked), "#")[:len(self.checked)]
+        written = []
+
+        def write_copy(fd):
+            with open(f"/proc/self/fd/{fd}", "r+b") as other_writer:
+                other_writer.write(rogue.encode())
+            written.append(os.pread(fd, len(self.checked) + 1, 0).decode())
+
+        self.assert_withheld(*self.run_gh(self.table(), at_seal=write_copy), "the gh this run chose was changed",
+                             looked=False)
+        self.assertEqual(written, [rogue], "the copy really held other bytes when it was sealed")
 
     def test_a_system_gh_moved_while_its_folders_are_checked_is_refused(self):
         # comment-ok: catches: the folder walk from an open fd vouching for another file now at the fd's path
