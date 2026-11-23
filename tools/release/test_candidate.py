@@ -2193,6 +2193,11 @@ class Notes(World):
         newer = (section('0.1.1') + '\n' + section('0.1.0') + '\n').encode()
         kept_history(raw, raw)
         kept_history(raw[:cut] + newer + raw[cut:], raw)
+        see = b'(https://github.com/openwizdev/OpenWiz/issues/1).\n'
+        tag = b'(https://github.com/openwizdev/OpenWiz/issues/1).\n\n[Full release](https://github.com/openwizdev/OpenWiz/releases/tag/'
+        linked = newer.replace(see, tag + b'v0.1.0)\n', 1)
+        linked = linked[:linked.index(b'## 0.1.0')] + linked[linked.index(b'## 0.1.0'):].replace(see, tag + b'v0.0.12)\n')
+        self.assertEqual(kept_history(raw[:cut] + linked + raw[cut:], raw), [(0, 1, 1), (0, 1, 0)])
         whole, order = 'is not whole version sections', 'are not newest first and newer than the kept history'
         for name, planted, reason in (
                 ('a stray paragraph', b'Synthetic stray paragraph.\n\n', whole),
@@ -2200,7 +2205,14 @@ class Notes(World):
                  'entry: 0.1.0 needs its bold headline here'),
                 ('an older version', (section('0.0.11') + '\n').encode(), order),
                 ('oldest first', (section('0.1.0') + '\n' + section('0.1.1') + '\n').encode(), order),
-                ('no blank line before the history', newer[:-1], whole)):
+                ('no blank line before the history', newer[:-1], whole),
+                ('a CR in the headline', newer.replace(b'**Use 0.1.0**', b'**Use\r0.1.0**'),
+                 'entry: curated notes are LF text ending in one newline'),
+                ('an off-repository footer link', newer.replace(b'internals.\n- See [the ticket](https://github.com/'
+                                                                b'openwizdev/OpenWiz/issues/1).\n\n## 0.1.0',
+                                                                b'internals.\n\n[Full release](https://example.invalid/'
+                                                                b'v0.1.1)\n\n## 0.1.0'),
+                 'entry: curated link is not to openwizdev/OpenWiz: https://example.invalid/v0.1.1')):
             with self.subTest(case=name), self.assertRaisesRegex(AssertionError, re.escape(reason)):
                 kept_history(raw[:cut] + planted + raw[cut:], raw)
 
