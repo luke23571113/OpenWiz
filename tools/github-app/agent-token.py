@@ -449,9 +449,19 @@ def exec_folder(private, child):
 
 def gh_identity(path):
     info = os.stat(path)
-    if (not stat.S_ISREG(info.st_mode) or info.st_uid not in (0, os.getuid())
-            or info.st_mode & 0o022):
+    if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o022:
         return None
+    if info.st_uid not in (0, os.getuid()):
+        # A system gh owned by another user: only if this very file sits where every folder from /
+        # is root's or yours and writable by no one else, so the agent can't modify or replace it.
+        try:
+            named = os.readlink(f"/proc/self/fd/{path}") if isinstance(path, int) else path
+            entry = owner_only_gh_path(named)
+            found = os.lstat(entry) if entry else None
+        except OSError:
+            return None
+        if not found or (found.st_dev, found.st_ino) != (info.st_dev, info.st_ino):
+            return None
     return [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns]
 
 

@@ -319,6 +319,9 @@ python3 -I tools/github-app/agent-token.py run $REQ -- git push origin HEAD
   a file changed since, before the token is looked up. It runs gh through its open file on Linux
   and uses the resolved path on systems such as macOS only when every directory visited during
   resolution, including through symlinks, is owned by you or root and writable by no one else.
+  The gh itself must be writable only by its owner, and owned by you, root or, as in a cloud
+  sandbox's system gh, another non-root user only when every folder from `/` down to it is
+  owned by you or root and writable by no one else.
   For an allowed command, it reads
   the snapshot and starts that gh
   with `GH_TOKEN`, the owner's own `GH_CONFIG_DIR`, `GH_PAGER=cat`, and an editor and

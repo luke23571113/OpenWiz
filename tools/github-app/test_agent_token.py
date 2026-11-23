@@ -832,12 +832,14 @@ class SystemGh(Helper):
             rows[names[key]] = row
         return rows
 
-    def faked(self, rows):
+    def faked(self, rows, after_stat=None):
         real_stat, real_lstat = os.stat, os.lstat
 
         def fake(original):
             def call(target, *args, **kwargs):
                 info = original(target, *args, **kwargs)
+                if after_stat and original is real_stat:
+                    after_stat()
                 name = (os.readlink(f"/proc/self/fd/{target}") if isinstance(target, int)
                         else os.path.normpath(os.fspath(target)))
                 if name not in rows:
@@ -940,6 +942,23 @@ class SystemGh(Helper):
         other.chmod(0o755)
         rows = dict(self.table(), **{str(other): (OTHER, 0o755)})
         self.assert_withheld(*self.run_gh(rows, chosen=str(other)), "not the gh this run chose")
+
+    def test_a_system_gh_replaced_while_it_is_checked_is_refused(self):
+        # catches: the folder walk vouching for whatever file sits at the path now, not the file whose
+        # owner and mode were checked
+        swapped = []
+
+        def swap():
+            if not swapped:
+                swapped.append(True)
+                replacement = self.system / "gh.swap"
+                replacement.write_text("#!/bin/sh\n# synthetic replacement gh\nexit 0\n")
+                replacement.chmod(0o755)
+                os.replace(replacement, self.real)
+
+        with self.faked(self.table(), after_stat=swap):
+            self.assertIsNone(self.helper_module.gh_identity(str(self.real)), "the run binds no such gh")
+        self.assertEqual(swapped, [True])
 
     def test_a_system_gh_swapped_between_its_check_and_its_exec_never_gets_the_token(self):
         # catches: the widened owner rule bypassing R12's pinned exec, so a swapped-in file gets the token
