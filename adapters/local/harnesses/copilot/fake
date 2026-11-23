@@ -4,7 +4,8 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, os.environ['FAKE_CLI_LIB'])
 import fake_cli
 
-HELP = '''The fake copilot (GitHub Copilot CLI v1.0.114): it allows only these documented lines:
+HELP = '''The fake copilot (GitHub Copilot CLI v1.0.114): it allows only the row's two lines, and exits 2 on anything outside them,
+including documented copilot syntax this row doesn't use (such as --resume or text output):
   copilot -p <prompt> --output-format json --session-id <uuid> --model <m> [MODE]
   copilot -p <prompt> --session-id <uuid> [MODE]
 MODE is --allow-all-tools or --allow-all. No effort flag: the row's effort is none.
@@ -44,5 +45,5 @@ if a[:1] and a[0] in MODES:
     a = a[1:]
 if a or woken != prompt.startswith('You were woken'):
     fake_cli.refuse()
-fake_cli.turn(prompt, model_of(session) if woken else model, session, daemon='detached',
+fake_cli.turn(prompt, model_of(session) if woken else model, session,
               signed_out='Error: No authentication information found.')

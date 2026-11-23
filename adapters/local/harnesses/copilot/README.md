@@ -33,7 +33,7 @@ Deny rules, organization policy and `permissions.disableBypassPermissionsMode` s
 
 ## Background process
 
-As a session shuts down, copilot v1.0.114 may start a detached `copilot --agent rem-agent -p … --yolo --silent` memory pass in the same folder, when its `COPILOT_SUBCONSCIOUS` experiment is on for the account. It leaves the turn's session and closes its output, so `stop` reaches it on Linux only (the local README's limit). The fake stands in for it with the library's hard-detached service, and this row claims only the platforms its live check runs on.
+None (`daemon` is `none`). copilot v1.0.114 can start a detached `copilot --agent rem-agent -p … --yolo --silent` memory pass as a session shuts down, but in that version's `cli-main.js` (in the [`@github/copilot-linux-x64` 1.0.114 package](https://www.npmjs.com/package/@github/copilot-linux-x64/v/1.0.114), read as files) the shutdown callback that starts it is registered only by the interactive UI. The `-p` prompt-mode path this row's start and wake take never registers it. The fake starts no background process, and the live check (#2469) still runs the real stop.
 
 ## The census check, resolved
 
@@ -46,4 +46,4 @@ The census needed nothing blocking (the driver picks the UUID), only the permiss
 - **Login:** "an authentication token is stored securely in the system credential store. If a credential store is not found, the token is stored in a plain text configuration file under `~/.copilot/` (or the directory specified by `COPILOT_HOME` if set)" ([command reference, `copilot login`](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference)).
 - **Source:** [github/copilot-cli](https://github.com/github/copilot-cli), whose npm package is [`@github/copilot`](https://www.npmjs.com/package/@github/copilot/v/1.0.114).
 
-`fake` accepts only the start and wake lines above, with those modes and no effort flag, and exits 2 on anything else; `test_row.py` checks that.
+`fake` accepts only the start and wake lines above, with those modes and no effort flag, and exits 2 on anything outside that row grammar. `test_row.py` checks both. Most refused lines are documented copilot syntax that this row doesn't use (`--output-format text`, `--resume`, `--reasoning-effort`). Two are shapes copilot doesn't accept at all: a top-level `--yes` and a stray positional argument.

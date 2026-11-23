@@ -26,7 +26,7 @@ REFUSED = {
     'start without --model': START[:6],
     'start without --output-format json': ['-p', FIRST, '--session-id', SID, '--model', 'example-model'],
     'start with text output': START[:3] + ['text'] + START[4:],
-    'an undocumented mode': START + ['--yes'],
+    'unsupported: a top-level --yes': START + ['--yes'],
     'effort on start': START + ['--allow-all', '--reasoning-effort', 'xhigh'],
     'effort on start with no mode': START + ['--reasoning-effort', 'low'],
     'effort on wake': WAKE + ['--allow-all-tools', '--reasoning-effort', 'max'],
@@ -38,7 +38,7 @@ REFUSED = {
     'a start prompt on the wake line': ['-p', FIRST, '--session-id', SID],
     'a woken prompt on the start line': ['-p', WOKEN] + START[2:],
     'a wake for a session with no start': ['-p', WOKEN, '--session-id', SID.replace('0cb9', '1cb9')],
-    'a trailing argument': WAKE + ['extra'],
+    'unsupported: a stray positional argument': WAKE + ['extra'],
 }
 
 failed = []
@@ -60,6 +60,6 @@ with tempfile.TemporaryDirectory() as tmp:
         failed.append('the fake did not record three first turns and three woken turns of one session')
 for line in failed:
     print('fail copilot test_row.py: ' + line)
-print('pass copilot test_row.py: %d documented lines run, %d undocumented ones exit 2' % (len(ALLOWED), len(REFUSED))
+print('pass copilot test_row.py: %d row lines run, %d lines outside the row grammar exit 2' % (len(ALLOWED), len(REFUSED))
       if not failed else 'fail copilot test_row.py: %d problems' % len(failed))
 sys.exit(1 if failed else 0)
