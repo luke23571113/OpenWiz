@@ -156,6 +156,10 @@ class Helper(unittest.TestCase):
                     "OPENWIZ_AGENT_TOKEN_DIR": str(self.private),
                     "OPENWIZ_TOKEN_SERVICE": SERVICE, "OPENWIZ_TOKEN_SERVICE_ROUTE": "pairing",
                     "OPENWIZ_TOKEN_SERVICE_READBACK": "passed"}
+        self.revoke_api = FakeAPI()
+        self.addCleanup(self.revoke_api.server_close)
+        self.addCleanup(self.revoke_api.shutdown)
+        self.env["OPENWIZ_GITHUB_API_BASE"] = self.revoke_api.base()
 
     def answers(self, *items):
         (self.root / "answers.json").write_text(json.dumps(list(items)))
@@ -1012,6 +1016,107 @@ class Revoke(Helper):
         self.assertEqual(proxy.seen, [], "no proxy sees the request")
         self.assert_revoked_once(api)
         self.assert_never_exposed(done)
+
+
+
+class FallbackRevoke(Helper):
+    api, minted, revoke, assert_revoked_once = (
+        Revoke.api, Revoke.minted, Revoke.revoke, Revoke.assert_revoked_once)
+
+    def expiring(self, left=100):
+        held_file = self.minted()
+        held = json.loads(held_file.read_text())
+        held["expires_at"] = int(time.time()) + left
+        held_file.write_text(json.dumps(held))
+        return held_file
+
+    def run_gh(self, **env):
+        return self.helper("run", *REQ, "--", "gh", "pr", "list", **env)
+
+    def test_a_fallback_revokes_a_live_token_before_deleting_it(self):
+        """catches: a fallback that deletes the only copy of a still-live token without
+        revoking it, leaving a token nobody holds until it expires."""
+        for name, reason, act in (
+                ("a failed refresh", "unreachable", lambda api: self.run_gh(
+                    OPENWIZ_GITHUB_API_BASE=api.base())),
+                ("the pairing turned off", "pairing-off", lambda api: self.start(
+                    OPENWIZ_GITHUB_API_BASE=api.base(), OPENWIZ_TOKEN_SERVICE_READBACK="failed"))):
+            with self.subTest(name):
+                shutil.rmtree(self.private, True)
+                self.log.unlink(missing_ok=True)
+                held = self.expiring()
+                self.answers(answer(), {"exit": 1, "stdout": ""})
+                api = self.api()
+                api.watch = held
+                done = act(api)
+                self.assert_fallback(done, reason)
+                self.assert_revoked_once(api)
+                self.assertEqual([c["gh_token"] for c in self.calls("gh")], [None] * len(self.calls("gh")))
+                self.assert_never_exposed(done)
+        with self.subTest("an expired token needs no revoke"):
+            shutil.rmtree(self.private, True)
+            self.expiring(left=-10)
+            self.answers(answer(), {"exit": 1, "stdout": ""})
+            api = self.api()
+            done = self.run_gh(OPENWIZ_GITHUB_API_BASE=api.base())
+            self.assert_fallback(done, "unreachable")
+            self.assertEqual(api.seen, [], "a dead token is deleted without a call")
+
+    def test_a_fallback_whose_revoke_fails_keeps_the_token_file(self):
+        """catches: a fallback that deletes a live token whose revoke failed, or that writes
+        more than the one fallback note."""
+        closed = FakeAPI()
+        closed_base = closed.base()
+        closed.shutdown()
+        closed.server_close()
+        for name, base in (("GitHub refuses", None), ("GitHub unreachable", closed_base),
+                           ("not the GitHub API", "http://example.invalid")):
+            with self.subTest(name):
+                shutil.rmtree(self.private, True)
+                self.log.unlink(missing_ok=True)
+                held = self.expiring()
+                self.answers(answer(), {"exit": 1, "stdout": ""})
+                before = held.read_bytes()
+                refusing = self.api(status=401)
+                refusing.watch = held
+                done = self.run_gh(OPENWIZ_GITHUB_API_BASE=base or refusing.base())
+                self.assertEqual((done.returncode, done.stderr),
+                                 (0, NOTE.replace("<reason>", "unreachable") + "\n"))
+                self.assertTrue(held.exists(), "the token file is kept for a later revoke")
+                self.assertEqual(held.read_bytes(), before)
+                self.assertEqual(refusing.seen and [len(refusing.seen)], [1] if base is None else [])
+                self.assertEqual([c["gh_token"] for c in self.calls("gh")], [None])
+                api = self.api()
+                api.watch = held
+                later = self.revoke(api)
+                self.assertEqual((later.returncode, later.stderr), (0, ""))
+                self.assert_revoked_once(api)
+                self.assertFalse(held.exists())
+                self.assert_never_exposed(done, later)
+
+    def test_a_kept_expiring_token_is_never_handed_out_again(self):
+        """catches: a token kept after a failed revoke being handed to the next run's gh, its
+        git or the caller, because the refresh boundary is skipped for a kept file."""
+        held = self.expiring()
+        self.answers(answer(), {"exit": 1, "stdout": ""})
+        refusing = self.api(status=401)
+        self.env["OPENWIZ_GITHUB_API_BASE"] = refusing.base()
+        self.run_gh()
+        self.assertTrue(held.exists(), "the token was kept")
+        self.assertIsNone(load_helper().usable(json.loads(held.read_text()), int(time.time())))
+        github = self.github()
+        outputs = [self.run_gh(), self.helper("run", *REQ, "--", *github.git()),
+                   self.helper("run", *REQ, "--", "git", "credential", "fill",
+                               stdin="protocol=https\nhost=github.com\n\n"),
+                   self.start()]
+        self.assertTrue(held.exists(), "still kept after every fallback")
+        self.assertEqual([c["gh_token"] for c in self.calls("gh")], [None, None])
+        self.assertNotIn(sha(f"x-access-token:{TOKEN}"), github.seen)
+        for result in outputs[:1] + outputs[3:]:
+            self.assertEqual(result.stderr, NOTE.replace("<reason>", "unreachable") + "\n")
+        self.assertEqual(len(self.service_calls()), 1 + 1 + len(outputs),
+                         "each use asks for a fresh token instead of using the kept one")
+        self.assert_never_exposed(*outputs)
 
 
 if __name__ == "__main__":
