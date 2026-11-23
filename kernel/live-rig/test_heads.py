@@ -340,11 +340,11 @@ class Heads(unittest.TestCase):
         first = len(self.calls())
         self.assertEqual(self.heads(hosts, *extra, '--post', env=dict(self.env, HEADS_GH_LOGIN='example-other'))[0], 2)
         kept = read(os.path.join(self.out, 'publish.json'))
-        self.assertEqual(self.heads(hosts, *extra)[1], 'would finish the publish an earlier --post left unfinished:\n'
-                                                      'would open a pull request on openwizdev/WizMarket\n')
+        self.assertEqual(self.heads(hosts, *extra)[:2], (1, 'would finish the publish an earlier --post left unfinished:\n'
+                                                          'would open a pull request on openwizdev/WizMarket\n'))
         self.assertEqual(read(os.path.join(self.out, 'publish.json')), kept)
         code, out, err = self.heads(hosts, *extra, '--post')
-        self.assertEqual((code, out), (0, 'finishing the publish an earlier --post left unfinished\n'
+        self.assertEqual((code, out), (1, 'finishing the publish an earlier --post left unfinished\n'
                                           'posted https://github.com/openwizdev/WizMarket/pull/41\n'), err)
         self.assertFalse([c for c in self.calls()[first:] if c['args'][:2] == ['api', 'graphql']])
         self.assertEqual([c['args'][2:4] for c in self.writes()], [
@@ -372,10 +372,10 @@ class Heads(unittest.TestCase):
         with open(journal, 'w') as f:
             f.write(kept)
         rel = 'receipts/fixture-five/%s-%s.txt' % (self.day(), self.head[:12])
-        self.assertEqual(self.heads(['fixture-five'], *extra[:-1])[1], ''.join([
+        self.assertEqual(self.heads(['fixture-five'], *extra[:-1])[:2], (0, ''.join([
             'would finish the publish an earlier --post left unfinished:\n', 'would post on openwizdev/OpenWiz#201:\n',
             self.expected_comment(), 'would add %s to openwizdev/WizMarket:\n' % rel, self.expected_receipt(self.day()),
-            'would open a pull request on openwizdev/WizMarket\n']))
+            'would open a pull request on openwizdev/WizMarket\n'])))
         self.assertEqual((read(journal), len(self.calls())), (kept, calls))
         branch = 'receipts-fixture-five-%s-%s' % (self.day(), self.head[:12])
         with open(os.path.join(self.state, 'pulls.json'), 'w') as f:
