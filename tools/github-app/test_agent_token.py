@@ -1084,7 +1084,7 @@ class FallbackRevoke(Helper):
                                  (0, NOTE.replace("<reason>", "unreachable") + "\n"))
                 self.assertTrue(held.exists(), "the token file is kept for a later revoke")
                 self.assertEqual(json.loads(held.read_text()),
-                                 {"token": TOKEN, "expires_at": before["expires_at"]},
+                                 {"token": TOKEN, "expires_at": before["expires_at"], "kept": True},
                                  "kept with its token and expiry, but no scope to be reused for")
                 self.assertEqual(held.stat().st_mode & 0o777, 0o600)
                 self.assertEqual(refusing.seen and [len(refusing.seen)], [1] if base is None else [])
@@ -1137,6 +1137,76 @@ class FallbackRevoke(Helper):
         self.assertEqual(self.calls("gh")[-1]["gh_token"], sha(TOKEN2), "a fresh mint, not the kept token")
         self.assertEqual(len(self.service_calls()), 2)
         self.assert_never_exposed(off, back)
+
+    def kept_token(self):
+        held = self.minted()
+        refusing = self.api(status=401)
+        off = self.start(OPENWIZ_TOKEN_SERVICE_READBACK="failed", OPENWIZ_GITHUB_API_BASE=refusing.base())
+        self.assertEqual(off.stderr, NOTE.replace("<reason>", "pairing-off") + "\n")
+        self.assertEqual(live_token_in(held), TOKEN)
+        return held
+
+    def side_files(self):
+        return sorted(self.private.glob("kept-*")) if self.private.is_dir() else []
+
+    def test_a_new_mint_revokes_a_kept_token_before_replacing_it(self):
+        """catches: a new mint that overwrites a kept token's file without revoking it, so the
+        kept token stays live and nobody holds it."""
+        held = self.kept_token()
+        api = self.api()
+        api.watch = held
+        self.answers(answer(token=TOKEN2))
+        back = self.run_gh(OPENWIZ_GITHUB_API_BASE=api.base())
+        self.assertEqual((back.returncode, back.stderr), (0, ""))
+        self.assert_revoked_once(api, TOKEN)
+        self.assertEqual(self.calls("gh")[-1]["gh_token"], sha(TOKEN2))
+        self.assertEqual(self.held()["token"], TOKEN2)
+        self.assertEqual(self.side_files(), [])
+        self.assert_never_exposed(back)
+
+    def test_a_new_mint_keeps_a_kept_token_beside_it_when_the_revoke_fails(self):
+        """catches: a new mint that overwrites a kept token whose revoke failed, or hands that
+        kept token to gh, git or the caller once it sits beside the new one."""
+        self.kept_token()
+        refusing = self.api(status=401)
+        self.env["OPENWIZ_GITHUB_API_BASE"] = refusing.base()
+        self.answers(answer(token=TOKEN2))
+        outputs = [self.run_gh()]
+        self.assertEqual((outputs[0].returncode, outputs[0].stderr), (0, ""))
+        self.assertEqual(self.held()["token"], TOKEN2, "the new token is the request's cache")
+        sides = self.side_files()
+        self.assertEqual(len(sides), 1, "the kept token sits beside the new one")
+        self.assertEqual(json.loads(sides[0].read_text())["token"], TOKEN)
+        self.assertEqual(sides[0].stat().st_mode & 0o777, 0o600)
+        github = self.github()
+        outputs += [self.run_gh(), self.helper("run", *REQ, "--", *github.git()), self.start()]
+        self.assertEqual([c["gh_token"] for c in self.calls("gh")], [sha(TOKEN2)] * 2)
+        self.assertEqual(set(github.seen), {sha(f"x-access-token:{TOKEN2}")})
+        self.assertEqual(len(self.side_files()), 1, "later uses neither drop nor copy it")
+        api = self.api()
+        done = self.revoke(api)
+        self.assertEqual((done.returncode, done.stderr), (0, ""))
+        self.assertEqual(sorted(seen["auth"] for seen in api.seen),
+                         sorted([sha(f"Bearer {TOKEN}"), sha(f"Bearer {TOKEN2}")]))
+        self.assertEqual({seen["method"] for seen in api.seen}, {"DELETE"})
+        self.assertEqual(self.side_files(), [])
+        self.assertFalse(self.token_file().exists())
+        self.assert_never_exposed(*outputs, done)
+
+    def test_an_ordinary_refresh_never_revokes_a_token_other_runs_may_hold(self):
+        """catches: a refresh that revokes every token it replaces, breaking another run of
+        the same request that still uses the old one."""
+        held = self.minted()
+        old = json.loads(held.read_text())
+        old["expires_at"] = int(time.time()) + 200
+        held.write_text(json.dumps(old))
+        self.answers(answer(), answer(token=TOKEN2))
+        ran = self.run_gh()
+        self.assertEqual((ran.returncode, ran.stderr), (0, ""))
+        self.assertEqual(self.calls("gh")[-1]["gh_token"], sha(TOKEN2))
+        self.assertEqual(self.revoke_api.seen, [])
+        self.assertEqual(self.side_files(), [])
+
 
 
 def live_token_in(path):
