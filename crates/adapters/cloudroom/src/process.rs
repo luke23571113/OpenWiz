@@ -50,14 +50,7 @@ fn is_scrubbed_bytes(name: &[u8]) -> bool {
 }
 
 fn scrub(command: &mut Command) -> &mut Command {
-    scrub_from(command, std::env::vars_os().map(|(name, _)| name))
-}
-
-fn scrub_from(
-    command: &mut Command,
-    parent: impl IntoIterator<Item = std::ffi::OsString>,
-) -> &mut Command {
-    for name in parent {
+    for (name, _) in std::env::vars_os() {
         if is_scrubbed_bytes(name.as_encoded_bytes()) {
             command.env_remove(&name);
         }
@@ -463,7 +456,12 @@ mod scrub_tests {
             include_hidden: false,
             include_archived: false,
         };
-        run(&program, &invocation, Instant::now() + Duration::from_secs(10)).unwrap();
+        run(
+            &program,
+            &invocation,
+            Instant::now() + Duration::from_secs(10),
+        )
+        .unwrap();
     }
 
     #[test]
