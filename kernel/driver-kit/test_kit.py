@@ -143,6 +143,11 @@ def efforts(path):
         return [a[a.index('--effort') + 1] for a in map(json.loads, f) if '--effort' in a]
 
 
+def started_at(pid):
+    with open('/proc/%s/stat' % pid) as f:
+        return int(f.read().rpartition(')')[2].split()[19])
+
+
 def planted(name):
     return module(os.path.join(FIXTURES, 'planted', name))
 
@@ -318,6 +323,42 @@ class Kit(unittest.TestCase):
                     self.assertEqual(k.trusted_helper(1, 2), name == 'good')
         finally:
             kit.PROC = old
+
+    @unittest.skipUnless(os.path.isdir('/proc/self'), 'reads /proc')
+    def test_a_hidden_process_costs_a_retry_once_and_one_older_than_the_kit_none(self):
+        kit = module(os.path.join(HERE, 'kit.py'))
+        hide = ('import ctypes, os, sys, time; ctypes.CDLL(None).prctl(4, 0, 0, 0, 0); print(flush=True); '
+                'time.sleep(30)')
+
+        def hidden():
+            child = subprocess.Popen([sys.executable, '-c', hide], stdout=subprocess.PIPE, start_new_session=False)
+            self.addCleanup(child.kill)
+            child.stdout.readline()
+            return child
+        older = hidden()
+        time.sleep(0.05)
+        k = kit.Kit.__new__(kit.Kit)
+        k.lock, k.leaks, k.mark, k.hidden = threading.RLock(), [], 'OPENWIZ_KIT_RUN=synthetic', set()
+        k.since = started_at(str(older.pid)) + 1
+        time.sleep(0.05)
+        newer = hidden()
+        while started_at(str(newer.pid)) <= k.since:
+            newer.kill()
+            newer = hidden()
+        pauses = []
+        real = kit.time.sleep
+        kit.time.sleep = lambda seconds: pauses.append(seconds)
+        try:
+            first = k.table()
+            once = len(pauses)
+            list(k.started())
+            k.table()
+        finally:
+            kit.time.sleep = real
+        self.assertEqual((first[str(older.pid)][2], first[str(newer.pid)][2]), (None, None))
+        self.assertEqual(once, kit.HIDDEN_TRIES - 1, 'only the hidden process newer than the kit is retried')
+        self.assertEqual(len(pauses), once, 'a process already found hidden was retried again')
+        self.assertEqual(k.leaks, ['a process of the driver hides its details, so the kit cannot check it'])
 
     def test_a_path_diagnostic_never_prints_the_active_canary(self):
         kit = module(os.path.join(HERE, 'kit.py'))
