@@ -222,6 +222,15 @@ class Page(unittest.TestCase):
         self.assertLess(commands.index(start), commands.index(register), 'start Pane before registering')
         self.assertEqual(doctors[0], 'runpane agents doctor --agent claude --repo "$CHECKOUT" --json')
 
+    def test_the_page_blocks_real_runs_until_both_fixes_merge(self):
+        intro, section, _ = self.page.partition('## The session, in order')
+        self.assertTrue(section)
+        warning = re.search(r'No real `heads\.py` run[^\n]*', intro)
+        self.assertIsNotNone(warning, 'put the real-run gate above the session steps')
+        line = warning.group()
+        self.assertIn('with or without `--post`', line)
+        self.assertRegex(line, r'until both.*#2689.*#2755.*have merged')
+
     def test_the_paid_command_is_given_once_with_post_and_no_shell_placeholder(self):
         commands = [line for line in self.code.splitlines() if 'heads.py' in line]
         self.assertEqual(len(commands), 1, commands)
