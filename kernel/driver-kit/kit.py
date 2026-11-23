@@ -577,6 +577,9 @@ class Kit:
             self.scan()
             if not self.effort_seen:
                 return 'fail', 'effort: %s never reached a process the run started' % self.args.effort
+        if effort == NOT_DECLARED:
+            print('note start: effort: ' + NOT_DECLARED, file=sys.stderr, flush=True)
+            return 'pass', 'the run posted builder status note %d' % self.note
         return 'pass', 'the run posted builder status note %d; effort: %s' % (self.note, effort)
 
     def wake(self):

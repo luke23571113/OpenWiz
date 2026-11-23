@@ -13,11 +13,11 @@ It prints one line per check, in the order version, start, wake, stop, token: `p
 
 ## Effort
 
-The `start` check also checks effort ([driver v1](../driver.v1.md#effort)); its line ends `; effort: <what>`, and a failed effort part fails `start`. `--effort` is the word the kit sends (default `medium`). The kit reads the `Effort:` line in the `README.md` beside the driver, and the table of harness and flag (or `can't (<why>)`) right after it.
+The `start` check also checks effort ([driver v1](../driver.v1.md#effort)). For a driver that declares it (effort in `can`, or an `Effort:` line), the line ends `; effort: <what>`. A failed effort part fails `start`. `--effort` is the word the kit sends (default `medium`). The kit reads the `Effort:` line in the `README.md` beside the driver, and the table of harness and flag (or `can't (<why>)`) right after it.
 
 - **`can` lists `effort`:** the README needs an `Effort:` line naming the flag (`Effort: passed as <flag>`, or a table). The kit's start carries `effort`, and it must reach the host: as a word in the command line or environment of a process the run started (the processes the token check watches; a variable the kit gave unchanged doesn't count). For a key-host driver ([Key hosts](#key-hosts)), the kit first sends that start against its loopback fake host, then stops it, and the word must be in a request body the fake host received: the helper takes its request on stdin, so the command line doesn't count. Or the start is refused with exactly the contract's refusal `next`, nothing is left running, and the README says this harness can't (`Effort: the host can't set it`, or `can't` in the harness's row); then the kit runs the start without `effort`.
 - **`can` doesn't list `effort`:** the kit sends one extra start with `effort` first. It must be refused (D1), with nothing left running, and the README's `Effort:` line must say `Effort: the host can't set it (<why>)`.
-- **No `Effort:` line, and `can` doesn't list `effort`:** the start still passes, with the note `not declared yet; required from EF14`. EF14 removes this.
+- **No `Effort:` line, and `can` doesn't list `effort`:** the start still passes, and its line is unchanged. The kit prints the note on stderr: `note start: effort: not declared yet; required from EF14`. EF14 removes this.
 
 ## Key hosts
 

@@ -25,9 +25,9 @@ HARNESSES = ('claude', 'claude-code', 'codex', 'gemini', 'opencode', 'openclaw',
 TOOLS = ('sh', 'ps', 'lsof', 'awk', 'sleep', 'dirname', 'true')
 TOKEN = 'gh' + 'p_' + 'Synthetic0Kit0Value' * 2 + '00'
 STARTED = 'pass start: the run posted builder status note 2'
-NOT_DECLARED = '; effort: not declared yet; required from EF14'
+NOT_DECLARED = 'note start: effort: not declared yet; required from EF14\n'
 PASS = ['pass version: openwiz:records v1, and the schema is driver v1',
-        STARTED + NOT_DECLARED,
+        STARTED,
         'pass wake: the run edited builder status note 2',
         'pass stop: the run ended, and a wake after it is refused',
         'pass token: no login or token passed through the driver']
@@ -298,9 +298,12 @@ class Kit(unittest.TestCase):
                                     '--tracker', self.env['KIT_TRACKER'], '--wait', '8'], env=self.env,
                                    capture_output=True, text=True, timeout=120)
                 self.assertEqual(p.returncode, want, p.stdout + p.stderr)
+                note = NOT_DECLARED if driver != KEY_HOST else ''
                 if want:
-                    self.assertEqual(p.stderr, 'kit.py: the key helper kernel/driver-kit/hostkey.py is missing, so '
-                                               'the kit cannot check host keys\n')
+                    self.assertEqual(p.stderr, note + 'kit.py: the key helper kernel/driver-kit/hostkey.py is missing, '
+                                                      'so the kit cannot check host keys\n')
+                else:
+                    self.assertEqual(p.stderr, note)
 
     def test_a_host_that_answers_a_redirect_fails_start_and_the_redirect_is_never_followed(self):
         kit = module(os.path.join(HERE, 'kit.py'))
@@ -345,7 +348,14 @@ class Kit(unittest.TestCase):
                 self.assertEqual((schema, helper), (schema, schema))
 
     def test_template_passes_all_five(self):
-        self.assertEqual(self.kit(TEMPLATE)[:2], (0, PASS))
+        self.assertEqual(self.kit(TEMPLATE), (0, PASS, NOT_DECLARED))
+
+    def test_a_declared_driver_gets_no_note(self):
+        for name in ('effort', 'effort-cant'):
+            with self.subTest(name):
+                self.tearDown()
+                self.setUp()
+                self.assertEqual(self.kit(os.path.join(FIXTURES, name, 'driver'))[::2], (0, ''))
 
     def test_each_effort_driver_prints_its_own_start_line(self):
         for name, lines in EFFORT.items():
