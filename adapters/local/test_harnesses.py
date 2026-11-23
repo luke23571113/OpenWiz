@@ -377,6 +377,23 @@ def effort_checked_first_with_its_grammar(planted):
     return ok
 
 
+def supervisor_keeps_the_drivers_environment(planted):
+    with ThrowawayMachine(planted, 'example', 'example-cli', os.path.join(planted, 'example', 'fake'), 'auto',
+                          ('EXAMPLE_CLI_BACKEND', 'EXAMPLE_CLI_THINKING')) as env:
+        code, out = env.start(effort='max', FAKE_CLI_RECORD_ONLY='1', FAKE_CLI_LINGER='1')
+        try:
+            with open(os.path.join(env.state, out['run'] + '.json')) as f:
+                supervisor = json.load(f)['turns'][0]['supervisor']
+            with open('/proc/%d/environ' % supervisor, 'rb') as f:
+                names = {v.partition(b'=')[0] for v in f.read().split(b'\0')}
+        except (OSError, KeyError, ValueError):
+            names = None
+        env.driver('stop', out)
+        turns = env.records()
+    return code == 0 and names is not None and not names & {b'EXAMPLE_CLI_BACKEND', b'EXAMPLE_CLI_THINKING'} and \
+        len(turns) == 1 and turns[0]['env'] == {'EXAMPLE_CLI_BACKEND': 'local', 'EXAMPLE_CLI_THINKING': 'max'}
+
+
 def check_driver(rows):
     found = [("a broken row's D3 error names its row file and fits the error schema: a row folder with no row.json, "
               "a harness that is not a string, and a 60-character harness with a missing field",
@@ -385,6 +402,9 @@ def check_driver(rows):
               "and the first line that has the session's JSON path decides it", rows_read_first_turn_output(rows)),
              ("an effort the row can't take is refused before the driver looks for its program, and a row's effort "
               "ids are lower-case words of up to 20 characters", effort_checked_first_with_its_grammar(rows))]
+    if os.path.isdir('/proc/self'):
+        found.append(("a row's env and effort setting reach only the harness, never the turn's supervisor",
+                      supervisor_keeps_the_drivers_environment(rows)))
     with ThrowawayMachine(rows, 'example', 'example-cli', os.path.join(rows, 'example', 'fake'), 'auto') as env:
         lists = lambda out: out['next'].startswith('use one of: claude, codex, ') and 'example-none' in out['next']
         found.append(('an unknown harness is a D3 error that lists the built-ins and the row folders, and starts '
