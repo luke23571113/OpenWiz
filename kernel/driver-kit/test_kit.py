@@ -586,6 +586,14 @@ class Kit(unittest.TestCase):
                          [['thread', 'spawn', '--reasoning-level', 'medium']])
         self.assertEqual(efforts(args), [])
 
+    def test_effort_that_first_shows_after_starts_verdict_is_no_receipt(self):
+        late = os.path.join(self.folder, 'late')
+        code, out, err = self.kit(os.path.join(FIXTURES, 'planted', 'effort-only-at-cleanup', 'driver'), FAKE_LATE=late)
+        self.assertEqual((code, out), (1, [EFFORT_FAIL[0], EFFORT_FAIL[1] % 'medium never reached a process the run '
+                                           'started'] + EFFORT_FAIL[2:] + [PASS[4]]), err)
+        with open(late) as f:
+            self.assertEqual(len(f.read().split()), 1, "the kit's cleanup stop did not run")
+
     def test_each_key_host_effort_driver_prints_its_own_start_line(self):
         for name, lines in EFFORT_KEY.items():
             with self.subTest(name):
@@ -670,7 +678,8 @@ class Kit(unittest.TestCase):
                                      ['pass ' + n for n in CHECKS[:4]] + ['fail token'], out)
                     self.assertEqual(out[4], 'fail token: ' + IN_ARGS)
                     with open(starts) as f:
-                        self.assertEqual(len(f.read().split()), 1, 'the kit took more than one main start')
+                        self.assertEqual(len(f.read().split()), 2 if form == 'key-host' else 1,
+                                         "a start ran other than the main start and the key host's effort start")
 
     def test_the_kits_visibility_probe_signals_ready_through_the_macos_shim_and_runs_until_its_stdin_closes(self):
         p = subprocess.run([os.path.join(NO_PROC, 'python3')] + module(os.path.join(HERE, 'kit.py')).PROBE,

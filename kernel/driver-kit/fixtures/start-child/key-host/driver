@@ -14,4 +14,4 @@ def load(name, *where):
 k = load('keyhost', '..', '..', 'key-host', 'driver')
 load('effort', '..', '..', 'effort', 'driver').apply(k.t)
 k.body = lambda req: dict({'ticket': req['ticket']}, **{'effort': req['effort']} if 'effort' in req else {})
-load('child', '..', 'child.py').wrap(k.t, lambda req: 'effort' in req and 'DEVIN_API_KEY' in os.environ).main()
+load('child', '..', 'child.py').wrap(k.t, lambda req: 'effort' in req).main()

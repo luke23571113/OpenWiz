@@ -650,7 +650,7 @@ class Kit:
         if not self.wait(lambda: not any(True for _ in self.started())):
             return 'fail', 'effort: a process the start with effort began still runs'
         before = set(self.ticket.builder_notes())
-        return self.started_run(before, self.call('start', request), effort)
+        return self.started_run(before, self.sampled('start', request), effort)
 
     def started_run(self, before, answer, effort):
         kind, v = answer
