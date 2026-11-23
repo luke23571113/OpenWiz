@@ -9,7 +9,8 @@ session and approval-mode docs. It allows only:
   gemini -p <prompt> -o stream-json --session-id <uuid> -m <model> --approval-mode yolo [--skip-trust]
   gemini -p <prompt> -o stream-json --resume <uuid> -m <model> --approval-mode yolo [--skip-trust]
 with default in place of yolo. It refuses plan, which is read-only, and the auto-edit mode, which the row
-doesn't offer. It has no effort flag. Its first turn starts a detached service, as v0.70.0 auto-starts LiteRT-LM
+doesn't offer, and an option-shaped value after -p (yargs: Not enough arguments following: p). It has no effort
+flag. Its first turn starts a detached service, as v0.70.0 auto-starts LiteRT-LM
 (packages/cli/src/services/liteRtServerManager.ts, packages/cli/src/commands/gemma/start.ts). Signed out, it prints
 the v0.70.0 diagnostic FAKE_GEMINI_AUTH names (validateNonInterActiveAuth.ts, config/auth.ts, core oauth2.ts) and exits 41.'''
 UUID = r'[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}'
@@ -33,7 +34,8 @@ if sys.argv[1:] == ['--help']:
 a = sys.argv[1:]
 if a[-1:] == ['--skip-trust']:
     a = a[:-1]
-if len(a) != 10 or a[0] != '-p' or a[2:4] != ['-o', 'stream-json'] or a[4] not in ('--session-id', '--resume') or \
+if len(a) != 10 or a[0] != '-p' or a[1].startswith('-') or a[2:4] != ['-o', 'stream-json'] or \
+        a[4] not in ('--session-id', '--resume') or \
         not re.fullmatch(UUID, a[5]) or a[6] != '-m' or not a[7] or a[7].startswith('-') or \
         a[8] != '--approval-mode' or a[9] not in ('default', 'yolo'):
     fake_cli.refuse()
