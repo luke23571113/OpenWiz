@@ -90,15 +90,15 @@ def _inside(path):
 
 
 def load_hosts(folder, only):
-    given = os.path.abspath(folder)
+    parts = os.path.join(os.getcwd(), folder).split(os.sep)
     folder = os.path.realpath(folder)
     if os.path.commonpath([folder, ROOT]) != ROOT:
         raise Refused('--hosts is not a folder inside this checkout, so its host configs are not reviewed code')
-    while given != os.path.dirname(given):
-        if os.path.islink(given) and _inside(os.path.dirname(given)):
+    for i in range(2, len(parts) + 1):
+        given = os.sep.join(parts[:i])
+        if parts[i - 1] not in ('', '.', '..') and os.path.islink(given) and _inside(os.path.dirname(given)):
             raise Refused('--hosts goes through a symlink inside the checkout, so its host configs are not '
                           'reviewed code')
-        given = os.path.dirname(given)
     try:
         names = sorted(n for n in os.listdir(folder) if n.endswith('.json'))
     except OSError as e:
