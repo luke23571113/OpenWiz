@@ -5,7 +5,7 @@ sys.dont_write_bytecode = True
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 KIT = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit', 'kit.py')
-STATE = os.environ.get('OPENWIZ_LOCAL_STATE') or os.path.expanduser('~/.local/state/openwiz-local')
+STATE = os.path.abspath(os.environ.get('OPENWIZ_LOCAL_STATE') or os.path.expanduser('~/.local/state/openwiz-local'))
 APPROVALS = os.path.join(STATE, 'approvals.json')
 MODE = r'[A-Za-z][A-Za-z0-9_-]{0,39}'
 WRITABLE = 'make OPENWIZ_LOCAL_STATE (or ~/.local/state/openwiz-local) a folder you can write'
@@ -19,8 +19,20 @@ HARNESSES = {'claude': lambda model, mode, prompt: ['-p', prompt, '--model', mod
 MODE_ROW = '| Harness permission mode |'
 GRACE = 10
 SETTLE = float(os.environ.get('OPENWIZ_LOCAL_SETTLE') or 30)
-SIGNED_OUT = re.compile(r'(?i)oauth|log ?in\b|sign ?in\b|authenticat|unauthori[sz]ed|expired|credential')
-REFUSAL = re.compile(r'(?i)denied|refused|not allowed|permission')
+DIAGNOSTIC_LINE = r'(?im)^[ \t]*(?:[\w .()\[\]-]{0,40}:[ \t]*){0,2}(?:%s)'
+SIGNED_OUT = re.compile(DIAGNOSTIC_LINE % '|'.join((
+    r'(?:not|no longer) (?:logged|signed) in\b', r'please (?:run /login|log ?in|sign ?in)\b', r'invalid api key\b',
+    r'authentication (?:failed|error|required)\b',
+    r'(?:oauth|login|auth|session)(?: token| session)?(?: has| is)? (?:expired|revoked)\b',
+    r'(?:401 )?unauthori[sz]ed[ \t]*[.!]?[ \t]*$')))
+REFUSAL = re.compile(DIAGNOSTIC_LINE % '|'.join((
+    r'permission\b[^.\n]{0,60}\b(?:denied|refused|rejected)\b',
+    r'(?:\w+ ){0,3}(?:was |were |has been |is )?(?:denied|refused)\b',
+    r'not allowed to (?:run|use|write|edit|execute)\b')))
+LSOF_COULD_NOT_CHECK = []
+NO_LSOF = ('driver: lsof could not run or failed, so the driver could not check which processes hold this '
+           "run's output file open; it ended only the turns' process groups and the processes their "
+           'supervisors recorded')
 
 
 class Refused(Exception):
@@ -84,12 +96,16 @@ def open_log(run):
     return os.open(log_path(run), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
 
 
+def work(run):
+    return os.path.join(STATE, 'work', run)
+
+
 def workspace(run, repository):
     gh = shutil.which('gh')
     if not gh:
         raise Refused('gh is not installed here, so the driver cannot clone %s' % repository,
                       'install the GitHub CLI (gh) on this machine and sign in to it yourself, then start again')
-    folder = os.path.join(STATE, 'work', run)
+    folder = work(run)
     os.makedirs(os.path.dirname(folder), mode=0o700, exist_ok=True)
     log = open_log(run)
     try:
@@ -224,12 +240,17 @@ def members(roots, recorded, writers=()):
 
 
 # PRIVACY: asks lsof only which processes hold this run's own output file open for writing, never any environment.
+# PRIVACY: lsof's own text is never repeated.
 def writing_to(path):
     try:
-        out = subprocess.run(['lsof', '-F', 'pa', '--', path], stdin=subprocess.DEVNULL, capture_output=True,
-                             text=True, timeout=30).stdout
+        p = subprocess.run(['lsof', '-w', '-F', 'pa', '--', path], stdin=subprocess.DEVNULL, capture_output=True,
+                           text=True, errors='replace', timeout=30)
     except (OSError, subprocess.TimeoutExpired):
+        p = None
+    if p is None or p.returncode not in (0, 1) or p.returncode == 1 and p.stderr.strip():
+        LSOF_COULD_NOT_CHECK.append(path)
         return set()
+    out = p.stdout
     found, pid = set(), None
     for field in out.splitlines():
         if field[:1] == 'p' and field[1:].isdigit():
@@ -323,7 +344,8 @@ def supervise(cmd):
         print(json.dumps({'error': 'this host cannot keep a turn\'s processes together'}), flush=True)
         return
     try:
-        harness = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=sys.stderr, stderr=sys.stderr)
+        harness = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=sys.stderr, stderr=sys.stderr,
+                                   cwd=work(os.environ['OPENWIZ_RUN']))
     except OSError as e:
         print(json.dumps({'error': e.strerror}), flush=True)
         return
@@ -386,7 +408,7 @@ def launch(state, run, woken):
         log = subprocess.DEVNULL
     try:
         sup = subprocess.Popen([sys.executable, '-I', os.path.abspath(__file__), '--turn'] + cmd,
-                               env=dict(os.environ, OPENWIZ_RUN=run), start_new_session=True, cwd=state['workspace'],
+                               env=dict(os.environ, OPENWIZ_RUN=run), start_new_session=True,
                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=log)
         with sup.stdout:
             line = sup.stdout.readline()
@@ -610,6 +632,8 @@ def main():
         out, code = {'error': e.args[0], 'next': e.args[1]}, 1
     except Exception as e:
         out, code = {'error': 'the driver failed: ' + type(e).__name__, 'next': 'read its code, fix it, retry'}, 1
+    if LSOF_COULD_NOT_CHECK:
+        print(NO_LSOF, file=sys.stderr)
     print(json.dumps(out))
     sys.exit(code)
 
