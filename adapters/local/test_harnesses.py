@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import contextlib, importlib.machinery, importlib.util, json, os, shutil, signal, socket, subprocess, sys, tempfile, threading, time
+import contextlib, importlib.machinery, importlib.util, json, os, shlex, shutil, signal, socket, subprocess, sys, tempfile, threading, time
 
 sys.dont_write_bytecode = True
 USAGE = '''usage: test_harnesses.py            the planted rows, then every row in adapters/local/harnesses/
@@ -106,7 +106,7 @@ class RunningHubOutsideEveryRun:
 
 class ThrowawayMachine:
 
-    def __init__(self, rows, name, program=None, fake=None, mode=None, names=()):
+    def __init__(self, rows, name, program=None, fake=None, mode=None, names=(), clone_says=None):
         self.folder = tempfile.mkdtemp(prefix='rows-')
         checkout = os.path.join(self.folder, 'checkout', 'adapters', 'local')
         os.makedirs(checkout)
@@ -124,7 +124,13 @@ class ThrowawayMachine:
             os.chmod(os.path.join(stubs, stub), 0o700)
         if program:
             os.symlink(fake, os.path.join(binary, program))
-        os.symlink(os.path.join(FIXTURES, 'gh'), os.path.join(binary, 'gh'))
+        if clone_says is None:
+            os.symlink(os.path.join(FIXTURES, 'gh'), os.path.join(binary, 'gh'))
+        else:
+            with open(os.path.join(binary, 'gh'), 'w') as f:
+                f.write('#!/bin/sh\necho %s\nexec %s "$@"\n' % (shlex.quote(clone_says),
+                                                                shlex.quote(os.path.join(FIXTURES, 'gh'))))
+            os.chmod(os.path.join(binary, 'gh'), 0o700)
         with open(os.path.join(repo, 'fleet.md'), 'w') as f:
             f.write('# Fleet\n\n| Setting | Value |\n| --- | --- |\n| Harness permission mode | `%s` |\n' % mode)
         os.makedirs(self.state, mode=0o700)
@@ -341,10 +347,32 @@ def broken_rows_name_their_file(planted):
     return ok
 
 
+def rows_read_first_turn_output(planted):
+    example = (planted, 'example', 'example-cli', os.path.join(planted, 'example', 'fake'), 'auto')
+    with ThrowawayMachine(*example, clone_says='{"session": {"id": "clone-0000"}}') as env:
+        code, out = env.start(FAKE_CLI_RECORD_ONLY='1')
+        woke = env.driver('wake', out) if code == 0 else (1, {})
+        env.driver('stop', out)
+        turns = env.records()
+        ok = woke[0] == 0 and len(turns) == 2 and turns[1]['session'] == turns[0]['session'] != 'clone-0000'
+    with ThrowawayMachine(*example, clone_says='Error: not authenticated') as env:
+        code, out = env.start(FAKE_CLI_RECORD_ONLY='1')
+        env.driver('stop', out)
+        ok = ok and code == 0
+    with ThrowawayMachine(*example) as env:
+        code, out = env.start(FAKE_CLI_RECORD_ONLY='1', FAKE_CLI_PRELUDE='{"session": {"id": null}}')
+        woke = env.driver('wake', out) if code == 0 else (0, {})
+        env.driver('stop', out)
+        ok = ok and woke[0] == 1 and 'no session id' in woke[1].get('error', '') and len(env.records()) == 1
+    return ok
+
+
 def check_driver(rows):
     found = [("a broken row's D3 error names its row file and fits the error schema: a row folder with no row.json, "
               "a harness that is not a string, and a 60-character harness with a missing field",
-              broken_rows_name_their_file(rows))]
+              broken_rows_name_their_file(rows)),
+             ("a row's session id and signed_out patterns are read from its first turn's output, never the clone's, "
+              "and the first line that has the session's JSON path decides it", rows_read_first_turn_output(rows))]
     with ThrowawayMachine(rows, 'example', 'example-cli', os.path.join(rows, 'example', 'fake'), 'auto') as env:
         lists = lambda out: out['next'].startswith('use one of: claude, codex, ') and 'example-none' in out['next']
         found.append(('an unknown harness is a D3 error that lists the built-ins and the row folders, and starts '

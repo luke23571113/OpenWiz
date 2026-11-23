@@ -87,6 +87,8 @@ def turn(prompt, model, session=None, announce=None, daemon=None, signed_out=Non
     if session is None:
         if woken or announce is None:
             refuse()
+        if os.environ.get('FAKE_CLI_PRELUDE'):
+            print(os.environ['FAKE_CLI_PRELUDE'], flush=True)
         session = 'fake-' + secrets.token_hex(6)
         if not os.environ.get('FAKE_CLI_QUIET'):
             print(announce(session), flush=True)
