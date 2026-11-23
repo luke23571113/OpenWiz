@@ -39,7 +39,7 @@ pass amp: effort medium starts with --model <m> --effort medium, and the wake pa
 pass amp: effort high starts with --model <m> --effort high, and the wake passes no effort
 pass amp: effort xhigh starts with --model <m> --effort xhigh, and the wake passes no effort
 pass amp: effort max starts with --model <m> --effort max, and the wake passes no effort
-pass amp: the fake exits 2 on the census start without --no-archive-after-execute, whose thread amp archives so it cannot be continued
+pass amp: without --no-archive-after-execute, amp archives the started thread and the wake fails: fail wake: builder status note 1 did not change after the wake
 pass amp: the fake exits 2 on --stream-json without -x
 pass amp: the fake exits 2 on --effort on a continued thread
 pass amp: the fake exits 2 on an effort level amp does not know
