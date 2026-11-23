@@ -65,6 +65,10 @@ def main():
         fake_cli.refuse()
     if (a[2] == '--resume') != a[8].startswith('You were woken'):
         fake_cli.refuse()
+    if a[2] == '--resume' and os.environ.get('FAKE_QWEN_CHAT_RECORDING') == 'false':
+        print('No saved session found with ID %s. Run `qwen --resume` without an ID to choose from existing sessions.'
+              % a[3], file=sys.stderr)
+        sys.exit(1)
     fake_cli.background_service = stop_failure_hook_supervisor
     fake_cli.turn(a[8], a[5], a[3], daemon='stop-failure-hook', signed_out=SIGNED_OUT, signed_out_exit=1)
 

@@ -78,6 +78,14 @@ def main():
                 not any(re.search(s, lines[0], re.I) for s in row['signed_out']):
             failures.append("the row's signed_out misses qwen's %s refusal (exit %d)" % (auth, p.returncode))
         seen.add(lines[0] if lines else '')
+    p = run(WAKE, FAKE_QWEN_CHAT_RECORDING='false')
+    if p.returncode != 1 or p.stdout or p.stderr != 'No saved session found with ID %s. Run `qwen --resume` without an ' \
+            'ID to choose from existing sessions.\n' % SID or any(re.search(s, p.stderr, re.I) for s in row['signed_out']):
+        failures.append('a wake with chat recording off is not qwen\'s missing-session exit, or reads as signed out')
+    with open(os.path.join(HERE, 'README.md')) as f:
+        commands = f.read().partition('## The commands')[2].partition('\n## ')[0]
+    if not re.search(r'- Start: .*\n- Wake: .*\n(.*\n)?.*`general\.chatRecording`', commands):
+        failures.append('the README does not name the general.chatRecording prerequisite beside start and wake')
     if 'subscription_credentials.json' not in row['login'] or 'oauth_creds.json' in row['login']:
         failures.append("the row's login does not name the Qwen subscription sign-in, subscription_credentials.json")
     if sorted(row['modes']) != sorted(['plan', 'default', 'auto-edit', 'auto', 'yolo']) or \
