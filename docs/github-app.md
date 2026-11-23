@@ -219,6 +219,46 @@ python3 -I tools/github-app/token-service.py stop --state-dir "$HOME/.local/stat
   `contracts/fixtures/token-service/requests.json` case and the guards above against
   a fake GitHub with a throwaway key.
 
+## Pairing App selection
+
+When the owner's machine holds more than one App's state, the pairing mint must reach
+the right App, not whatever the default state directory holds. Point
+`OPENWIZ_TOKEN_SERVICE` at the selector, `tools/github-app/app-select.py`, instead of
+the service. The contract's call is unchanged (`python3 -I '<OPENWIZ_TOKEN_SERVICE>'
+mint`): the selector reads the same request, chooses one App's state directory, runs
+`token-service.py mint --state-dir <that state>` and passes the service's one JSON line
+and exit back unchanged. Start each App's service as above, with its own `--state-dir`.
+
+Its config is `OPENWIZ_APP_SELECT_CONFIG`, by default
+`~/.config/openwiz/app-select.json`: a regular file you own, mode 0600, holding exactly
+one of:
+
+```json
+{"state_dir": "/home/someone/.local/state/openwiz-agents"}
+{"candidates": ["/home/someone/.local/state/openwiz-agents", "/home/someone/.local/state/openwiz"]}
+```
+
+- **Named** (`state_dir`): every mint goes to exactly that App. The selector asks
+  GitHub nothing itself.
+- **Resolved** (`candidates`): the selector asks each listed App's own installation
+  lookup (`GET /repos/<owner>/<name>/installation`, signed with that App's JWT) and
+  picks the one App installed on every requested repository. It never calls the token
+  endpoint; only the service mints.
+- **Fails closed.** A missing, unreadable, symlinked or not-owner-only config, one with
+  both or neither key, a relative or missing state directory, no matching App or more
+  than one, or a lookup that fails: the selector answers the contract's refusal
+  (`unavailable`, exit 1; or `not-installed`, exit 3, when no App is installed) and
+  writes one fixed sentence to standard error naming `OPENWIZ_APP_SELECT_CONFIG`. It
+  starts no service and mints nothing. An invalid request gets the service's own
+  `usage` or `one-owner` refusal.
+- **Never exposed.** The selector never reads a private key: `app.py` hands the key to
+  `openssl` as a file descriptor to sign the lookup's JWT. No key or token reaches its
+  arguments, standard error or any file. The token crosses only in the service's
+  answer, which the selector passes through on standard output.
+- **Tests.** `python3 -I tools/github-app/test_app_select.py` runs two fake App states
+  with throwaway keys against a fake GitHub: resolved, named, ambiguous, unknown and
+  unsafe-config cases.
+
 ## Agent tokens (G2)
 
 **The legacy Cloudroom-secret route is retired: use [the token service

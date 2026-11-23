@@ -161,6 +161,7 @@ jobs:
           python3 -I contracts/fixtures/token-service/test_fixtures.py
           python3 -I tools/github-app/test_agent_token.py
           python3 -I tools/github-app/test_token_service.py
+          python3 -I tools/github-app/test_app_select.py
       - name: Save the Cargo cache
         if: github.event_name == 'push' && matrix.part == 2
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

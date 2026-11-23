@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""The pairing App selector (#2661): two fake App states, a fake GitHub and throwaway keys only."""
 import base64
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -23,7 +22,6 @@ PIN = json.loads(re.search(r"```json\n(.*?)\n```", (HERE.parents[1] / "contracts
                           re.S).group(1))
 APPS = {"a": (1001, 2001, {"synthetic-owner/alpha", "synthetic-owner/shared"}),
         "b": (1002, 2002, {"synthetic-owner/beta", "synthetic-owner/shared"})}
-# Logs every argument list the selector starts, so a test can see the service call and that no secret is in it.
 HOOK = ("import json, runpy, sys\n"
         "out = open(sys.argv[1], 'a')\n"
         "def hook(event, args):\n"
@@ -150,7 +148,7 @@ class SelectorTests(unittest.TestCase):
         app_id, installation, _ = APPS[name]
         self.assertEqual((done.returncode, done.stderr), (0, ""))
         self.assertEqual(json.loads(done.stdout)["token"], f"synthetic-token-{app_id}")
-        self.assertEqual(self.service_calls()[-1][-6:],
+        self.assertEqual(self.service_calls()[-1][-5:],
                          ["mint", "--state-dir", str(self.states[name]), "--api-base", url])
 
     def assert_refused(self, done, calls, exit_code, refusal):
@@ -163,7 +161,6 @@ class SelectorTests(unittest.TestCase):
         self.assertEqual((self.logged("a"), self.logged("b")), ([], []))
 
     def tearDown(self):
-        # Never exposed: no key or token in any output but the answer, any argument list, or any file but the key.
         secrets = [line for key in self.keys for line in key.read_bytes().splitlines()[1:-1]]
         secrets += [f"synthetic-token-{app_id}".encode() for app_id, _, _ in APPS.values()]
         places = [("stderr", o.encode()) for o in self.outputs[1::2]]
@@ -175,7 +172,6 @@ class SelectorTests(unittest.TestCase):
         self.assertFalse(self.default.exists(), "the default state stays untouched")
 
     def test_resolved_reaches_the_app_installed_on_the_repository(self):
-        # catches: a mint that uses the default or first App instead of the App installed on R
         self.configure({"candidates": [str(self.states["a"]), str(self.states["b"])]})
         with fake_github() as (url, calls):
             self.assert_minted_by(self.select(url, request("synthetic-owner/beta")), url, "b")
@@ -184,7 +180,6 @@ class SelectorTests(unittest.TestCase):
         self.assertEqual((len(self.logged("a")), len(self.logged("b"))), (1, 1))
 
     def test_named_uses_exactly_the_named_app(self):
-        # catches: a named setting that still resolves, falls back to the default, or asks the other App
         self.configure({"state_dir": str(self.states["b"])})
         with fake_github() as (url, calls):
             self.assert_minted_by(self.select(url, request("synthetic-owner/shared")), url, "b")
@@ -192,7 +187,6 @@ class SelectorTests(unittest.TestCase):
         self.assertEqual((len(self.logged("a")), len(self.logged("b"))), (0, 1))
 
     def test_ambiguous_and_unknown_refuse_and_mint_nothing(self):
-        # catches: picking the first of two matching Apps, or handing an unmatched request to some App anyway
         self.configure({"candidates": [str(self.states["a"]), str(self.states["b"])]})
         with fake_github() as (url, calls):
             self.assert_refused(self.select(url, request("synthetic-owner/shared")), calls, 1, "unavailable")
@@ -201,7 +195,6 @@ class SelectorTests(unittest.TestCase):
                                 calls, 3, "not-installed")
 
     def test_a_missing_unsafe_or_unclear_config_refuses_before_any_call(self):
-        # catches: a selector that trusts a config others can write, or guesses when the config is unclear
         a, b = str(self.states["a"]), str(self.states["b"])
         cases = [("missing", None, 0o600), ("group-readable", {"state_dir": a}, 0o640),
                  ("both keys", {"state_dir": a, "candidates": [b]}, 0o600), ("not JSON", "{", 0o600),
@@ -210,6 +203,9 @@ class SelectorTests(unittest.TestCase):
                  ("named state missing", {"state_dir": str(self.root / "absent")}, 0o600)]
         for name, value, mode in cases:
             with self.subTest(name), fake_github() as (url, calls):
+                self.argv_log.unlink(missing_ok=True)
+                for state in self.states.values():
+                    (state / "service/token-service/mint-log.jsonl").unlink(missing_ok=True)
                 if self.config.exists() or self.config.is_symlink():
                     self.config.unlink()
                 if value is not None:
