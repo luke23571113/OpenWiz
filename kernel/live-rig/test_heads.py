@@ -314,6 +314,18 @@ class Heads(unittest.TestCase):
                 self.assertEqual((p.returncode, p.stdout), (2, ''), p.stderr)
         self.assertEqual(self.calls(), [])
 
+    def test_a_frozen_head_naming_another_pr_or_a_host_with_no_config_is_skipped_and_starts_no_kit(self):
+        tickets = os.path.join(self.folder, 'other.json')
+        with open(tickets, 'w') as f:
+            json.dump({'fixture-paid': {'id': 'FX5L', 'ticket': 105, 'pr': 999, 'listing': 'fixture-paid'},
+                       'fixture-absent': {'id': 'FX7L', 'ticket': 105, 'pr': 205, 'listing': 'fixture-absent'}}, f)
+        p = subprocess.run([sys.executable, '-I', os.path.join(self.checkout, 'kernel', 'live-rig', 'heads.py'),
+                            '--tickets', tickets, '--hosts', self.hosts, '--settings', self.settings, '--out', self.out,
+                            '--allow-cost', 'fixture-paid'], env=self.env, capture_output=True, text=True, timeout=60)
+        self.assertEqual((p.returncode, p.stdout), (0, 'skipped fixture-paid: the frozen head names #205, not the build '
+                                                       'PR #999\nskipped fixture-absent: no host config\n'), p.stderr)
+        self.assertFalse(self.kit_ran())
+
     def test_a_kit_line_quoting_a_path_the_repository_or_the_login_is_withheld_from_the_record_and_comment(self):
         code, out, err = self.heads(['fixture-quoting'], '--allow-cost', 'fixture-quoting')
         self.assertEqual(code, 1, err)
