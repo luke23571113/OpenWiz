@@ -1,1 +1,44 @@
-{}
+{
+  "harness": "gemini",
+  "program": "gemini",
+  "start": [
+    "-p",
+    "{prompt}",
+    "-o",
+    "stream-json",
+    "--session-id",
+    "{session}",
+    "-m",
+    "{model}",
+    "{mode}"
+  ],
+  "wake": [
+    "-p",
+    "{prompt}",
+    "-o",
+    "stream-json",
+    "--resume",
+    "{session}",
+    "-m",
+    "{model}",
+    "{mode}"
+  ],
+  "session": {
+    "chosen": "uuid"
+  },
+  "modes": {
+    "yolo": [
+      "--approval-mode",
+      "yolo",
+      "--skip-trust"
+    ]
+  },
+  "env": {},
+  "effort": "none: Gemini CLI v0.70.0 has no effort flag or environment setting; thinking is set only in settings.json modelConfigs (docs/cli/generation-settings.md, packages/cli/src/config/config.ts)",
+  "login": "Gemini CLI's own login: the cached Google sign-in under ~/.gemini, or the GEMINI_API_KEY the user set; the driver never reads or passes it",
+  "daemon": "none",
+  "signed_out": [
+    "Please set an Auth method in your"
+  ],
+  "login_command": "gemini"
+}
