@@ -367,12 +367,23 @@ def rows_read_first_turn_output(planted):
     return ok
 
 
+def effort_checked_first_with_its_grammar(planted):
+    with ThrowawayMachine(planted, 'example', mode='auto') as env:
+        ok = env.start_refused_starting_nothing(lambda out: out['next'] == CANT_SET_EFFORT, effort='medium')
+    with example_variant('example', effort={'High': ['--effort', 'high']}) as rows, \
+            ThrowawayMachine(rows, 'example', mode='auto') as env:
+        ok = env.start_refused_starting_nothing(lambda out: 'harnesses/example/row.json (effort:' in out['error']) and ok
+    return ok
+
+
 def check_driver(rows):
     found = [("a broken row's D3 error names its row file and fits the error schema: a row folder with no row.json, "
               "a harness that is not a string, and a 60-character harness with a missing field",
               broken_rows_name_their_file(rows)),
              ("a row's session id and signed_out patterns are read from its first turn's output, never the clone's, "
-              "and the first line that has the session's JSON path decides it", rows_read_first_turn_output(rows))]
+              "and the first line that has the session's JSON path decides it", rows_read_first_turn_output(rows)),
+             ("an effort the row can't take is refused before the driver looks for its program, and a row's effort "
+              "ids are lower-case words of up to 20 characters", effort_checked_first_with_its_grammar(rows))]
     with ThrowawayMachine(rows, 'example', 'example-cli', os.path.join(rows, 'example', 'fake'), 'auto') as env:
         lists = lambda out: out['next'].startswith('use one of: claude, codex, ') and 'example-none' in out['next']
         found.append(('an unknown harness is a D3 error that lists the built-ins and the row folders, and starts '
