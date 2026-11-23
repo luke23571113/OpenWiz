@@ -149,6 +149,29 @@ def arguments(row, field, needs):
             raise Broken(field, 'it has no ' + p)
 
 
+def credential_shaped(args):
+    return any(holds_credential(a) for a in args if a) or \
+        any(holds_credential('%s=%s' % pair) or holds_credential('%s %s' % pair) for pair in zip(args, args[1:])
+            if all(pair))
+
+
+def no_credential_arguments(row):
+    # PRIVACY: a row's fixed arguments are saved in run state and passed in argv, so none may hold a credential;
+    # the refusal names the field, never the argument.
+    efforts = [a for a in row['effort'].values() if isinstance(a, list)] if isinstance(row['effort'], dict) else []
+    for field, lists in (('start', [row['start']]), ('wake', [row['wake']]), ('modes', list(row['modes'].values())),
+                         ('effort', efforts)):
+        if any(credential_shaped([a if a not in PLACEHOLDERS else '' for a in args]) for args in lists):
+            raise Broken(field, 'a fixed argument looks like a credential; a row holds no login, key or token')
+    for field in ('start', 'wake'):
+        for mode in row['modes'].values():
+            for effort in efforts or [[]]:
+                fills = {'{mode}': mode, '{effort}': effort}
+                if credential_shaped([b for a in row[field] for b in fills.get(a, [a if a not in PLACEHOLDERS else ''])]):
+                    raise Broken(field, 'with a mode or effort spliced in, its arguments look like a credential; a '
+                                        'row holds no login, key or token')
+
+
 def check_row(row, name):
     if not isinstance(row, dict):
         raise Broken('fields', 'it is not one JSON object')
@@ -201,6 +224,7 @@ def check_row(row, name):
     arguments(row, 'wake', ('{prompt}', '{mode}', '{session}'))
     if kind != 'chosen' and '{session}' in row['start']:
         raise Broken('start', 'it has {session}, but the session is reported, not chosen')
+    no_credential_arguments(row)
     flags = isinstance(effort, dict) and any(isinstance(s, list) for s in effort.values())
     if flags and '{effort}' not in row['start']:
         raise Broken('effort', 'it maps effort values to arguments, but start has no {effort} to pass them')
