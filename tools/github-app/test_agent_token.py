@@ -1448,6 +1448,48 @@ class FinalRound(Helper):
                              "the fresh token it could not store is revoked")
             self.assertNotIn(TOKEN2, err)
 
+    def test_a_mint_that_loses_its_folder_keeps_its_token_for_a_later_revoke(self):
+        # comment-ok: catches: a mint whose folder was deleted in flight and whose emergency DELETE GitHub
+        # refused leaving the fresh token live with no copy, so no later revoke or mint can find it.
+        went = "openwiz: agent-token: the private token directory went away, so the new token was "
+        fresh = [("DELETE", sha(f"Bearer {TOKEN2}"))]
+        for later, status, said in (
+                ("revoke", 401, "not revoked (GitHub refused); the token is kept for a later revoke\n"),
+                ("mint", 401, "not revoked (GitHub refused); the token is kept for a later revoke\n"),
+                ("nothing", 204, "revoked\n")):
+            with self.subTest(later=later):
+                shutil.rmtree(self.private, True)
+                for left in ("gate", "gate.started", "calls.log"):
+                    (self.root / left).unlink(missing_ok=True)
+                self.answers(answer(token=TOKEN2), answer())
+                first, copies = self.api(status=status), []
+                first.during = lambda: copies.append(len(self.side_files()))
+                self.env["OPENWIZ_GITHUB_API_BASE"] = first.base()
+                minting, gate = self.gated()
+                shutil.rmtree(self.private)
+                gate.touch()
+                out, err = minting.communicate(timeout=30)
+                self.assertEqual((minting.returncode, out), (2, ""))
+                self.assertEqual(copies, [1], "the copy is saved before the emergency DELETE is sent")
+                self.assertEqual(self.deletes(first), fresh)
+                self.assertEqual(err, went + said)
+                sides = self.side_files()
+                self.assertEqual(len(sides), status != 204, "kept until GitHub answers 204")
+                self.assertFalse(self.token_file().exists(), "the refused mint leaves no usable cache")
+                done = [types.SimpleNamespace(stdout=out, stderr=err)]
+                if sides:
+                    self.assertEqual(json.loads(sides[0].read_text())["token"], TOKEN2)
+                    self.assertEqual((sides[0].stat().st_mode & 0o777, self.private.stat().st_mode & 0o777),
+                                     (0o600, 0o700), "owner-only copy in an owner-only folder")
+                    api = self.api()
+                    self.env["OPENWIZ_GITHUB_API_BASE"] = api.base()
+                    done.append(self.start() if later == "mint" else self.revoke(api))
+                    self.assertEqual((done[1].returncode, done[1].stderr), (0, ""))
+                    self.assertEqual(self.deletes(api), fresh, f"a later {later} finds and revokes it")
+                    self.assertEqual(self.side_files(), [])
+                    self.assertEqual(self.token_file().exists(), later == "mint")
+                self.assert_never_exposed(*done)
+
     @unittest.skipUnless(os.path.isdir("/proc/self/fd"), "needs /proc/self/fd")
     def test_r9_no_child_inherits_a_readable_credential_handle(self):
         # comment-ok: catches: a run handing its children an open, readable copy of the token, which a

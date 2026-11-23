@@ -1,0 +1,50 @@
+FFF
+======================================================================
+FAIL: test_a_mint_that_loses_its_folder_keeps_its_token_for_a_later_revoke (__main__.FinalRound.test_a_mint_that_loses_its_folder_keeps_its_token_for_a_later_revoke) (later='revoke')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/github-app/test_agent_token.py", line 1473, in test_a_mint_that_loses_its_folder_keeps_its_token_for_a_later_revoke
+    self.assertEqual(copies, [1], "the copy is saved before the emergency DELETE is sent")
+AssertionError: Lists differ: [0] != [1]
+
+First differing element 0:
+0
+1
+
+- [0]
++ [1] : the copy is saved before the emergency DELETE is sent
+
+======================================================================
+FAIL: test_a_mint_that_loses_its_folder_keeps_its_token_for_a_later_revoke (__main__.FinalRound.test_a_mint_that_loses_its_folder_keeps_its_token_for_a_later_revoke) (later='mint')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/github-app/test_agent_token.py", line 1473, in test_a_mint_that_loses_its_folder_keeps_its_token_for_a_later_revoke
+    self.assertEqual(copies, [1], "the copy is saved before the emergency DELETE is sent")
+AssertionError: Lists differ: [0] != [1]
+
+First differing element 0:
+0
+1
+
+- [0]
++ [1] : the copy is saved before the emergency DELETE is sent
+
+======================================================================
+FAIL: test_a_mint_that_loses_its_folder_keeps_its_token_for_a_later_revoke (__main__.FinalRound.test_a_mint_that_loses_its_folder_keeps_its_token_for_a_later_revoke) (later='nothing')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "tools/github-app/test_agent_token.py", line 1473, in test_a_mint_that_loses_its_folder_keeps_its_token_for_a_later_revoke
+    self.assertEqual(copies, [1], "the copy is saved before the emergency DELETE is sent")
+AssertionError: Lists differ: [0] != [1]
+
+First differing element 0:
+0
+1
+
+- [0]
++ [1] : the copy is saved before the emergency DELETE is sent
+
+----------------------------------------------------------------------
+Ran 1 test in 2.008s
+
+FAILED (failures=3)
