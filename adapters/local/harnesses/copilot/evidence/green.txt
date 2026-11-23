@@ -1,0 +1,7 @@
+$ env -u OPENWIZ_GITHUB_APP_KEY PATH="<31 refusing stubs>:$PATH" python3 -I adapters/local/test_harnesses.py --rows adapters/local/harnesses
+pass copilot: the contract, the folder, the kit's five checks, and the session, env, background process and effort checks
+exit 0
+$ env -u OPENWIZ_GITHUB_APP_KEY PATH="<31 refusing stubs>:$PATH" python3 -I adapters/local/test_harnesses.py
+rows in adapters/local/harnesses: copilot
+pass copilot: the contract, the folder, the kit's five checks, and the session, env, background process and effort checks
+exit 0

@@ -1,1 +1,64 @@
-{}
+{
+  "harness": "copilot",
+  "program": "copilot",
+  "start": [
+    "-p",
+    "{prompt}",
+    "--output-format",
+    "json",
+    "--session-id",
+    "{session}",
+    "--model",
+    "{model}",
+    "{mode}",
+    "{effort}"
+  ],
+  "wake": [
+    "-p",
+    "{prompt}",
+    "--session-id",
+    "{session}",
+    "{mode}",
+    "{effort}"
+  ],
+  "session": {
+    "chosen": "uuid"
+  },
+  "modes": {
+    "allow-all-tools": [
+      "--allow-all-tools"
+    ],
+    "allow-all": [
+      "--allow-all"
+    ]
+  },
+  "env": {},
+  "effort": {
+    "low": [
+      "--reasoning-effort",
+      "low"
+    ],
+    "medium": [
+      "--reasoning-effort",
+      "medium"
+    ],
+    "high": [
+      "--reasoning-effort",
+      "high"
+    ],
+    "xhigh": [
+      "--reasoning-effort",
+      "xhigh"
+    ],
+    "max": [
+      "--reasoning-effort",
+      "max"
+    ]
+  },
+  "login": "copilot's own login, saved by `copilot login` in the system credential store, or in plain text under ~/.copilot/ (or $COPILOT_HOME) when there is no store",
+  "daemon": "copilot may start a detached rem-agent memory pass (a second copilot -p, behind its COPILOT_SUBCONSCIOUS experiment) as a session shuts down; stop ends it with the process tree, on Linux",
+  "signed_out": [
+    "no authentication information found"
+  ],
+  "login_command": "copilot login"
+}
