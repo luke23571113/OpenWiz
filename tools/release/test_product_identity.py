@@ -626,6 +626,15 @@ class LinuxArchitecture(unittest.TestCase):
             with self.subTest(case=case):
                 self.assertFalse(self.architecture(data, self.ARM))
 
+    def test_unsupported_target_aliases_refuse_every_program(self):
+        programs = {'AArch64 ELF': elf(183), 'x86_64 ELF': elf(62),
+                    'Mach-O arm64': program('aarch64-apple-darwin'), 'Mach-O x86_64': program('x86_64-apple-darwin')}
+        for target in ('aarch64-synthetic-linux-gnu', 'x86_64-synthetic-linux-gnu', 'aarch64-linux-gnu',
+                       'x86_64-unknown-linux-musl', 'aarch64-synthetic-darwin', 'x86_64-synthetic-darwin', ''):
+            for case, data in programs.items():
+                with self.subTest(target=target, program=case):
+                    self.assertFalse(self.architecture(data, target))
+
     def test_macho_targets_are_unchanged_and_refuse_elf(self):
         for target in ('aarch64-apple-darwin', 'x86_64-apple-darwin'):
             with self.subTest(target=target):
