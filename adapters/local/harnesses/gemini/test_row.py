@@ -28,6 +28,7 @@ REFUSED = {
     'a start prompt on a wake': WAKE[:1] + START[1:2] + WAKE[2:],
     'interactive -i': ['-i'] + START[1:],
     'nothing': [],
+    'an option-shaped prompt after -p': START[:1] + ['--unknown=with the build-ticket skill'] + START[2:],
 }
 SIGNED_OUT = ('no-auth-type', 'api-key-missing', 'vertex-missing', 'manual-authorization')
 
