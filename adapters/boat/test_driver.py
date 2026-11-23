@@ -374,6 +374,23 @@ class Boat(unittest.TestCase):
                 self.assertLessEqual(len(out['error']), 300)
                 self.assertEqual(self.boat_calls(calls), [['prompt', '--help', '--no-update']])
                 self.assertEqual((self.sandboxes(), self.run_files(), self.logged()), ({}, [], []))
+        for effort in ('medium', None):  # a harness outside boat's list: the refusal text only when effort is set
+            with self.subTest(harness='gemini', effort=effort):
+                calls = os.path.join(self.folder, 'calls-gemini-%s' % effort)
+                request = dict(REQUEST, harness='gemini', model='gemini-3.8-flash',
+                               **({'effort': effort} if effort else {}))
+                code, out = self.driver('start', request, FAKE_BOAT_ARGS=calls)
+                self.assertEqual((code, sorted(out)), (1, ['error', 'next']), out)
+                if effort:
+                    self.assertEqual(out['next'], CANT)
+                    self.assertRegex(out['error'], r'(?<![\w-])gemini(?![\w-])')
+                    self.assertRegex(out['error'], r'(?<![\w-])medium(?![\w-])')
+                    self.assertLessEqual(len(out['error']), 300)
+                else:
+                    self.assertEqual(out, {'error': 'boat has no harness gemini',
+                                           'next': 'use one of: claude, codex, pi, opencode, prime, kimi, mistral'})
+                self.assertEqual((self.boat_calls(calls), self.sandboxes(), self.run_files(), self.logged()),
+                                 ([], {}, [], []))
 
     def test_the_driver_reads_the_level_list_boat_1_0_105_prints(self):
         for harness, model, effort, passed in (('claude', 'opus-5-5', 'medium', True),
@@ -396,6 +413,8 @@ class Boat(unittest.TestCase):
     def test_a_start_whose_levels_cannot_be_read_starts_nothing(self):
         marker = 'sk-' + 'Synthetic0Host0Marker' + self.mark
         for name, env in (('fails', dict(FAKE_BOAT_FAIL='prompt')), ('no level list', dict(FAKE_BOAT_HELP='bare')),
+                          ('no model rows', dict(FAKE_BOAT_HELP='headed')),
+                          ('truncated', dict(FAKE_BOAT_HELP='truncated')),
                           ('diagnostic', dict(PATH=self.odd_boat(), STDERR_FOR='prompt', STDERR_HOW='mixed',
                                               FAKE_MARKER=marker))):
             with self.subTest(name):

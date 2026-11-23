@@ -212,11 +212,14 @@ def main():
     elif cmd == 'exec':
         run_in_sandbox(rest)
     elif cmd == 'prompt' and rest == ['--help', '--no-update']:
-        name = 'prompt-help-1.0.105.txt' if os.environ.get('FAKE_BOAT_HELP') == 'live' else 'prompt-help.txt'
+        how = os.environ.get('FAKE_BOAT_HELP')
+        name = {'live': 'prompt-help-1.0.105.txt', 'truncated': 'prompt-help-truncated.txt'}.get(how, 'prompt-help.txt')
         with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', name)) as f:
             text = f.read()
-        if os.environ.get('FAKE_BOAT_HELP') == 'bare':
+        if how in ('bare', 'headed'):  # no level list; or its heading and one harness heading, with no model rows
             text = text.split('Reasoning / thinking levels')[0]
+            if how == 'headed':
+                text += 'Reasoning / thinking levels (grouped by the models that share them):\n  claude\n'
         print(text, end='')
     elif cmd == 'prompt':
         prompt(rest)
