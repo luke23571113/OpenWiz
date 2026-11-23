@@ -514,6 +514,17 @@ class Kit(unittest.TestCase):
                 self.assertEqual((code, out), (0 if all(x.startswith('pass') for x in lines) else 1, lines), err)
                 self.assertEqual(efforts(args), ['medium'] * HARNESS_EFFORTS.get(name, 0), name)
 
+    def test_a_refusal_that_is_not_about_effort_is_reported_plainly(self):
+        cases = {'planted/effort-refuses-every-start': 'fail start: the sandbox cannot push to example/site',
+                 'planted/effort-wrong-next': 'fail start: effort: ' + EFFORT_WHY['planted/effort-wrong-next']}
+        for name, line in cases.items():
+            with self.subTest(name):
+                self.tearDown()
+                self.setUp()
+                code, out, err = self.kit(os.path.join(FIXTURES, name, 'driver'))
+                self.assertEqual((code, out), (1, [PASS[0], line] + NOT_RUN + [PASS[4]]), err)
+                self.assertEqual(self.left(), [], 'a run the kit started to tell the refusals apart still runs')
+
     def test_without_proc_as_on_macos_effort_on_a_command_line_is_seen(self):
         for name in ('effort', 'planted/effort-dropped'):
             with self.subTest(name):
