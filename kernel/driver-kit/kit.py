@@ -679,7 +679,7 @@ class Kit:
 
     def wake(self):
         notes = self.ticket.builder_notes()
-        kind, v = self.call('wake', {'run': self.run})
+        kind, v = self.sampled('wake', {'run': self.run})
         if kind != 'ok':
             return 'fail', v['error'] if kind == 'refused' else v
         if v['run'] != self.run:
@@ -694,7 +694,7 @@ class Kit:
 
     def stop(self):
         self.stopped = True
-        kind, v = self.call('stop', {'run': self.run})
+        kind, v = self.sampled('stop', {'run': self.run})
         if self.unverified():
             return 'fail', self.unverified()
         if kind != 'ok':
@@ -959,7 +959,7 @@ class Kit:
         except OSError:
             return None
 
-    def sampled(self, cmd, request, env, canary):
+    def sampled(self, cmd, request, env=None, canary=None):
         stop = threading.Event()
 
         def watch():
