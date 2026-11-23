@@ -541,7 +541,7 @@ class Kit:
                     try:
                         listings[folder] = [folded(n) for n in os.listdir(folder)]
                     except OSError:
-                        listings[folder] = None
+                        listings[folder] = None if os.path.isdir(folder) else []
                 if listings[folder] is not None and not any(n.startswith(folded(name)) for n in listings[folder]):
                     break
             if not resolved and words[i].startswith(PATH_ARGUMENT):
