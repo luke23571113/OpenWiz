@@ -19,10 +19,29 @@ RESET = int(time.time()) + 3600
 STATUSES = ('requested', 'waiting', 'pending', 'queued', 'in_progress')
 FAKE_GH = '''import json, sys
 answers = json.load(open(sys.argv[0] + '.json'))
-if sys.argv[1:2] != ['api'] or len(sys.argv) != 3 or sys.argv[2] not in answers:
-    print('gh: HTTP 404: Not Found (synthetic)', file=sys.stderr)
+args = [a for a in sys.argv[1:] if a != '--include']
+if args[:2] == ['api', 'graphql'] and len(args) == 4 and args[2] == '-f' and args[3].startswith('query='):
+    key = 'graphql'
+else:
+    key = args[1] if args[:1] == ['api'] and len(args) == 2 else None
+if key not in answers:
+    print('gh: Not Found (HTTP 404)', file=sys.stderr)
     sys.exit(1)
-print(json.dumps(answers[sys.argv[2]]))
+got = answers[key]
+response = got['gh'] if type(got) is dict and 'gh' in got else {'body': got}
+if 'raw' in response:
+    sys.stdout.write(response['raw'])
+    sys.exit(0)
+status = response.get('status', 200)
+headers = {'X-Ratelimit-Resource': 'graphql' if key == 'graphql' else 'core', 'X-Ratelimit-Remaining': '4000'}
+headers.update(response.get('headers', {}))
+if '--include' in sys.argv:
+    sys.stdout.write('HTTP/2.0 %d %s\\n' % (status, 'OK' if status < 400 else 'Error'))
+    sys.stdout.write(''.join('%s: %s\\r\\n' % item for item in sorted(headers.items())) + '\\r\\n')
+sys.stdout.write(json.dumps(response['body']))
+if status >= 400:
+    print('gh: synthetic error (HTTP %d)' % status, file=sys.stderr)
+    sys.exit(1)
 '''
 
 
@@ -49,6 +68,7 @@ def answers():
             7103: [job(8301, 7103, 'queued', '2026-01-05T11:00:00Z')]}
     for rid, listed in jobs.items():
         got[f'{BASE}/runs/{rid}/jobs?per_page=100&page=1'] = {'total_count': len(listed), 'jobs': listed}
+    got['graphql'] = {'data': {'rateLimit': {'remaining': 4000}}}
     got['rate_limit'] = {'resources': {pool: {'limit': 5000, 'remaining': 4000, 'reset': RESET, 'used': 1000}
                                        for pool in ('core', 'graphql', 'search')}}
     return got
@@ -161,6 +181,53 @@ class Supply(unittest.TestCase):
                 self.assertEqual((result.returncode, result.stdout, result.stderr), (1, '', line))
                 self.assertFalse(self.output.exists())
                 self.assertEqual(sorted(os.listdir(self.output.parent)), [])
+
+    def test_no_backoff_signal_gives_retry_after_0_and_a_complete_observation(self):
+        observation = self.written(answers())
+        self.assertEqual((observation['complete'], observation['queue']['complete']), (True, True))
+        self.assertEqual([observation['budgets'][pool]['retry_after'] for pool in ('rest', 'graphql')], [0, 0])
+
+    def test_a_backoff_signal_gives_its_real_wait(self):
+        secondary = {'message': 'You have exceeded a secondary rate limit. Please wait a few minutes.'}
+        page = f'{BASE}/runs/7102/jobs?per_page=100&page=1'
+        listing = f'{BASE}/workflows/ci.yml/runs?status=queued&per_page=100&page=1'
+        limited = {'errors': [{'type': 'RATE_LIMITED', 'message': 'API rate limit exceeded'}]}
+        cases = (('retry-after on a 403', page, {'status': 403, 'headers': {'Retry-After': '120'}, 'body': secondary},
+                  'rest', 120),
+                 ('a secondary 403 with no retry-after', page, {'status': 403, 'body': secondary}, 'rest', 60),
+                 ('a 429 on a run listing', listing,
+                  {'status': 429, 'headers': {'Retry-After': '90'}, 'body': {'message': 'Too many requests'}}, 'rest', 90),
+                 ('graphql rate limited', 'graphql', {'headers': {'Retry-After': '45'}, 'body': limited}, 'graphql', 45))
+        for case, path, response, pool, wait in cases:
+            with self.subTest(case=case):
+                answered = answers()
+                answered[path] = {'gh': response}
+                observation = self.written(answered)
+                budgets = observation['budgets']
+                self.assertIn(budgets[pool]['retry_after'] - observation['observed_at'], range(wait - 5, wait + 1))
+                self.assertEqual(budgets['graphql' if pool == 'rest' else 'rest']['retry_after'], 0)
+                self.assertEqual(observation['complete'], False)
+                (self.root / 'private' / 'pause.json').unlink(missing_ok=True)
+                answer = self.guard()
+                self.assertEqual((answer['level'], answer['allowed']), ('alarm', False))
+                self.assertEqual(sorted(answer['causes']), sorted([pool + '_backoff', 'observation_unknown']))
+
+    def test_an_unknown_backoff_writes_complete_false(self):
+        page = f'{BASE}/runs/7101/jobs?per_page=100&page=1'
+        cases = (('no header block', page, lambda body: {'raw': json.dumps(body)}),
+                 ('a retry-after that is not seconds', page,
+                  lambda body: {'headers': {'Retry-After': 'Wed, 21 Oct 2026 07:28:00 GMT'}, 'body': body}),
+                 ('graphql unreadable', 'graphql', lambda body: {'status': 502, 'body': {'message': 'Server Error'}}),
+                 ('graphql errors', 'graphql', lambda body: {'body': {'errors': [{'type': 'INTERNAL', 'message': 'x'}]}}))
+        for case, path, response, in cases:
+            with self.subTest(case=case):
+                answered = answers()
+                answered[path] = {'gh': response(answered[path])}
+                observation = self.written(answered)
+                self.assertEqual((observation['complete'], observation['queue']['complete']), (False, False))
+                (self.root / 'private' / 'pause.json').unlink(missing_ok=True)
+                answer = self.guard()
+                self.assertEqual((answer['level'], answer['allowed']), ('unknown', False))
 
 
 if __name__ == '__main__':
