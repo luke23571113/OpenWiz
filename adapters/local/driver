@@ -293,8 +293,10 @@ def lsof_failed_in(run, supervisors):
             with open(lsof_failed_record(run, pid)) as f:
                 if json.load(f)['supervisor_since'] == started:
                     return True
-        except (OSError, ValueError, KeyError, TypeError):
+        except FileNotFoundError:
             continue
+        except (OSError, ValueError, KeyError, TypeError):
+            return True
     return False
 
 
