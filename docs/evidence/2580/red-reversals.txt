@@ -1,4 +1,4 @@
-# Each review fix reverted alone in a scratch copy, then its test run (the scratch copies are never committed)
+# Each review fix reverted alone in a scratch copy, then its test run (the scratch copies are never committed): python3 -I docs/evidence/2580/reverse.py kernel/live-rig/vps
 R5 reverted, test_fixture_install_into_home_prefix: exit 1
   AssertionError: Items in the first set but not the second:
   FAILED (failures=1)

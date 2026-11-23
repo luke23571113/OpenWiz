@@ -7,9 +7,9 @@ if [ -z "$py" ] || ! "$py" -I -c 'import sys; sys.exit(sys.version_info < (3, 9)
     exit 2
 fi
 here="$(cd "$(dirname "$0")" && pwd)"
-code="$(sed '1,/^#-- python --$/d' "$0")"
+code="$(sed '1,/^python_below = True$/d' "$0")"
 exec "$py" -I -c "$code" "$here" "$@"
-#-- python --
+python_below = True
 import hashlib
 import json
 import os

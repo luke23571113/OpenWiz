@@ -11,6 +11,6 @@ test_wrong_version_keeps_the_working_tool (__main__.BootstrapTest.test_wrong_ver
 test_every_tool_names_its_source_exact_version_checksum_and_why (__main__.ToolsJsonTest.test_every_tool_names_its_source_exact_version_checksum_and_why) ... ok
 
 ----------------------------------------------------------------------
-Ran 10 tests in 1.042s
+Ran 10 tests in 0.975s
 
 OK

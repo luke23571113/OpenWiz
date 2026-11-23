@@ -1,4 +1,3 @@
-# Usage: python3 -I docs/evidence/2580/reverse.py kernel/live-rig/vps
 import os, re, shutil, subprocess, sys, tempfile
 src = sys.argv[1]
 cases = [
