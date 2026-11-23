@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
+import contextlib
+import ctypes
 import datetime
+import errno
+import io
 import importlib.machinery
 import importlib.util
 import json
 import os
-import secrets
 import shutil
 import signal
 import subprocess
@@ -16,9 +19,8 @@ import unittest
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, '..', '..')
-HOSTS = os.path.join(HERE, 'fixtures', 'hosts')
 FAKES = os.path.join(HERE, 'fixtures', 'rig')
-REPO, TICKET = 'example/rig-throwaway', 7
+REPO, TICKET, LOGIN = 'example/rig-throwaway', 7, 'example-rig-login'
 SECRET = 'gh' + 'p_' + 'Synthetic0Rig0Value' * 2 + '00'
 KEYS = ['host', 'harness', 'model', 'date', 'driver_commit', 'kit_commit', 'outcome', 'skipped', 'kit_exit',
         'stdout', 'seconds']
@@ -36,7 +38,8 @@ EARLIER = '<!-- openwiz:status v1 -->\nagent: builder\nstate: stopped\nharness: 
 AGENT_CLIS = ['claude', 'codex', 'cursor-agent', 'agent', 'pi', 'opencode', 'copilot', 'goose', 'gemini', 'kimi',
               'qwen', 'cline', 'kilo', 'crush', 'vibe', 'auggie', 'kiro-cli', 'junie', 'amp', 'agy', 'oz', 'sculpt',
               'hermes', 'acpx', 'droid']
-COPIED = ['kernel/live-rig/rig.py', 'kernel/driver-kit/kit.py', 'kernel/driver-kit/schema.json',
+COPIED = ['kernel/live-rig/rig.py', 'kernel/live-rig/fixtures/hosts', 'kernel/driver-kit/kit.py',
+          'kernel/driver-kit/schema.json',
           'kernel/driver-kit/fixtures/planted', 'kernel/records-kit/check.py', 'kernel/records.v1.md',
           'adapters/template/driver', 'adapters/template/schema.json']
 
@@ -48,6 +51,11 @@ def git(cwd, *args):
 
 
 class Rig(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        PR_SET_CHILD_SUBREAPER = 36
+        ctypes.CDLL(None, use_errno=True).prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0)
+
     def setUp(self):
         self.folder = tempfile.mkdtemp()
         self.checkout = os.path.join(self.folder, 'checkout')
@@ -64,12 +72,12 @@ class Rig(unittest.TestCase):
         git(self.checkout, 'add', '-A')
         git(self.checkout, 'commit', '-q', '-m', 'fixture checkout')
         self.head = git(self.checkout, 'rev-parse', 'HEAD')
+        self.hosts = os.path.join(self.checkout, 'kernel', 'live-rig', 'fixtures', 'hosts')
         self.settings = os.path.join(self.folder, 'settings.json')
         with open(self.settings, 'w') as f:
             json.dump({'repo': REPO, 'ticket': TICKET}, f)
         self.out = os.path.join(self.folder, 'out')
         self.gh_log = os.path.join(self.folder, 'gh.log')
-        self.mark = secrets.token_hex(8)
         tracker = os.path.join(self.folder, 'tracker.json')
         with open(tracker, 'w') as f:
             json.dump({'record_authors': ['example-bot[bot]'], 'comments': [
@@ -83,22 +91,47 @@ class Rig(unittest.TestCase):
                                 os.environ['PATH']])
         self.assertEqual({shutil.which(name, path=path) for name in AGENT_CLIS},
                          {os.path.join(stubs, name) for name in AGENT_CLIS})
-        self.env = dict(os.environ, PATH=path, KIT_TRACKER=tracker, RIG_TEST=self.mark, RIG_GH_LOG=self.gh_log,
+        self.env = dict(os.environ, PATH=path, KIT_TRACKER=tracker, RIG_GH_LOG=self.gh_log, RIG_GH_LOGIN=LOGIN,
                         RIG_GH_REPO=REPO, RIG_GH_TICKET=str(TICKET), GH_TOKEN=SECRET, RIG_PLANTED_KEY=SECRET,
                         OPENWIZ_TEMPLATE_STATE=os.path.join(self.folder, 'state'))
 
     def tearDown(self):
+        children = {}
         for pid in filter(str.isdigit, os.listdir('/proc')):
             try:
-                with open('/proc/%s/environ' % pid, 'rb') as f:
-                    if ('RIG_TEST=' + self.mark).encode() in f.read().split(b'\0'):
-                        os.kill(int(pid), signal.SIGKILL)
+                with open('/proc/%s/stat' % pid) as f:
+                    children.setdefault(int(f.read().rpartition(')')[2].split()[1]), []).append(int(pid))
+            except (OSError, IndexError, ValueError):
+                pass
+        todo = list(children.get(os.getpid(), []))
+        while todo:
+            pid = todo.pop()
+            todo += children.get(pid, [])
+            try:
+                os.kill(pid, signal.SIGKILL)
             except OSError:
                 pass
         shutil.rmtree(self.folder, ignore_errors=True)
 
+    def module(self):
+        old_path = os.environ['PATH']
+        os.environ['PATH'] = self.env['PATH']
+        self.addCleanup(os.environ.__setitem__, 'PATH', old_path)
+        spec = importlib.util.spec_from_loader('rig', importlib.machinery.SourceFileLoader(
+            'rig', os.path.join(self.checkout, 'kernel', 'live-rig', 'rig.py')))
+        rig = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(rig)
+        return rig
+
+    def commit_host(self, name, config):
+        with open(os.path.join(self.hosts, name), 'w') as f:
+            f.write(config if isinstance(config, str) else json.dumps(config))
+        git(self.checkout, 'add', '-A')
+        git(self.checkout, 'commit', '-q', '-m', 'a host config')
+
     def command(self, *extra):
-        return [sys.executable, '-I', os.path.join(self.checkout, 'kernel', 'live-rig', 'rig.py'), '--hosts', HOSTS,
+        rig = os.path.join(self.checkout, 'kernel', 'live-rig', 'rig.py')
+        return [sys.executable, '-I', rig, '--hosts', self.hosts,
                 '--settings', self.settings, '--out', self.out] + list(extra)
 
     def rig(self, *extra):
@@ -129,7 +162,8 @@ class Rig(unittest.TestCase):
         self.assertIn(record['date'], days)
         self.assertEqual((record['driver_commit'], record['kit_commit']), (self.head, self.head))
         self.assertIs(type(record['seconds']), int)
-        for private in (self.folder, os.path.realpath(self.folder), REPO, 'example-bot', SECRET, 'rig-throwaway'):
+        for private in (self.folder, os.path.realpath(self.folder), REPO, 'example-bot', SECRET, 'rig-throwaway',
+                        LOGIN):
             self.assertNotIn(private, text)
         return record
 
@@ -184,29 +218,38 @@ class Rig(unittest.TestCase):
         self.assertEqual((record['outcome'], record['kit_exit']), ('ran', 1))
         self.assertIn('fail wake: builder status note 2 did not change after the wake', record['stdout'])
 
-    def test_a_kit_line_quoting_the_checkout_or_the_repository_is_recorded_without_them(self):
+    def test_a_kit_line_quoting_the_checkout_or_the_repository_is_withheld_from_the_record_and_shown_on_stderr(self):
         code, out, err = self.rig('--host', 'fixture-quoting')
         self.assertEqual((code, out), (1, ['ran fixture-quoting fake-harness: 2 of 5']), err)
-        self.assertIn('fail start: cannot start <repository> in <checkout>/adapters/quoting\n',
-                      self.record('fixture-quoting')['stdout'])
+        self.assertEqual(self.record('fixture-quoting')['stdout'].splitlines(),
+                         [PASS[0], 'fail start: withheld', 'fail wake: not run: start failed',
+                          'fail stop: not run: start failed', PASS[4]])
+        self.assertIn('fail start: cannot start %s in %s/adapters/quoting\n' % (REPO, os.path.realpath(
+            self.checkout)), err)
+
+    def test_the_record_keeps_only_the_five_check_lines_each_free_of_paths_the_repository_the_login_and_shapes(self):
+        rig = self.module()
+        settings = {'repo': REPO, 'ticket': TICKET}
+        cases = {PASS[0]: PASS[0], 'fail stop: a process still runs': 'fail stop: a process still runs',
+                 'fail start: its schema is not kernel/driver-kit/schema.json': 'fail start: withheld',
+                 'fail start: no ticket in Example': 'fail start: withheld',
+                 'fail start: rig-throwaway has no fleet.md': 'fail start: withheld',
+                 'fail wake: posted as %s' % LOGIN: 'fail wake: withheld',
+                 'fail token: it sent token=abc123456789': 'fail token: withheld',
+                 'kit.py: a line that is no check': None, 'pass other: not one of the five': None}
+        for line, kept in cases.items():
+            with self.subTest(line):
+                self.assertEqual(rig.record_stdout(line + '\n', settings, LOGIN), kept and kept + '\n')
+        self.assertEqual(rig.record_stdout(PASS[0] + '\n', settings, None), 'pass version: withheld\n')
 
     def test_load_host_and_check_host_are_importable_and_give_the_exact_skip_reasons(self):
-        name = 'rig'
-        spec = importlib.util.spec_from_loader(name, importlib.machinery.SourceFileLoader(
-            name, os.path.join(HERE, 'rig.py')))
-        rig = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(rig)
+        rig = self.module()
         files = {'fixture-template': 'template.json', 'fixture-missing': 'missing.json',
                  'fixture-signed-out': 'signed-out.json', 'fixture-cost': 'cost-unknown.json'}
-        old_path = os.environ['PATH']
-        os.environ['PATH'] = self.env['PATH']
-        try:
-            for host, why in dict(SKIPS, **{'fixture-template': None}).items():
-                with self.subTest(host):
-                    config = rig.load_host(os.path.join(HOSTS, files[host]))
-                    self.assertEqual((config['host'], rig.check_host(config)), (host, why))
-        finally:
-            os.environ['PATH'] = old_path
+        for host, why in dict(SKIPS, **{'fixture-template': None}).items():
+            with self.subTest(host):
+                config = rig.load_host(os.path.join(self.hosts, files[host]))
+                self.assertEqual((config['host'], rig.check_host(config)), (host, why))
         self.assertEqual(self.kit_calls(), [])
 
     def test_every_host_in_one_run_keeps_paths_logins_the_repository_and_planted_secrets_out(self):
@@ -222,24 +265,45 @@ class Rig(unittest.TestCase):
 
     def test_an_unknown_host_or_a_bad_host_config_exits_2_and_only_json_files_are_hosts(self):
         self.assertEqual(self.rig('--host', 'fixture-nowhere')[:2], (2, []))
-        hosts = os.path.join(self.folder, 'hosts')
-        os.makedirs(hosts)
-        shutil.copy2(os.path.join(HOSTS, 'cost-unknown.json'), hosts)
-        with open(os.path.join(hosts, 'test_cost.py'), 'w') as f:
-            f.write('not a host config\n')
-        good = self.command()
-        good[good.index('--hosts') + 1] = hosts
-        p = subprocess.run(good, env=self.env, capture_output=True, text=True, timeout=60)
-        self.assertEqual((p.returncode, p.stdout), (0, 'skipped fixture-cost fake-harness: cost\n'), p.stderr)
-        with open(os.path.join(HOSTS, 'cost-unknown.json')) as f:
+        self.commit_host('test_cost.py', 'not a host config\n')
+        self.assertEqual(self.rig('--host', 'fixture-cost')[:2], (0, ['skipped fixture-cost fake-harness: cost']))
+        shutil.rmtree(self.out)
+        with open(os.path.join(self.hosts, 'cost-unknown.json')) as f:
             config = json.load(f)
+        twice = dict(config, runs=config['runs'] * 2)
         for bad in (dict(config, extra=1), dict(config, wait=901), dict(config, driver='../driver'),
-                    dict(config, cost='free'), {k: v for k, v in config.items() if k != 'runs'}):
+                    dict(config, cost='free'), {k: v for k, v in config.items() if k != 'runs'}, twice,
+                    dict(config, signed_in=[['fake-signed-in', 'sta\0tus']])):
             with self.subTest(bad):
-                with open(os.path.join(hosts, 'cost-unknown.json'), 'w') as f:
-                    json.dump(bad, f)
-                p = subprocess.run(good, env=self.env, capture_output=True, text=True, timeout=60)
-                self.assertEqual((p.returncode, p.stdout), (2, ''), p.stderr)
+                self.commit_host('cost-unknown.json', bad)
+                self.assertEqual(self.rig('--host', 'fixture-cost')[:2], (2, []))
+        self.commit_host('cost-unknown.json', config)
+        self.commit_host('clash.json', dict(config, host='fixture-cost-fake', runs=[{'harness': 'harness',
+                                                                                    'model': 'Synthetic 1'}]))
+        self.assertEqual(self.rig('--host', 'fixture-cost')[:2], (2, []))
+        self.assertEqual(self.records(), [])
+
+    def test_hosts_outside_the_checkout_or_untracked_exit_2_and_run_nothing(self):
+        outside = os.path.join(self.folder, 'hosts')
+        shutil.copytree(self.hosts, outside)
+        command = self.command('--host', 'fixture-cost')
+        command[command.index('--hosts') + 1] = outside
+        p = subprocess.run(command, env=self.env, capture_output=True, text=True, timeout=60)
+        self.assertEqual((p.returncode, p.stdout), (2, ''), p.stderr)
+        self.assertIn('rig.py: --hosts', p.stderr)
+        self.assertEqual((self.kit_calls(), self.records()), ([], []))
+
+    def test_a_lock_error_other_than_another_run_exits_2(self):
+        rig = self.module()
+
+        def no_lock(*_):
+            raise OSError(errno.ENOLCK, 'No locks available')
+        rig.fcntl.flock, err = no_lock, io.StringIO()
+        with contextlib.redirect_stderr(err):
+            code = rig.main(self.command('--host', 'fixture-cost')[3:])
+        self.assertEqual(code, 2, err.getvalue())
+        self.assertNotIn('another run holds the lock', err.getvalue())
+        self.assertEqual(self.records(), [])
 
 
 if __name__ == '__main__':
