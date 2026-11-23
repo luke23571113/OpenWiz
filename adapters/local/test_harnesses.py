@@ -72,7 +72,7 @@ spec.loader.exec_module(t)
 t.START['effort'] = t.EFFORT
 t.main()
 '''
-SHORT_COMMANDS = WRAPPER.replace('t.main()', 't.PRECHECK_SECONDS = t.STOP_SECONDS = 1\nt.main()')
+SHORT_COMMANDS = WRAPPER.replace("t.START['effort'] = t.EFFORT", 't.PRECHECK_SECONDS = t.STOP_SECONDS = 1')
 CALLS = '''import json, os, sys, time
 sys.dont_write_bytecode = True
 folder, fake = %r, %r
@@ -590,7 +590,7 @@ def gone(pid):
 def precheck_refusals_start_nothing(planted):
     ok = True
     for control, why in (('exit', 'it exited 1'), ('mismatch', "its output did not match the row's pattern"),
-                         ('hang', 'it ran past 1 seconds')):
+                         ('hang', 'it ran past its 1-second limit')):
         with commands_machine(planted) as env:
             env.control(control)
             code, out, said = env.raw('start', {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket',
@@ -609,7 +609,8 @@ def precheck_refusals_start_nothing(planted):
 
 
 def precheck_effort_skipped_and_escaped(planted):
-    check = {'run': ['row-commands-cli', 'models', '{model}', '--effort', '{effort}'], 'match': '^effort {effort} for {model}$'}
+    check = {'run': ['row-commands-cli', 'models', '{model}', '--effort', '{effort}'],
+             'match': '^effort {effort} for {model}$'}
     with tempfile.TemporaryDirectory(prefix='variant-') as rows:
         shutil.copytree(os.path.join(planted, 'row-commands'), os.path.join(rows, 'row-commands'))
         with open(os.path.join(rows, 'row-commands', 'row.json')) as f:
@@ -619,8 +620,8 @@ def precheck_effort_skipped_and_escaped(planted):
         with commands_machine(planted, rows) as env:
             env.control('effort')
             plain_code, plain = env.start(FAKE_CLI_RECORD_ONLY='1')
-            env.driver('stop', plain)
             skipped = [c['argv'][:1] for c in env.calls()] == [['run']]
+            env.driver('stop', plain)
             env.forget_calls()
             env.control('effort')
             code, out = env.driver('start', {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket',
@@ -628,13 +629,14 @@ def precheck_effort_skipped_and_escaped(planted):
                                    env.wrapper, FAKE_CLI_RECORD_ONLY='1')
             env.driver('stop', out)
             calls = env.calls()
-    return plain_code == 0 and skipped and code == 0 and \
-        calls[0]['argv'] == ['models', 'synthetic+1', '--effort', 'high'] and calls[1]['argv'][:1] == ['run']
+    return plain_code == 0 and skipped and code == 0 and calls[0]['argv'] == ['models', 'synthetic+1', '--effort', 'high'] \
+        and [c['argv'][:1] for c in calls] == [['models'], ['run'], ['stop']]
 
 
 def failing_stop_still_ends_the_tree(planted):
     ok = True
-    for control, why in (('exit', "the row's stop exited 1"), ('hang', "the row's stop ran past 1 seconds")):
+    for control, why in (('exit', "the row's stop exited 1"),
+                         ('hang', "the row's stop ran past its 1-second limit")):
         with commands_machine(planted) as env:
             code, out = env.start()
             if code:
