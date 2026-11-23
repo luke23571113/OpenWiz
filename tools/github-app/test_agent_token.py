@@ -206,7 +206,7 @@ class Helper(unittest.TestCase):
             for token in tokens:
                 self.assertNotIn(token, " ".join(call["args"]) + call["stdin"])
         for path in self.root.rglob("*"):
-            private = path.parent == self.private and path.name.startswith("token-")
+            private = path.parent == self.private and path.name.startswith(("token-", "kept-"))
             if path.is_file() and not private and path.name != "answers.json":
                 for token in tokens:
                     self.assertNotIn(token.encode(), path.read_bytes(), path)

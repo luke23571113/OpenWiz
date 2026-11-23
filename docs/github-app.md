@@ -358,8 +358,9 @@ python3 -I tools/github-app/agent-token.py run $REQ -- git push origin HEAD
 - **Refresh.** Before each use, a token with 300 seconds or less left is replaced by a
   fresh request. An answer is used only when it names exactly the requested
   repositories and permissions and has more than 300 and at most 3900 seconds left.
-- **Fallback.** When no token can be had, the helper deletes the request's cache file,
-  hands no App token to the command (one handed down by an outer `run` included), and
+- **Fallback.** When no token can be had, the helper revokes the live token in the request's
+  cache file and only then deletes the file, keeping the file for a later `revoke` if that revoke
+  fails ([Revoke](#revoke)). It hands no App token to the command (one handed down by an outer `run` included), and
   writes exactly one line to standard error:
   `openwiz: no openwiz[bot] token (<reason>); using the owner's GitHub account`. The
   reasons are `unreachable`, `bad-answer`, `pairing-off` and the service's refusal
@@ -391,8 +392,9 @@ python3 -I tools/github-app/agent-token.py revoke $REQ
   the usual fallback note. A kept token is never handed out again: the kept file holds only the
   token and its expiry, so no request matches it, and one with 300 seconds or less left fails the
   refresh check anyway, so gh, git and the caller never get it. Each later fallback tries the
-  revoke again, but a later successful mint for the same request replaces the kept file, so run
-  `revoke` first when you can.
+  revoke again. A later mint for the same request revokes the kept token first; if that revoke
+  fails, the kept token moves to its own `kept-*.json` file beside the new one, never
+  overwritten, and `revoke` with the same request revokes it there.
 - It fails closed with exactly one line on standard error and exit 1, and never prints the
   token: `openwiz: openwiz[bot] token not revoked (no token found)` when it holds no current
   token, or `openwiz: openwiz[bot] token not revoked (<reason>); the token is kept where it was`

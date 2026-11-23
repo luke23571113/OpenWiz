@@ -271,6 +271,7 @@ def token_for(private, wanted, env):
         revoke_before_remove(private, name, env)
         sys.stderr.write(NOTE.format(reason))
         return None, None
+    keep_aside(private, name, env)
     private.write(name, {"token": token, "expires_at": expires_at, **wanted})
     return token, expires_at
 
@@ -702,6 +703,12 @@ def held_tokens(private, wanted, env):
     if (os.path.dirname(snapshot) == private.path
             and re.fullmatch(r"run-[0-9a-f]{32}\.json", os.path.basename(snapshot))):
         names.insert(0, os.path.basename(snapshot))
+    try:
+        listed = os.listdir(private.fd)
+    except OSError:
+        listed = []
+    side = re.compile(re.escape("kept-" + names[-1][len("token-"):-len(".json")]) + r"-[0-9a-f]{32}\.json")
+    names += sorted(entry for entry in listed if side.fullmatch(entry))
     found = {}
     for name in names:
         token = live_token(private.read(name))
@@ -724,10 +731,18 @@ def revoke_before_remove(private, name, env):
     if token:
         base = revoke_base(env)
         if base is None or revoke_call(base, token):
-            private.write(name, {"token": token, "expires_at": held["expires_at"]})
+            private.write(name, {"token": token, "expires_at": held["expires_at"], "kept": True})
             return False
     private.unlink(name)
     return True
+
+
+def keep_aside(private, name, env):
+    held = private.read(name)
+    if isinstance(held, dict) and held.get("kept") is True and live_token(held):
+        if not revoke_before_remove(private, name, env):
+            os.rename(name, f"kept-{name[len('token-'):-len('.json')]}-{secrets.token_hex(16)}.json",
+                      src_dir_fd=private.fd, dst_dir_fd=private.fd)
 
 
 def revoke_call(base, token):
