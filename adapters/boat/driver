@@ -195,7 +195,7 @@ def catalog(text):
             groups[-1][0].update(m.strip() for m in x.split(',') if m.strip())
         else:
             return None
-    return found or None
+    return found if found and all(found.values()) else None
 
 
 # External: boat passes `--reasoning-effort` per model, and `boat prompt --help` lists each model's levels,
@@ -812,6 +812,9 @@ def unsaved(run, sandbox, turn, conversation, cmd, log, spared=()):
 
 def start(req):
     if req['harness'] not in HARNESSES:
+        if 'effort' in req:
+            raise Refused(line('boat has no harness %s, so it cannot set effort %s; nothing was saved or started'
+                               % (req['harness'], req['effort'])), CANT)
         raise Refused('boat has no harness %s' % req['harness'], 'use one of: ' + ', '.join(HARNESSES))
     boat_program()
     settle = settle_seconds()

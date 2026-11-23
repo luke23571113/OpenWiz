@@ -374,7 +374,7 @@ class Boat(unittest.TestCase):
                 self.assertLessEqual(len(out['error']), 300)
                 self.assertEqual(self.boat_calls(calls), [['prompt', '--help', '--no-update']])
                 self.assertEqual((self.sandboxes(), self.run_files(), self.logged()), ({}, [], []))
-        for effort in ('medium', None):  # a harness outside boat's list: the refusal text only when effort is set
+        for effort in ('medium', None):
             with self.subTest(harness='gemini', effort=effort):
                 calls = os.path.join(self.folder, 'calls-gemini-%s' % effort)
                 request = dict(REQUEST, harness='gemini', model='gemini-3.8-flash',
