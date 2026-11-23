@@ -8,8 +8,8 @@ HELP = '''The fake junie (JetBrains Junie CLI 26.9.7): it allows only the forms 
 subset of `junie --help` 26.9.7:
   junie --skip-update-check --output-format json --model <m> --task <prompt>
   junie --skip-update-check --output-format json --session-id <id> --resume --model <m> --task <prompt>
-It reports the session id as one JSON line, {"sessionId": ...}, as `--output-format json` does. With
-FAKE_JUNIE_SIGNED_OUT=1 it answers as a signed-out Junie does: one {"errors": [...]} line, exit 0.'''
+It reports the session id as one JSON line, {"sessionId": ...}, as `--output-format json` does. Signed
+out (FAKE_CLI_SIGNED_OUT=1) it answers as a signed-out Junie 26.9.7 does: one {"errors": [...]} line, exit 0.'''
 SIGNED_OUT = {'errors': ['Cannot find authorization. Please authenticate before running Junie.']}
 
 if sys.argv[1:] == ['--help']:
@@ -25,7 +25,5 @@ if a[:1] == ['--session-id'] and len(a) > 2 and a[2] == '--resume':
         fake_cli.refuse()
 if len(a) != 4 or a[0] != '--model' or a[2] != '--task' or not a[1] or not a[3]:
     fake_cli.refuse()
-if os.environ.get('FAKE_JUNIE_SIGNED_OUT'):
-    print(json.dumps(SIGNED_OUT), flush=True)
-    sys.exit(0)
-fake_cli.turn(a[3], a[1], session, lambda sid: json.dumps({'sessionId': sid, 'taskName': 'fake task'}))
+fake_cli.turn(a[3], a[1], session, lambda sid: json.dumps({'sessionId': sid, 'taskName': 'fake task'}),
+              signed_out=json.dumps(SIGNED_OUT), signed_out_exit=0)

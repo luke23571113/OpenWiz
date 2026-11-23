@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import json, os, subprocess, sys, tempfile
+import importlib.machinery, importlib.util, json, os, subprocess, sys, tempfile
 
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -25,6 +25,22 @@ def run(args, **env):
                           env=dict(os.environ, FAKE_CLI_LIB=LIB, PYTHONDONTWRITEBYTECODE='1', **env))
 
 
+def driver_signed_out():
+    runner = os.path.join(HERE, '..', '..', 'test_harnesses.py')
+    spec = importlib.util.spec_from_loader('runner', importlib.machinery.SourceFileLoader('runner', runner))
+    h = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(h)
+    rows = os.path.dirname(HERE)
+    with open(os.path.join(HERE, 'row.json')) as f:
+        row = json.load(f)
+    with h.ThrowawayMachine(rows, 'junie', 'junie', FAKE, next(iter(row['modes']))) as env:
+        code, out = env.start(FAKE_CLI_SIGNED_OUT='1')
+        ok = code == 1 and 'the harness is not signed in' in out.get('error', '') and '`junie`' in out.get('next', '')
+        if code == 0:
+            env.driver('stop', out)
+    return [] if ok else ['driver: a signed-out Junie start, exit 0, gave exit %d: %s' % (code, json.dumps(out))]
+
+
 def main():
     bad = []
     for why, args in REFUSED.items():
@@ -32,13 +48,14 @@ def main():
         if p.returncode != 2:
             bad.append('fake accepted %s (exit %d)' % (why, p.returncode))
     with tempfile.TemporaryDirectory() as d:
-        p = run(BASE + ['--model', 'm', '--task', 'start with the build-ticket skill'], FAKE_JUNIE_SIGNED_OUT='1',
+        p = run(BASE + ['--model', 'm', '--task', 'start with the build-ticket skill'], FAKE_CLI_SIGNED_OUT='1',
                 FAKE_CLI_RECORD=os.path.join(d, 'rec'))
         out = [json.loads(line) for line in p.stdout.splitlines() if line.strip()]
         if p.returncode != 0 or len(out) != 1 or 'sessionId' in out[0] or not out[0].get('errors') or \
                 os.path.exists(os.path.join(d, 'rec')):
             bad.append('fake signed out did not answer as Junie 26.9.7 does: one errors line, no sessionId, exit 0, '
                        'and no turn')
+    bad += driver_signed_out()
     for line in bad:
         print('fail ' + line)
     print('pass junie test_row.py: the fake refuses %d command lines the row never sends, and answers signed out '
