@@ -147,6 +147,7 @@ class Driver(unittest.TestCase):
         # catches: an effort Cloudroom does not list for the harness and model that is dropped, swapped for a nearby
         # level or left to Cloudroom, instead of refused with the contract's exact words before anything starts.
         cases = {'a provider with no levels': dict(harness='pi', model='Synthetic 1', effort='medium'),
+                 'a provider Cloudroom does not know': dict(harness='gemini', model='Synthetic 1', effort='medium'),
                  'a level the model does not list': dict(effort='ultra'),
                  'a model Cloudroom does not list': dict(model='Synthetic Unlisted', effort='medium')}
         for name, case in cases.items():
@@ -157,7 +158,8 @@ class Driver(unittest.TestCase):
                 self.assertEqual(out['next'], CANT)
                 self.assertIn(case.get('harness', 'claude'), out['error'])
                 self.assertIn(case['effort'], out['error'])
-                self.assertEqual([c for c in self.calls() if c[0] != 'provider'], [], 'a refused effort reached spawn')
+                self.assertEqual(self.calls(), [['provider', 'models', driver.provider(dict(START, **case)), '--json']],
+                                 'a refused effort reached spawn')
                 self.assertEqual(self.started(), [], 'a refused start saved a run')
 
     def test_a_start_whose_levels_cannot_be_read_starts_nothing(self):
