@@ -9,7 +9,7 @@ START = {'repository': r'[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}', 'ticket':
          'model': r'[A-Za-z0-9][A-Za-z0-9 ._:@+-]{0,59}'}
 RUN = {'run': r'run-[0-9a-f]{12}'}
 EFFORT = {'effort': r'[a-z][a-z0-9-]{0,19}'}
-EFFORTS = ('low', 'medium', 'high', 'xhigh', 'max')
+EFFORTS = {'fake-harness': ('--effort', ('low', 'medium', 'high', 'xhigh', 'max'))}
 CANT_SET_EFFORT = ("this host can't set effort: remove the effort for this harness in your Models table or Roster to "
                    "run it at the host's default")
 GRACE = 10
@@ -50,7 +50,7 @@ def read(fields):
 def command(req, woken):
     what = 'You were woken: read the ticket again and carry on' if woken else 'Build the ticket'
     prompt = '%s: %s#%d, with the %s skill.' % (what, req['repository'], req['ticket'], req['skill'])
-    effort = ['--effort', req['effort']] if 'effort' in req else []
+    effort = [EFFORTS[req['harness']][0], req['effort']] if 'effort' in req else []
     return [req['harness'], '--model', req['model']] + effort + ['-p', prompt]
 
 
@@ -346,7 +346,7 @@ def answer(cmd):
             return json.load(f)
     if cmd == 'start':
         req, run = read(dict(START, **EFFORT) if 'effort' in VERSION['can'] else START), 'run-' + secrets.token_hex(6)
-        if 'effort' in req and req['effort'] not in EFFORTS:
+        if 'effort' in req and req['effort'] not in EFFORTS.get(req['harness'], (None, ()))[1]:
             raise Refused('harness %s cannot run at effort %s' % (req['harness'], req['effort']), CANT_SET_EFFORT)
         state = {'request': req, 'turns': [], 'stopped': False, 'starting': True}
         try:
