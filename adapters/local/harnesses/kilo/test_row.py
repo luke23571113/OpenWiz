@@ -24,19 +24,31 @@ def not_installed():
         return env.start_refused_starting_nothing(says, PATH=without_any_agent_cli(env))
 
 
+# Kilo's own signed-out output, in the shapes its source prints (Kilo CLI v7.8.32):
+# provider/error.ts (a 401 through a gateway), kilocode/cloud/auth.ts (no saved login), and the gateway's codes
+# that kilocode/kilo-errors.ts reads from a JSON error line's responseBody.
+GATEWAY = '{"type":"error","timestamp":0,"sessionID":"fake-signed-out","error":{"name":"APIError","data":' \
+          '{"message":"Payment Required","statusCode":402,"responseBody":"{\\"error\\":{\\"code\\":\\"%s\\"}}"}}}'
+SIGNED_OUT = ['Error: Unauthorized: request was blocked by a gateway or proxy. Your authentication token may be missing '
+              'or expired \u2014 try running `kilo auth login <your provider URL>` to re-authenticate.',
+              'Error: Kilo credentials are required; run `kilo auth login`',
+              GATEWAY % 'PAID_MODEL_AUTH_REQUIRED', GATEWAY % 'PROMOTION_MODEL_LIMIT_REACHED']
+
+
 def not_signed_in():
     with h.ThrowawayMachine(ROWS, 'kilo', 'kilo', FAKE, 'default', ['KILO_NO_DAEMON']) as env:
-        code, out = env.start(FAKE_KILO_SIGNED_OUT='1')
-        if code == 0:
-            env.driver('stop', out)
-        if code != 1 or h.kit.invalid(out, h.ERROR) is not None or env.records():
-            return False
-        # HR1 revision 4: the row's signed_out patterns name the cause, and its login_command is the next step.
-        return 'the harness is not signed in' in out['error'] and 'kilo auth login' in out['next']
+        for line in SIGNED_OUT:
+            code, out = env.start(FAKE_CLI_SIGNED_OUT='1', FAKE_KILO_SIGNED_OUT_LINE=line)
+            if code == 0:
+                env.driver('stop', out)
+            if code != 1 or h.kit.invalid(out, h.ERROR) is not None or env.records() or \
+                    'the harness is not signed in' not in out['error'] or 'kilo auth login' not in out['next']:
+                return False
+        return True
 
 
 failed = [name for name, check in (('not installed: a D3 error whose next says to install and sign in', not_installed),
-                                    ('not signed in: a D3 error saying so, whose next names kilo auth login',
+                                    ('not signed in: each of Kilo\'s signed-out lines is a D3 error saying so, whose next names kilo auth login',
                                      not_signed_in)) if not check()]
 for name in failed:
     print('fail kilo test_row.py: ' + name)
