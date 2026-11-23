@@ -17,16 +17,16 @@ A row is `adapters/local/harnesses/<harness>/row.json`, read with standard-libra
 | `effort` | An effort map, or `"none: <one line why, naming the primary source>"` (section 4) |
 | `login` | One line saying where the CLI's own login lives |
 | `daemon` | `none`, or one line naming the background process the CLI may start and how stop ends it |
-| `signed_out` (optional) | A list of fixed, case-insensitive patterns, specific to this CLI, that mean it isn't signed in; each is matched anywhere in a line of the turn's output, a JSON line included |
+| `signed_out` (optional) | A list of fixed, case-insensitive patterns, specific to this CLI, that mean it isn't signed in; each is matched anywhere in a line of the first turn's own output (never the clone's), a JSON line included |
 | `login_command` (optional; required with `signed_out`) | The exact command the user runs to sign in, such as `example-cli login`. `login` keeps its meaning: where the login lives |
 
 - **Placeholders.** A placeholder fills a whole argument, never part of one (`--model={model}` breaks the row), and appears at most once in a list. `{prompt}`, `{model}` and `{session}` each become one argument. `{mode}` splices the approved mode's fixed arguments, and `{effort}` the requested effort's (section 4). A fixed argument holds no placeholder.
 - **Start** holds `{prompt}`, `{model}` and `{mode}`. **Wake** holds `{prompt}`, `{mode}` and `{session}`: wake must hold `{session}`. Start holds `{session}` only when the session is chosen.
 - **Session ids** match `[A-Za-z0-9._:-]{1,100}` and must not look like a credential by the kit's check (`holds_credential` in `kernel/driver-kit/kit.py`).
   - `{"chosen": "uuid"}`: the driver makes a UUID before the first turn, saves it, and passes it at start and at every wake.
-  - `{"json": [<key path>]}`: the first JSON line of the run's output that has that path of object keys.
-  - `{"pattern": "<regex>"}`: the regex's one group, on the first line of the run's output that it matches.
-  - A reported id (`json` or `pattern`) is read from the run's log once the turn has printed it, then saved. When it isn't there yet, wake refuses with a D3 error and starts nothing.
+  - `{"json": [<key path>]}`: the value at that path of object keys, on the first JSON line of the first turn's output that has the whole path.
+  - `{"pattern": "<regex>"}`: the regex's one group, on the first line of the first turn's output that it matches.
+  - A reported id (`json` or `pattern`) is read from the first turn's own output in the run's log, never the clone's, once the turn has printed it, then saved. That first line decides: when its value is not a valid session id (`null` or an unmatched group included), no later line is read. When there is no valid id yet, wake refuses with a D3 error and starts nothing, even while the first turn still runs.
 - **Modes:** each key is a mode value (a letter, then up to 39 letters, digits, `_` or `-`), each value a list of fixed arguments (it may be empty). The owner approves one mode per repository and harness, as for a built-in, and the driver passes only that mode's arguments.
 - **Signed out:** each `signed_out` pattern is one line, compiles as a regular expression, holds no placeholder and nothing credential-shaped. No pattern is a program: the driver only matches it. A row's pattern matches anywhere in a line of the turn's output, case-insensitively, inside a JSON line too; the driver's own sign-in diagnostics keep their line-start rule. `login_command` is one line of up to 200 characters, with no placeholder and nothing credential-shaped; the driver never runs it.
 - **Env:** each name is capitals, digits and `_`, starting with a capital and not with `OPENWIZ_`; each value is one line that passes the kit's `holds_credential`, alone and as `NAME=value`. The driver adds `env` to the turn's environment.

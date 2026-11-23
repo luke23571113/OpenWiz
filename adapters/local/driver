@@ -281,27 +281,36 @@ def command(state, woken):
         dict(row['env'], **env)
 
 
-def reported_session(run, session):
+NO_PATH = object()
+
+
+def turn_output(run, turn):
     try:
-        with open(log_path(run), errors='replace') as f:
-            lines = f.read().splitlines()
+        with open(log_path(run), 'rb') as f:
+            f.seek(turn.get('output_from', 0))
+            return f.read().decode(errors='replace')
     except OSError:
-        return None
-    for text in lines:
-        found = None
+        return ''
+
+
+def reported_session(run, session, first):
+    for text in turn_output(run, first).splitlines():
         if 'pattern' in session:
             m = re.search(session['pattern'], text)
-            found = m.group(1) if m else None
-        elif text.lstrip().startswith('{'):
+            if not m:
+                continue
+            found = m.group(1)
+        else:
             try:
-                found = json.loads(text)
-                for key in session['json']:
-                    found = found.get(key) if isinstance(found, dict) else None
-            except ValueError:
+                found = json.loads(text) if text.lstrip().startswith('{') else None
+            except (ValueError, RecursionError):
                 found = None
-        if found is not None:
-            ok = isinstance(found, str) and re.fullmatch(SESSION, found) and not holds_credential(found)
-            return found if ok else None
+            for key in session['json']:
+                found = found[key] if isinstance(found, dict) and key in found else NO_PATH
+            if found is NO_PATH:
+                continue
+        ok = isinstance(found, str) and re.fullmatch(SESSION, found) and not holds_credential(found)
+        return found if ok else None
     return None
 
 
@@ -621,8 +630,9 @@ def launch(state, run, woken):
     cmd, extra = command(state, woken)
     try:
         log = open_log(run)
+        output_from = os.fstat(log).st_size
     except OSError:
-        log = subprocess.DEVNULL
+        log, output_from = subprocess.DEVNULL, 0
     try:
         sup = subprocess.Popen([sys.executable, '-I', os.path.abspath(__file__), '--turn'] + cmd,
                                env=dict(os.environ, **extra, OPENWIZ_RUN=run), start_new_session=True,
@@ -642,7 +652,8 @@ def launch(state, run, woken):
     if 'pid' not in turn:
         raise Refused('harness %s did not start: %s' % (req['harness'], turn['error']),
                       'run %s by hand once to check it works, then start again' % req['harness'])
-    return {'pid': turn['pid'], 'since': turn['since'], 'supervisor': sup.pid, 'supervisor_since': since(sup.pid)}
+    return {'pid': turn['pid'], 'since': turn['since'], 'supervisor': sup.pid, 'supervisor_since': since(sup.pid),
+            'output_from': output_from}
 
 
 def running(turn):
@@ -729,7 +740,7 @@ def ended_at_once(run, turn, row=None):
             log = f.read()
     except OSError:
         log = ''
-    signed_out = SIGNED_OUT.search(log) or signed_out_by_row(row, log)
+    signed_out = SIGNED_OUT.search(log) or signed_out_by_row(row, turn_output(run, turn))
     why = ('the harness is not signed in' if signed_out else
            'the harness refused a tool' if REFUSAL.search(log) else None if code == 0 else 'the harness failed')
     if why is None:
@@ -848,7 +859,7 @@ def answer(cmd):
         if state.get('starting'):
             raise Refused('run %s never finished starting' % run, 'stop it, then start a new run')
         if state.get('row') and state['session'] is None:
-            state['session'] = reported_session(run, state['row']['session'])
+            state['session'] = reported_session(run, state['row']['session'], state['turns'][0])
             if state['session'] is None:
                 raise Refused('run %s has no session id from its first turn yet; nothing was started' % run,
                               'wait until its first turn has printed its session id, then wake again')
