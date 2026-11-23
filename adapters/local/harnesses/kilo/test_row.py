@@ -29,10 +29,13 @@ def not_installed():
 # that kilocode/kilo-errors.ts reads from a JSON error line's responseBody.
 GATEWAY = '{"type":"error","timestamp":0,"sessionID":"fake-signed-out","error":{"name":"APIError","data":' \
           '{"message":"Payment Required","statusCode":402,"responseBody":"{\\"error\\":{\\"code\\":\\"%s\\"}}"}}}'
-SIGNED_OUT = ['Error: Unauthorized: request was blocked by a gateway or proxy. Your authentication token may be missing '
-              'or expired \u2014 try running `kilo auth login <your provider URL>` to re-authenticate.',
+SIGNED_OUT = ['Error: Unauthorized: request was blocked by a gateway or proxy. Your authentication token may be '
+              'missing or expired \u2014 try running `kilo auth login <your provider URL>` to re-authenticate.',
               'Error: Kilo credentials are required; run `kilo auth login`',
-              GATEWAY % 'PAID_MODEL_AUTH_REQUIRED', GATEWAY % 'PROMOTION_MODEL_LIMIT_REACHED']
+              GATEWAY % 'PAID_MODEL_AUTH_REQUIRED']
+# Not signed out: the free-model limit ("You need to sign up to keep going ... Or come back later", kilo-errors.ts)
+# clears with time too, so it must stay a plain failure, never a 'sign in with kilo auth login' next.
+USAGE_LIMIT = GATEWAY % 'PROMOTION_MODEL_LIMIT_REACHED'
 
 
 def not_signed_in():
@@ -44,11 +47,16 @@ def not_signed_in():
             if code != 1 or h.kit.invalid(out, h.ERROR) is not None or env.records() or \
                     'the harness is not signed in' not in out['error'] or 'kilo auth login' not in out['next']:
                 return False
-        return True
+        code, out = env.start(FAKE_CLI_SIGNED_OUT='1', FAKE_KILO_SIGNED_OUT_LINE=USAGE_LIMIT)
+        if code == 0:
+            env.driver('stop', out)
+        return code == 1 and 'the harness failed' in out.get('error', '') and \
+            'kilo auth login' not in out.get('next', '')
 
 
 failed = [name for name, check in (('not installed: a D3 error whose next says to install and sign in', not_installed),
-                                    ('not signed in: each of Kilo\'s signed-out lines is a D3 error saying so, whose next names kilo auth login',
+                                    ('not signed in: each of Kilo\'s signed-out lines is a D3 error saying so, whose '
+                                     'next names kilo auth login; its free-model limit is not',
                                      not_signed_in)) if not check()]
 for name in failed:
     print('fail kilo test_row.py: ' + name)
