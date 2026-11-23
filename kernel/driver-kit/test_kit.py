@@ -246,6 +246,28 @@ class Kit(unittest.TestCase):
         finally:
             kit.PROC = old
 
+    @unittest.skipUnless(os.path.isdir('/proc/self'), 'reads /proc')
+    def test_a_refused_process_costs_a_retry_once_and_another_users_never(self):
+        kit = module(os.path.join(HERE, 'kit.py'))
+        k = kit.Kit.__new__(kit.Kit)
+        k.lock, k.leaks, k.mark = threading.RLock(), [], 'OPENWIZ_KIT_RUN=synthetic'
+        child = subprocess.Popen([sys.executable, '-c', 'import ctypes, sys, time; ctypes.CDLL(None).prctl(4, 0, 0, 0, '
+                                  '0); print(flush=True); time.sleep(30)'], stdout=subprocess.PIPE)
+        self.addCleanup(child.kill)
+        child.stdout.readline()
+        pauses = []
+        real = kit.time.sleep
+        kit.time.sleep = lambda seconds: pauses.append(seconds)
+        try:
+            first = k.table()
+            once = len(pauses)
+            second = k.table()
+        finally:
+            kit.time.sleep = real
+        self.assertEqual((first[str(child.pid)][2], second[str(child.pid)][2]), (None, None))
+        self.assertEqual(once, kit.HIDDEN_TRIES - 1, 'the hidden child was not retried, or others were')
+        self.assertEqual(len(pauses), once, 'a process already found hidden was retried again')
+
     def test_a_path_diagnostic_never_prints_the_active_canary(self):
         kit = module(os.path.join(HERE, 'kit.py'))
         k = kit.Kit.__new__(kit.Kit)
