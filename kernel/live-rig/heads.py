@@ -35,10 +35,15 @@ FROZEN = re.compile(r'launch-fleet: look: live run due at the approved frozen he
                     r'(?![0-9a-f])')
 ETAGS = 'heads-etags.json'
 JOURNAL = 'publish.json'
+JOURNAL_KEYS = {'login', 'comments', 'receipts', 'fork', 'ref', 'put', 'pull'}
 FORK_READY_TRIES = 6
 PAGE = 100
 RUN_LINE = '<!-- openwiz:heads-run %s -->\n'
 TRIED_MARGIN = datetime.timedelta(hours=1)
+STAMP = '%Y-%m-%dT%H:%M:%SZ'
+COMMENT = re.compile(r'\*\*[A-Z][A-Z0-9]{1,15} live kit run: [0-5] of 5 pass\*\*, at head `[0-9a-f]{40}`\n\n```\n'
+                     r'((?:[^`\n]*\n)*)```\n')
+RECEIPT_REL = re.compile(r'receipts/([a-z0-9-]{2,40})/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9a-f]{12}\.txt')
 CHECK_PREFIX = re.compile(r'^(?:pass|fail) (?:version|start|wake|stop|token): ', re.M)
 GH_OVERRIDES = ('GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN', 'GH_HOST')
 SHAPES = []
@@ -158,6 +163,47 @@ def run_kit(driver, entry, wait, settings, login):
     sys.stderr.write(p.stdout)
     sys.stderr.flush()
     return p.returncode, rig.record_stdout(p.stdout, settings, login)
+
+
+def check_journal(plan, settings):
+    def ok(value, pattern):
+        return isinstance(value, str) and re.fullmatch(pattern, value) is not None
+
+    def stamp(value):
+        try:
+            return value is None or bool(datetime.datetime.strptime(value, STAMP))
+        except (TypeError, ValueError):
+            return False
+
+    def index(value, top=None):
+        return type(value) is int and value >= 0 and (top is None or value < top)
+
+    if not (isinstance(plan, dict) and set(plan) == JOURNAL_KEYS and ok(plan['login'], r'[A-Za-z0-9-]{1,39}') and
+            type(plan['ref']) is bool and isinstance(plan['comments'], list) and plan['comments'] and
+            isinstance(plan['receipts'], list) and isinstance(plan['put'], list) and
+            (plan['fork'] is None or ok(plan['fork'], r'[A-Za-z0-9-]{1,39}/WizMarket')) and
+            (plan['pull'] is None or ok(plan['pull'], r'https://github\.com/openwizdev/WizMarket/pull/[0-9]+'))):
+        raise Refused('%s is not a publish heads.py wrote' % JOURNAL)
+    for c in plan['comments']:
+        if not (isinstance(c, dict) and set(c) == {'pr', 'body', 'run', 'tried', 'url'} and index(c['pr']) and
+                isinstance(c['body'], str) and ok(c['run'], r'[0-9a-f]{32}') and stamp(c['tried']) and
+                (c['url'] is None or ok(c['url'], r'https://github\.com/openwizdev/OpenWiz/pull/[0-9]+#issuecomment-[0-9]+'
+                                                  ))):
+            raise Refused('%s holds a comment heads.py did not plan' % JOURNAL)
+        lines = COMMENT.fullmatch(c['body'])
+        if c['url'] is None and (lines is None or holds_credential_after_check_names(c['body']) or
+                                 rig.record_stdout(lines.group(1), settings, plan['login']) != lines.group(1)):
+            raise Refused('%s holds a comment that is not public kit output, so nothing is posted' % JOURNAL)
+    for r in plan['receipts']:
+        if not (isinstance(r, dict) and set(r) == {'rel', 'text', 'listing', 'pr', 'comment'} and
+                ok(r['rel'], RECEIPT_REL.pattern) and RECEIPT_REL.fullmatch(r['rel']).group(1) == r['listing'] and
+                index(r['pr']) and index(r['comment'], len(plan['comments'])) and isinstance(r['text'], str)):
+            raise Refused('%s holds a receipt heads.py did not plan' % JOURNAL)
+        if holds_credential_after_check_names(r['text']):
+            raise Refused('%s holds a receipt with a credential, so nothing is posted' % JOURNAL)
+    if not all(isinstance(rel, str) for rel in plan['put']) or \
+            not set(plan['put']) <= {r['rel'] for r in plan['receipts']}:
+        raise Refused('%s puts a file it does not plan' % JOURNAL)
 
 
 def comment_for(ticket, passed, head, stdout):
@@ -309,7 +355,7 @@ class Publish:
             if c['tried']:
                 c['url'] = self.posted(c, body)
             if c['url'] is None:
-                c['tried'] = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+                c['tried'] = datetime.datetime.now(datetime.timezone.utc).strftime(STAMP)
                 save(self.path, self.plan)
                 c['url'] = gh_json(['api', '-X', 'POST', 'repos/%s/issues/%d/comments' % (OPENWIZ, c['pr']), '--input',
                                     '-'], {'body': body})['html_url']
@@ -320,9 +366,9 @@ class Publish:
         os.remove(self.path)
 
     def posted(self, c, body):
-        tried = datetime.datetime.strptime(c['tried'], '%Y-%m-%dT%H:%M:%SZ') - TRIED_MARGIN
+        tried = datetime.datetime.strptime(c['tried'], STAMP) - TRIED_MARGIN
         found = gh_json(['api', 'repos/%s/issues/%d/comments?since=%s&per_page=%d' % (
-            OPENWIZ, c['pr'], tried.strftime('%Y-%m-%dT%H:%M:%SZ'), PAGE)])
+            OPENWIZ, c['pr'], tried.strftime(STAMP), PAGE)])
         if not isinstance(found, list) or len(found) >= PAGE:
             raise Refused('cannot tell whether the earlier comment on #%d was posted, so nothing is posted' % c['pr'])
         mine = [f['html_url'] for f in found if isinstance(f, dict) and f.get('body') == body and
@@ -409,8 +455,10 @@ def run(args):
     if os.path.exists(journal):
         if not args.post:
             raise Refused('--out holds %s, an unfinished publish; rerun with --post to finish it' % JOURNAL)
+        plan = rig.read_json(journal, JOURNAL)
+        check_journal(plan, settings)
         print('finishing the publish an earlier --post left unfinished', flush=True)
-        Publish(journal, rig.read_json(journal, JOURNAL)).run()
+        Publish(journal, plan).run()
         return 0
     cache_path = os.path.join(args.out, ETAGS)
     cache = rig.read_json(cache_path, ETAGS) if os.path.exists(cache_path) else {}
@@ -424,6 +472,7 @@ def run(args):
         os.replace(cache_path + '.part', cache_path)
     if args.post and session.plan['comments']:
         session.plan['login'] = session.run_by()
+        check_journal(session.plan, settings)
         save(journal, session.plan)
         Publish(journal, session.plan).run()
     return 1 if session.failed else 0
