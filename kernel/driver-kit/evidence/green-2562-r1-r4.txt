@@ -29,15 +29,16 @@ test_the_fixed_undeclared_driver_passes_all_five_with_the_note_on_stderr (__main
 test_the_kit_trusts_only_its_own_interpreter_not_one_on_path (__main__.Kit.test_the_kit_trusts_only_its_own_interpreter_not_one_on_path) ... ok
 test_the_kits_visibility_probe_signals_ready_through_the_macos_shim_and_runs_until_its_stdin_closes (__main__.Kit.test_the_kits_visibility_probe_signals_ready_through_the_macos_shim_and_runs_until_its_stdin_closes) ... ok
 test_the_registry_holds_devin_and_the_schema_and_helper_refuse_the_same_registries (__main__.Kit.test_the_registry_holds_devin_and_the_schema_and_helper_refuse_the_same_registries) ... ok
+test_the_setting_is_the_effort_placeholder_and_a_list_follows_the_setting (__main__.Kit.test_the_setting_is_the_effort_placeholder_and_a_list_follows_the_setting) ... ok
 test_without_proc_as_on_macos_a_driver_whose_run_stays_in_the_kits_group_passes_all_five (__main__.Kit.test_without_proc_as_on_macos_a_driver_whose_run_stays_in_the_kits_group_passes_all_five) ... ok
 test_without_proc_as_on_macos_effort_on_a_command_line_is_seen (__main__.Kit.test_without_proc_as_on_macos_effort_on_a_command_line_is_seen) ... ok
 test_without_proc_as_on_macos_the_template_passes_all_five (__main__.Kit.test_without_proc_as_on_macos_the_template_passes_all_five) ... ok
 test_without_proc_or_the_runs_visible_environment_stop_and_token_fail_unverified (__main__.Kit.test_without_proc_or_the_runs_visible_environment_stop_and_token_fail_unverified) ... ok
 test_without_the_key_helper_the_kit_refuses_a_driver_with_a_readme_and_runs_one_without (__main__.Kit.test_without_the_key_helper_the_kit_refuses_a_driver_with_a_readme_and_runs_one_without) ... ok
-Ran 35 tests in 266.884s
+Ran 36 tests in 267.255s
 OK
 
-On a scratch merge of EF6 (#2590 at 7218ac4) into this change: kernel/driver-kit/test_kit.py ran 35 tests, OK; adapters/template/test_driver.py OK. The live EF6 template through the kit:
+On a scratch merge of EF6 (#2590 at 7218ac4) into this change: kernel/driver-kit/test_kit.py ran 35 tests, OK (before the EF9 parser case was added); adapters/template/test_driver.py OK. The live EF6 template through the kit:
 exit 0
 pass version: openwiz:records v1, and the schema is driver v1
 pass start: the run posted builder status note 2; effort: medium reached a process the run started
@@ -52,3 +53,9 @@ pass wake: the run edited builder status note 2
 pass stop: the run ended, and a wake after it is refused
 pass token: no login or token passed through the driver
 stderr: ''
+
+On a scratch merge of EF9 (#2598 at e5c8ac9) into this change, with its fake acpx changed so the queue owner gets no --session-options on its argv (EF9's ruling 5 workaround removed), the kit through adapters/openclaw's test_kit_passes_all_five printed, 5 runs of 5:
+pass start: the run posted builder status note 1; effort: medium reached a process the run started
+With the kit's in-flight sampling switched off, the same run printed:
+fail start: effort: medium never reached a process the run started
+On that merge, unchanged: kernel/driver-kit/test_kit.py ran 36 tests, OK; adapters/openclaw/test_driver.py fails only test_kit_passes_all_five, whose expected start line lacks the "; effort: medium reached a process the run started" suffix this kit now prints for a declared driver.
