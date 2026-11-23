@@ -268,7 +268,7 @@ def token_for(private, wanted, env):
             return held["token"], held["expires_at"]
         reason, token, expires_at = mint(argv, wanted, env)
     if reason:
-        private.unlink(name)
+        revoke_before_remove(private, name, env)
         sys.stderr.write(NOTE.format(reason))
         return None, None
     private.write(name, {"token": token, "expires_at": expires_at, **wanted})
@@ -702,14 +702,30 @@ def held_tokens(private, wanted, env):
     if (os.path.dirname(snapshot) == private.path
             and re.fullmatch(r"run-[0-9a-f]{32}\.json", os.path.basename(snapshot))):
         names.insert(0, os.path.basename(snapshot))
-    found, now = {}, time.time()
+    found = {}
     for name in names:
-        held = private.read(name)
-        if (isinstance(held, dict) and isinstance(held.get("token"), str)
-                and TOKEN.fullmatch(held["token"]) and type(held.get("expires_at")) is int
-                and held["expires_at"] > now):
-            found.setdefault(held["token"], []).append(name)
+        token = live_token(private.read(name))
+        if token:
+            found.setdefault(token, []).append(name)
     return found
+
+
+def live_token(held):
+    if (isinstance(held, dict) and isinstance(held.get("token"), str)
+            and TOKEN.fullmatch(held["token"]) and type(held.get("expires_at")) is int
+            and held["expires_at"] > time.time()):
+        return held["token"]
+    return None
+
+
+def revoke_before_remove(private, name, env):
+    token = live_token(private.read(name))
+    if token:
+        base = revoke_base(env)
+        if base is None or revoke_call(base, token):
+            return False
+    private.unlink(name)
+    return True
 
 
 def revoke_call(base, token):

@@ -239,8 +239,9 @@ scope or expiry differ from the request and this contract), `pairing-off`
 refusal's code.
 
 **A fallback leaves no service credential behind**, a failed refresh
-included. Before the agent goes on as the owner, the helper deletes the
-private token file and hands no `GH_TOKEN` to any child. With no file, the git
+included. Before the agent goes on as the owner, the helper revokes the
+token the private token file holds and only then deletes the file, keeps the
+file for a later revoke if that revoke fails, and hands no `GH_TOKEN` to any child. With no file, the git
 credential helper answers nothing, so git uses the owner's credentials too:
 `gh` and git never split between the App and the owner. With **no service configured**, it
 does nothing and prints nothing: starts are exactly as today.

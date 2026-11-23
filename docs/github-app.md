@@ -384,8 +384,12 @@ python3 -I tools/github-app/agent-token.py revoke $REQ
   cache file, so it still works when the folder is partly gone, the cache file is unreadable,
   or the folder was moved (point `OPENWIZ_AGENT_TOKEN_DIR` at its new place).
 - Only after GitHub confirms (`204`) does it remove the files holding that token, then the
-  folder if nothing else is left in it. Another request's token is never touched. This is the
-  helper's only way to remove a token folder.
+  folder if nothing else is left in it. Another request's token is never touched.
+- **A fallback revokes first.** When the helper falls back to the owner's account and the
+  request's cache file still holds a live token, it revokes that token the same way before
+  deleting the file. If that revoke fails, it keeps the file for a later `revoke` and writes only
+  the usual fallback note. A kept token is never handed out again: with 300 seconds or less left
+  it fails the refresh check, so gh, git and the caller never get it.
 - It fails closed with exactly one line on standard error and exit 1, and never prints the
   token: `openwiz: openwiz[bot] token not revoked (no token found)` when it holds no current
   token, or `openwiz: openwiz[bot] token not revoked (<reason>); the token is kept where it was`
