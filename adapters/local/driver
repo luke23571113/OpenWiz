@@ -364,16 +364,18 @@ def row_command(run, argv, env, seconds):
             except OSError:
                 return 'error', start, start
             deadline, outcome = time.monotonic() + seconds, 'timeout'
-            while time.monotonic() < deadline:
-                if since(p.pid) is None:
-                    outcome = None
-                    break
-                time.sleep(0.05 if LINUX else MACOS_SECONDS_BETWEEN_LOOKS)
             try:
-                os.killpg(p.pid, signal.SIGKILL)
-            except OSError:
-                pass
-            code = p.wait()
+                while time.monotonic() < deadline:
+                    if since(p.pid) is None:
+                        outcome = None
+                        break
+                    time.sleep(0.05 if LINUX else MACOS_SECONDS_BETWEEN_LOOKS)
+            finally:
+                try:
+                    os.killpg(p.pid, signal.SIGKILL)
+                except OSError:
+                    pass
+                code = p.wait()
         return (code if outcome is None else outcome), start, os.fstat(log).st_size
     finally:
         os.close(log)
