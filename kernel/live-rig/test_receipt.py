@@ -147,6 +147,12 @@ class Receipt(unittest.TestCase):
         del rec['seconds']
         self.refused(rec, 'keys')
 
+    def test_a_withheld_line_writes_nothing(self):
+        lines = record('5-of-5.json')['stdout'].splitlines()
+        for n, check in enumerate(('version', 'start', 'wake', 'stop', 'token')):
+            withheld = lines[:n] + ['pass %s: withheld' % check] + lines[n + 1:]
+            self.refused(record('5-of-5.json', stdout='\n'.join(withheld) + '\n'), 'withheld')
+
     def test_an_unmapped_host_writes_nothing(self):
         self.refused(record('5-of-5.json', host='example-host'), 'example-host')
 
