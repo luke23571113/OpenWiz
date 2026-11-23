@@ -2,6 +2,7 @@
 import base64
 import fcntl
 import hashlib
+import http.server
 import importlib.util
 import json
 import os
@@ -800,15 +801,12 @@ class Review(Helper):
 
 
 
-import http.server  # noqa: E402  (the revoke tests' fake GitHub API)
 
 NOT_REVOKED = "openwiz: openwiz[bot] token not revoked ({}); the token is kept where it was\n"
 NO_TOKEN = "openwiz: openwiz[bot] token not revoked (no token found)\n"
 
 
 class FakeAPI(http.server.ThreadingHTTPServer):
-    """A fake GitHub REST API on 127.0.0.1: it records each request's method, path and a
-    hash of its Authorization header, and whether the watched token file still existed."""
     daemon_threads = True
 
     def __init__(self, status=204, location=None):
@@ -858,8 +856,8 @@ class Revoke(Helper):
                                      "auth": sha(f"Bearer {token}"), "held": True}])
 
     def test_revoke_makes_its_own_https_call_when_gh_is_refused_or_absent(self):
-        """catches: a revoke routed through gh, its guard or a shim, which fails open when gh
-        refuses (GA5's crossing) or is not installed."""
+        # comment-ok: catches: a revoke routed through gh, its guard or a shim, which fails open when gh
+        # refuses (GA5's crossing) or is not installed.
         refusing = self.root / "refusing"
         refusing.mkdir()
         (refusing / "gh").write_text("#!/bin/sh\necho synthetic-gh-refused >&2\nexit 1\n")
@@ -882,8 +880,8 @@ class Revoke(Helper):
                 self.assert_never_exposed(done)
 
     def test_revoke_inside_a_run_whose_folder_is_partly_gone_or_unreadable(self):
-        """catches: a revoke that needs the cache file, the exec folder or a folder listing,
-        so it fails once the run's folder is partly deleted or its cache file is unreadable."""
+        # comment-ok: catches: a revoke that needs the cache file, the exec folder or a folder listing,
+        # so it fails once the run's folder is partly deleted or its cache file is unreadable.
         breaks = {"cache file gone": 'rm -f "$CACHE"',
                   "cache file unreadable": 'chmod 000 "$CACHE"',
                   "cache file not JSON": 'printf "{" > "$CACHE"',
@@ -904,8 +902,8 @@ class Revoke(Helper):
                 self.assert_never_exposed(done)
 
     def test_revoke_finds_the_token_in_a_moved_folder(self):
-        """catches: a revoke that trusts the path this run recorded, so it finds nothing
-        after the folder was moved and the token stays live."""
+        # comment-ok: catches: a revoke that trusts the path this run recorded, so it finds nothing
+        # after the folder was moved and the token stays live.
         self.minted()
         moved = self.root / "moved"
         self.private.rename(moved)
@@ -919,8 +917,8 @@ class Revoke(Helper):
         self.assert_never_exposed(done)
 
     def test_removing_the_token_folder_revokes_first(self):
-        """catches: removing a token file or folder before GitHub confirmed the revoke,
-        which leaves a live token nobody holds."""
+        # comment-ok: catches: removing a token file or folder before GitHub confirmed the revoke,
+        # which leaves a live token nobody holds.
         held = self.minted()
         other = self.private / "token-other.json"
         other.write_text(json.dumps({"token": TOKEN2, "expires_at": int(time.time()) + 3600}))
@@ -941,8 +939,8 @@ class Revoke(Helper):
         self.assertEqual(api.seen, [])
 
     def test_a_failed_revoke_keeps_the_token_and_says_so_in_one_line(self):
-        """catches: a revoke that deletes the only copy of a live token when GitHub refuses,
-        redirects or cannot be reached, or that reports success, several lines or the token."""
+        # comment-ok: catches: a revoke that deletes the only copy of a live token when GitHub refuses,
+        # redirects or cannot be reached, or that reports success, several lines or the token.
         cases = {"refused 401": ({"status": 401}, "GitHub refused"),
                  "refused 404": ({"status": 404}, "GitHub refused"),
                  "server error": ({"status": 500}, "GitHub refused"),
@@ -979,8 +977,8 @@ class Revoke(Helper):
             self.assert_never_exposed(done)
 
     def test_no_token_found_gives_one_fixed_line_and_calls_nobody(self):
-        """catches: a revoke that exits zero, prints more than one line, or calls GitHub
-        when it holds no current token."""
+        # comment-ok: catches: a revoke that exits zero, prints more than one line, or calls GitHub
+        # when it holds no current token.
         api = self.api()
         expired = {"token": TOKEN, "expires_at": int(time.time()) - 10}
         setups = {"no folder": lambda: None,
@@ -998,8 +996,8 @@ class Revoke(Helper):
                 self.assert_never_exposed(done)
 
     def test_revoke_https_goes_only_to_the_configured_api_base(self):
-        """catches: a revoke that follows a proxy setting or an arbitrary base, sending the
-        token to a host other than GitHub's API."""
+        # comment-ok: catches: a revoke that follows a proxy setting or an arbitrary base, sending the
+        # token to a host other than GitHub's API.
         held = self.minted()
         before = held.read_bytes()
         proxy = self.api()
@@ -1037,8 +1035,8 @@ class FallbackRevoke(Helper):
         return self.helper("run", *REQ, "--", "gh", "pr", "list", **env)
 
     def test_a_fallback_revokes_a_live_token_before_deleting_it(self):
-        """catches: a fallback that deletes the only copy of a still-live token without
-        revoking it, leaving a token nobody holds until it expires."""
+        # comment-ok: catches: a fallback that deletes the only copy of a still-live token without
+        # revoking it, leaving a token nobody holds until it expires.
         for name, reason, act in (
                 ("a failed refresh", "unreachable", lambda api: self.run_gh(
                     OPENWIZ_GITHUB_API_BASE=api.base())),
@@ -1066,8 +1064,8 @@ class FallbackRevoke(Helper):
             self.assertEqual(api.seen, [], "a dead token is deleted without a call")
 
     def test_a_fallback_whose_revoke_fails_keeps_the_token_file(self):
-        """catches: a fallback that deletes a live token whose revoke failed, or that writes
-        more than the one fallback note."""
+        # comment-ok: catches: a fallback that deletes a live token whose revoke failed, or that writes
+        # more than the one fallback note.
         closed = FakeAPI()
         closed_base = closed.base()
         closed.shutdown()
@@ -1101,8 +1099,8 @@ class FallbackRevoke(Helper):
                 self.assert_never_exposed(done, later)
 
     def test_a_kept_expiring_token_is_never_handed_out_again(self):
-        """catches: a token kept after a failed revoke being handed to the next run's gh, its
-        git or the caller, because the refresh boundary is skipped for a kept file."""
+        # comment-ok: catches: a token kept after a failed revoke being handed to the next run's gh, its
+        # git or the caller, because the refresh boundary is skipped for a kept file.
         held = self.expiring()
         self.answers(answer(), {"exit": 1, "stdout": ""})
         refusing = self.api(status=401)
@@ -1126,8 +1124,8 @@ class FallbackRevoke(Helper):
 
 
     def test_a_kept_fresh_token_is_never_reused_when_the_route_returns(self):
-        """catches: a fresh token kept after a failed fallback revoke (the pairing turned off)
-        being handed out again once the route is back, because its file still names its scope."""
+        # comment-ok: catches: a fresh token kept after a failed fallback revoke (the pairing turned off)
+        # being handed out again once the route is back, because its file still names its scope.
         held = self.minted()
         refusing = self.api(status=401)
         self.env["OPENWIZ_GITHUB_API_BASE"] = refusing.base()
@@ -1153,8 +1151,8 @@ class FallbackRevoke(Helper):
         return sorted(self.private.glob("kept-*")) if self.private.is_dir() else []
 
     def test_a_new_mint_revokes_a_kept_token_before_replacing_it(self):
-        """catches: a new mint that overwrites a kept token's file without revoking it, so the
-        kept token stays live and nobody holds it."""
+        # comment-ok: catches: a new mint that overwrites a kept token's file without revoking it, so the
+        # kept token stays live and nobody holds it.
         held = self.kept_token()
         api = self.api()
         api.watch = held
@@ -1168,8 +1166,8 @@ class FallbackRevoke(Helper):
         self.assert_never_exposed(back)
 
     def test_a_new_mint_keeps_a_kept_token_beside_it_when_the_revoke_fails(self):
-        """catches: a new mint that overwrites a kept token whose revoke failed, or hands that
-        kept token to gh, git or the caller once it sits beside the new one."""
+        # comment-ok: catches: a new mint that overwrites a kept token whose revoke failed, or hands that
+        # kept token to gh, git or the caller once it sits beside the new one.
         self.kept_token()
         refusing = self.api(status=401)
         self.env["OPENWIZ_GITHUB_API_BASE"] = refusing.base()
@@ -1197,8 +1195,8 @@ class FallbackRevoke(Helper):
         self.assert_never_exposed(*outputs, done)
 
     def test_an_ordinary_refresh_never_revokes_a_token_other_runs_may_hold(self):
-        """catches: a refresh that revokes every token it replaces, breaking another run of
-        the same request that still uses the old one."""
+        # comment-ok: catches: a refresh that revokes every token it replaces, breaking another run of
+        # the same request that still uses the old one.
         held = self.minted()
         old = json.loads(held.read_text())
         old["expires_at"] = int(time.time()) + 200
