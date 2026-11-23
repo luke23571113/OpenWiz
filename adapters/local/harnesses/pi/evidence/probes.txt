@@ -1,0 +1,8 @@
+$ probe: wake without --model {model} (the fake refuses it, as pi 1.6.0 forms allow only the two lines)
+fail pi: kit: fail wake: builder status note 1 did not change after the wake
+$ probe: the fake prints a line no signed_out pattern matches
+fail pi: signed_out: a signed-out first turn did not fail start with 'the harness is not signed in' and a next naming the row's login_command
+$ probe: the row declares daemon none
+fail pi: daemon: the fake started a background process, but the row declares none
+$ probe: the row claims effort high as --thinking high with {effort} in start
+fail pi: effort: a start with effort high was refused
