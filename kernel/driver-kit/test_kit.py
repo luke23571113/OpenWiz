@@ -298,6 +298,19 @@ class Kit(unittest.TestCase):
         self.assertEqual(list(k.text_files('python3 Shared Scripts/reader.py', cwd)), [script])
         self.assertEqual(k.leaks, [])
 
+    def test_a_word_under_a_missing_folder_costs_one_lookup_in_macos_text(self):
+        kit = module(os.path.join(HERE, 'kit.py'))
+        k = kit.Kit.__new__(kit.Kit)
+        k.lock, k.leaks = threading.RLock(), []
+        looked, real = [], kit.os.path.exists
+        kit.os.path.exists = lambda path: looked.append(path) or real(path)
+        try:
+            found = list(k.text_files('python3 /nonexistent/openwiz/v1 ' + 'word ' * 500, self.folder))
+        finally:
+            kit.os.path.exists = real
+        self.assertEqual(found, [])
+        self.assertLessEqual(len(looked), 510, 'the search kept growing under a folder that does not exist')
+
     @unittest.skipUnless(os.path.isdir('/proc/self'), 'reads /proc')
     def test_a_live_marked_process_whose_folder_cannot_be_read_fails_the_check(self):
         kit = module(os.path.join(HERE, 'kit.py'))
