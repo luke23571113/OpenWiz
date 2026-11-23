@@ -410,9 +410,11 @@ python3 -I tools/github-app/agent-token.py run $REQ -- git push origin HEAD
 - **Refresh.** Before each use, a token with 300 seconds or less left is replaced by a
   fresh request. An answer is used only when it names exactly the requested
   repositories and permissions and has more than 300 and at most 3900 seconds left.
-- **Fallback.** When no token can be had, the helper takes the request's cache file out of use:
-  it revokes a live token and deletes the file only after GitHub confirms, and keeps the file
-  for a later `revoke` if that revoke fails or the file can't be read ([Revoke](#revoke)). It hands no App token to the command (one handed down by an outer `run` included), and
+- **Fallback.** When no token can be had, the helper takes the request's cache file and every
+  running `run`'s snapshot of it out of use: it revokes a live token and deletes the file only
+  after GitHub confirms, and keeps the file for a later `revoke` if that revoke fails or the
+  file can't be read ([Revoke](#revoke)). It hands no App token, and no handle to one, to the
+  command (one handed down by an outer `run` included), and
   writes exactly one line to standard error:
   `openwiz: no openwiz[bot] token (<reason>); using the owner's GitHub account`. The
   reasons are `unreachable`, `bad-answer`, `pairing-off` and the service's refusal
@@ -434,22 +436,25 @@ python3 -I tools/github-app/agent-token.py revoke $REQ
   redirect. It never runs gh, its guard or any shim, so a refused or missing gh can't stop it.
   `OPENWIZ_GITHUB_API_BASE` exists for the tests and accepts only `http://127.0.0.1:PORT`.
 - It finds the request's tokens by name: the request's cache file, its kept files, and every
-  run snapshot that records this request, the current run's included. Inside a `run` it also
-  reads the run's own copy, an open file the run hands down, so it still works when the folder
-  is partly gone, the cache file is unreadable, or the folder was moved (point
-  `OPENWIZ_AGENT_TOKEN_DIR` at its new place) or deleted. A snapshot or copy for another
-  request is never used.
+  run snapshot that records this request. Inside a `run` for the same request it asks the `run`
+  itself, which holds its token in memory, through a socket the run hands down that can only ask
+  for a revoke and never returns the token. So it still works when the folder is partly gone, the
+  cache file is unreadable, or the folder was moved or deleted. A run asked about another request
+  leaves it to the folder, and its own token is never used for it.
 - Before its call it moves each token it found into a kept file, so it is never handed out
-  again. Only after GitHub confirms (`204`) does it remove every file holding exactly that
-  token, then the folder if nothing else is left in it. A token minted meanwhile and another
-  request's token are never touched.
+  again. A `run` whose folder was deleted first writes its token into a kept file in a fresh
+  private folder at the same path, so a refused revoke leaves a copy that outlives the run.
+  Only after GitHub confirms (`204`) does it remove every file holding exactly that token. A
+  token minted meanwhile and another request's token are never touched, and the helper never
+  removes the private folder itself, so a mint in flight can always store its answer. If the
+  folder is deleted under a mint anyway, the helper revokes the new token and stops with one line.
 - **Kept files.** A token is never deleted or replaced while it may be live and unrevoked. The
   helper moves it to its own `kept-<request>-<random>.json` file in the same 0700 folder, and
   revokes it there. The helper does this when it falls back, when a refresh replaces a token
   that no running `run` still holds, when a `run` ends holding a token nothing else holds, and
-  when `revoke` starts. The cache lookup reads only the cache file, and a run's gh and git
-  check that their token is in no kept file, so a kept token never reaches gh, git or the
-  caller again. A file the helper can't read is kept the same way, never deleted or
+  when `revoke` starts. A fallback and `revoke` also move every run snapshot that records the
+  request into a kept file, even when the cache file can't be read, and a run's gh and git read
+  only their own snapshot, so a kept token never reaches gh, git or the caller again. A file the helper can't read is kept the same way, never deleted or
   overwritten; an expired token's file is deleted. Every later mint or fallback for the request
   tries the kept tokens' revoke again, and `revoke` with the same request tries it at once.
   Locking keeps two helpers from racing on these files, and no lock is held during a call to
