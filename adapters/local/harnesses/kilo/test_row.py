@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""The kilo row's own checks, run by test_harnesses.py after the contract and kit checks."""
 import os, sys
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -24,17 +23,19 @@ def not_installed():
         return env.start_refused_starting_nothing(says, PATH=without_any_agent_cli(env))
 
 
-# Kilo's own signed-out output, in the shapes its source prints (Kilo CLI v7.8.32):
-# provider/error.ts (a 401 through a gateway), kilocode/cloud/auth.ts (no saved login), and the gateway's codes
-# that kilocode/kilo-errors.ts reads from a JSON error line's responseBody.
+# External: Kilo's own signed-out lines: a 401 through a gateway, no saved login, and the gateway code read from
+# a JSON error line's responseBody,
+# https://github.com/Kilo-Org/kilocode/blob/v7.8.32/packages/opencode/src/provider/error.ts
+# https://github.com/Kilo-Org/kilocode/blob/v7.8.32/packages/opencode/src/kilocode/cloud/auth.ts
+# https://github.com/Kilo-Org/kilocode/blob/v7.8.32/packages/opencode/src/kilocode/kilo-errors.ts
 GATEWAY = '{"type":"error","timestamp":0,"sessionID":"fake-signed-out","error":{"name":"APIError","data":' \
           '{"message":"Payment Required","statusCode":402,"responseBody":"{\\"error\\":{\\"code\\":\\"%s\\"}}"}}}'
 SIGNED_OUT = ['Error: Unauthorized: request was blocked by a gateway or proxy. Your authentication token may be '
               'missing or expired \u2014 try running `kilo auth login <your provider URL>` to re-authenticate.',
               'Error: Kilo credentials are required; run `kilo auth login`',
               GATEWAY % 'PAID_MODEL_AUTH_REQUIRED']
-# Not signed out: the free-model limit ("You need to sign up to keep going ... Or come back later", kilo-errors.ts)
-# clears with time too, so it must stay a plain failure, never a 'sign in with kilo auth login' next.
+# External: the free-model limit says "Or come back later", so it isn't a sign-in,
+# https://github.com/Kilo-Org/kilocode/blob/v7.8.32/packages/opencode/src/kilocode/kilo-errors.ts
 USAGE_LIMIT = GATEWAY % 'PROMOTION_MODEL_LIMIT_REACHED'
 
 

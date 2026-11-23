@@ -26,8 +26,8 @@ if a[:1] == ['--auto']:
     a = a[1:]
 if len(a) != 1:
     fake_cli.refuse()
-# Signed out (the runner's FAKE_CLI_SIGNED_OUT): Kilo's own 401 text from packages/opencode/src/provider/error.ts,
-# printed as UI.error does, or the line FAKE_KILO_SIGNED_OUT_LINE names; Kilo then exits 1.
+# External: signed out, Kilo prints its own 401 text as UI.error does and exits 1,
+# https://github.com/Kilo-Org/kilocode/blob/v7.8.32/packages/opencode/src/provider/error.ts
 SIGNED_OUT = os.environ.get('FAKE_KILO_SIGNED_OUT_LINE') or (
     'Error: Unauthorized: request was blocked by a gateway or proxy. Your authentication token may be missing or '
     'expired \u2014 try running `kilo auth login <your provider URL>` to re-authenticate.')

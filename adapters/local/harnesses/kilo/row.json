@@ -41,8 +41,7 @@
   "signed_out": [
     "authentication token may be missing or expired",
     "Kilo credentials are required",
-    "\\bPAID_MODEL_AUTH_REQUIRED\\b",
-    "\\bPROMOTION_MODEL_LIMIT_REACHED\\b"
+    "\\bPAID_MODEL_AUTH_REQUIRED\\b"
   ],
   "login_command": "kilo auth login"
 }
