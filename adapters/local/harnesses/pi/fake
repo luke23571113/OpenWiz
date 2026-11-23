@@ -1,0 +1,27 @@
+#!/usr/bin/env python3
+import os, re, sys
+sys.dont_write_bytecode = True
+sys.path.insert(0, os.environ['FAKE_CLI_LIB'])
+import fake_cli
+
+HELP = '''The fake pi (1.6.0 forms): its synthetic --help allows only:
+  pi -p --mode json --session-id <id> --model <m> -- <prompt>
+  pi --session-id <id> -p --model <m> -- <prompt>
+where <id> starts and ends with a letter or digit and holds only letters, digits, ".", "_" and "-",
+and <prompt> does not start with "@" (pi reads that as a file).'''
+SESSION_ID = r'[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?'
+
+if sys.argv[1:] == ['--help']:
+    print(HELP)
+    sys.exit(0)
+a = sys.argv[1:]
+if len(a) == 9 and a[:4] == ['-p', '--mode', 'json', '--session-id'] and a[5] == '--model' and a[7] == '--':
+    session, model, prompt, woken = a[4], a[6], a[8], False
+elif len(a) == 7 and a[0] == '--session-id' and a[2:4] == ['-p', '--model'] and a[5] == '--':
+    session, model, prompt, woken = a[1], a[4], a[6], True
+else:
+    fake_cli.refuse()
+if not re.fullmatch(SESSION_ID, session) or model.startswith('-') or prompt.startswith('@') or \
+        woken != prompt.startswith('You were woken'):
+    fake_cli.refuse()
+fake_cli.turn(prompt, model, session, daemon='tree', signed_out='No API key found for anthropic.')
