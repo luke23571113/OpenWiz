@@ -918,7 +918,7 @@ class Revoke(Helper):
         done = self.revoke(api, OPENWIZ_AGENT_TOKEN_DIR=str(moved), OPENWIZ_AGENT_TOKEN_RUN=stale)
         self.assertEqual((done.returncode, done.stdout, done.stderr), (0, "", ""))
         self.assert_revoked_once(api)
-        self.assertFalse(moved.exists(), "the emptied token folder is removed after the revoke")
+        self.assertEqual(list(moved.iterdir()), [], "no token is left, and the folder stays for later mints")
         self.assert_never_exposed(done)
 
     def test_removing_the_token_folder_revokes_first(self):
@@ -1287,7 +1287,7 @@ class RevokeReview(Helper):
     def test_r4_revoke_finds_this_runs_token_after_the_folder_moved_or_went(self):
         # comment-ok: catches: a revoke that skips this run's snapshot because its recorded path is stale,
         # or that needs the folder at all, so a moved or deleted folder leaves a live token.
-        for name, damage in (("moved", 'chmod 000 "$CACHE"; mv "$PRIV" "$MOVED"; OPENWIZ_AGENT_TOKEN_COPY='),
+        for name, damage in (("moved", 'chmod 000 "$CACHE"; mv "$PRIV" "$MOVED"; OPENWIZ_AGENT_TOKEN_REVOKE='),
                              ("gone", 'rm -rf "$PRIV"')):
             with self.subTest(name):
                 shutil.rmtree(self.private, True)
@@ -1368,7 +1368,9 @@ class FinalRound(Helper):
         # after an in-run revoke GitHub refused or with no revoke at all, so a later revoke finds nothing.
         for name, script, code in (
                 ("in-run revoke refused", f'rm -rf "$PRIV"; "$PY" -I "$H" revoke {" ".join(REQ)}', 1),
-                ("no revoke before the run ends", 'rm -rf "$PRIV"', 0)):
+                ("no revoke before the run ends", 'rm -rf "$PRIV"', 0),
+                ("revoke refused, then the folder went",
+                 f'"$PY" -I "$H" revoke {" ".join(REQ)}; rm -rf "$PRIV"; exit 1', 1)):
             with self.subTest(name):
                 shutil.rmtree(self.private, True)
                 self.minted()
@@ -1376,7 +1378,8 @@ class FinalRound(Helper):
                 done = self.inside_run(script, refusing)
                 stderr = NOT_REVOKED.format("GitHub refused") if code else ""
                 self.assertEqual((done.returncode, done.stdout, done.stderr), (code, "", stderr))
-                self.assertEqual(self.deletes(refusing), [("DELETE", sha(f"Bearer {TOKEN}"))])
+                self.assertEqual(self.deletes(refusing), [("DELETE", sha(f"Bearer {TOKEN}"))] * (1 + (
+                    name == "revoke refused, then the folder went")), "the run end retries a copy it rebuilt")
                 api = self.api()
                 later = self.revoke(api)
                 self.assertEqual((later.returncode, later.stderr), (0, ""), "a retry copy survives the run")
