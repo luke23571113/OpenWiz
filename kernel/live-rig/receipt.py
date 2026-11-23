@@ -78,6 +78,8 @@ def kit_lines(stdout):
         raise Refused('the run is %d of 5 pass, not 5 of 5' % passed)
     out = []
     for name, line in zip(CHECKS, lines):
+        if line.split(': ', 1)[1] == 'withheld':
+            raise Refused("the %s line is withheld in the run record; a receipt needs kit.py's line" % name)
         if name in NOTE:
             if not re.fullmatch(re.escape(NOTE[name]) + r'[0-9]+', line):
                 raise Refused("the %s line is not kit.py's, ending in its status note's id" % name)
