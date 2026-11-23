@@ -23,8 +23,6 @@ KIT_MODEL = r'[A-Za-z0-9][A-Za-z0-9 ._:@+-]{0,59}'
 REPO = r'[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}'
 STATUS_SECONDS = 30
 CHECK_LINE = re.compile(r'(pass|fail) (version|start|wake|stop|token): ')
-# Only plain ASCII words, digits and light punctuation survive into a record; a '/', '\\', '~', '=', '@',
-# any other symbol, any non-ASCII letter and any control character makes the line withheld.
 PLAIN = re.compile(r"[A-Za-z0-9 .,;:'()-]*")
 
 
