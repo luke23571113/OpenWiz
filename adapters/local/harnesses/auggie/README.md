@@ -29,9 +29,7 @@ Result: same-run wake holds, so the row is built.
 ## Not installed, not signed in
 
 - **Not installed:** the driver's D3 error says `harness auggie is not installed here`, and its `next` says to install `auggie` and sign in yourself. The CLI's own install is `npm install -g @augmentcode/auggie`.
-- **Not signed in:** 1.2.2 prints its session header, then `No API key found for unknown.` on stderr, and exits 1. `auggie auth status` prints `Not logged in.` and exits 1. The fake does the same when `FAKE_AUGGIE_SIGNED_OUT=1`.
-  - **The gap, until HR1's revision 4 (#2431):** the driver doesn't know that line as a signed-out line. A signed-out start therefore fails safely as a generic harness failure (`the first turn ended at once: the harness failed (exit 1)`). That failure starts nothing, and its `next` names the run's log. It does not yet say "not signed in" or name `auggie auth login`.
-  - **The planned fix:** HR1's revision 4 adds the optional row-declared `signed_out` patterns and `login_command` to the harness-row contract. Once HR1's branch carries them, this row merges it in and fills them with `No API key found` and `auggie auth login`. Until then, [test_row.py](test_row.py)'s not-signed-in check stays red ([evidence/red-signed-out.txt](evidence/red-signed-out.txt)), as ruled on #2439.
+- **Not signed in:** 1.2.2 prints its session header, then `No API key found for unknown.` on stderr, and exits 1. `auggie auth status` prints `Not logged in.` and exits 1. The row's `signed_out` is `No API key found for `, and its `login_command` is `auggie auth login`. A signed-out start therefore fails with the D3 error `the harness is not signed in`, and its `next` names `auggie auth login`. The fake answers as 1.2.2 does when the runner sets `FAKE_CLI_SIGNED_OUT=1`. The red runs before HR1's revision 4 are in [evidence/red-signed-out.txt](evidence/red-signed-out.txt) and [evidence/red-signed-out-fields.txt](evidence/red-signed-out-fields.txt).
 
 ## Effort: none
 
