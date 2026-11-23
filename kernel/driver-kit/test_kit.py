@@ -266,7 +266,7 @@ class Kit(unittest.TestCase):
         time.sleep(0.05)
         k = kit.Kit.__new__(kit.Kit)
         k.lock, k.leaks, k.mark, k.hidden = threading.RLock(), [], 'OPENWIZ_KIT_RUN=synthetic', set()
-        k.since = started_at('self') + 1
+        k.since = started_at(str(older.pid)) + 1
         time.sleep(0.05)
         newer = hidden()
         while started_at(str(newer.pid)) <= k.since:

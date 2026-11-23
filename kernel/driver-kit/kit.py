@@ -153,6 +153,11 @@ def holds_credential(text):
     return bool(SHAPES.search(text)) or any(v in text for v in SECRETS)
 
 
+def started_at(pid):
+    with open('/proc/%s/stat' % pid) as f:
+        return int(f.read().rpartition(')')[2].split()[19])
+
+
 def shown(name, *values):
     if SHOWN_NAME.fullmatch(name) and not holds_credential(name) and not any(v in name for v in values):
         return name
@@ -284,6 +289,7 @@ class Kit:
         self.groups = set()
         self.lock = threading.RLock()
         self.runtime, self.listed_pids, self.active, self.hidden = set(), set(), set(), set()
+        self.since = started_at('self') if PROC else 0
         self.seen = PROC
         self.blind = None if PROC else self.unseen()
 
@@ -326,11 +332,12 @@ class Kit:
             yield from self.listed()
             return
         table = self.table()
-        for pid, (ppid, uid, env, cmd, group) in table.items():
+        for pid, (ppid, uid, env, cmd, group, since) in table.items():
             if env is not None and self.mark in env:
                 yield cmd, env
-        for pid, (ppid, uid, env, cmd, group) in table.items():
-            if env is None and uid == os.getuid() and (group == os.getpgrp() or self.under_run(table, ppid)):
+        for pid, (ppid, uid, env, cmd, group, since) in table.items():
+            if env is None and uid == os.getuid() and since > self.since and (
+                    group == os.getpgrp() or self.under_run(table, ppid)):
                 self.leak('a process of the driver hides its details, so the kit cannot check it')
 
     def table(self):
@@ -344,9 +351,9 @@ class Kit:
                     uid = int(next(row for row in f if row.startswith('Uid:')).split()[1])
             except (OSError, ValueError, IndexError, StopIteration):
                 continue
-            known = (pid, since) in self.hidden
+            candidate = uid == os.getuid() and int(since) > self.since and (pid, since) not in self.hidden
             try:
-                env, cmd = self.details(pid, HIDDEN_TRIES if uid == os.getuid() and not known else 1)
+                env, cmd = self.details(pid, HIDDEN_TRIES if candidate else 1)
             except PermissionError:
                 if state in 'ZX' or not self.running(pid):
                     continue
@@ -354,7 +361,7 @@ class Kit:
                 env = cmd = None
             except OSError:
                 continue
-            found[pid] = (ppid, uid, env, cmd, group)
+            found[pid] = (ppid, uid, env, cmd, group, int(since))
         return found
 
     @staticmethod
@@ -392,7 +399,7 @@ class Kit:
         seen = set()
         while str(pid) in table and pid not in seen:
             seen.add(pid)
-            ppid, _, env, _, _ = table[str(pid)]
+            ppid, _, env, _, _, _ = table[str(pid)]
             if env is not None and self.mark in env:
                 return True
             pid = ppid
@@ -472,7 +479,7 @@ class Kit:
 
     def run_processes(self):
         if PROC:
-            for pid, (_, _, env, cmd, _) in self.table().items():
+            for pid, (_, _, env, cmd, _, _) in self.table().items():
                 if env is None or self.mark not in env:
                     continue
                 try:
