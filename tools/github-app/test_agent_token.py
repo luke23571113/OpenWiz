@@ -988,8 +988,7 @@ class Revoke(Helper):
         setups = {"no folder": lambda: None,
                   "empty folder": lambda: self.private.mkdir(mode=0o700),
                   "expired token": lambda: (self.minted().write_text(json.dumps(expired))),
-                  "not a token": lambda: (self.minted().write_text(json.dumps({"token": "a b"}))),
-                  "loose folder": lambda: (self.minted(), self.private.chmod(0o755))}
+                  "not a token": lambda: (self.minted().write_text(json.dumps({"token": "a b"})))}
         for name, setup in setups.items():
             with self.subTest(name):
                 shutil.rmtree(self.private, True)
@@ -998,6 +997,39 @@ class Revoke(Helper):
                 self.assertEqual((done.returncode, done.stdout, done.stderr), (1, "", NO_TOKEN))
                 self.assertEqual(api.seen, [])
                 self.assert_never_exposed(done)
+
+    def test_revoke_names_the_failed_private_folder_check(self):
+        held = self.minted()
+        before = sha(held.read_text())
+        self.private.chmod(0o755)
+        link = self.root / "linked"
+        link.symlink_to(self.private)
+        unsafe_parent = self.root / "shared"
+        unsafe_parent.mkdir()
+        (unsafe_parent / "private").mkdir(mode=0o700)
+        unsafe_parent.chmod(0o777)
+        worktree = self.root / "worktree"
+        (worktree / ".git").mkdir(parents=True)
+        (worktree / "private").mkdir(mode=0o700)
+        cases = (
+            (self.private, "the private token directory must be a 0700 directory you own"),
+            (link, "the private token directory must be a real directory, through no symlink"),
+            (unsafe_parent / "private",
+             "the private token directory must sit in folders only you or root can change"),
+            (worktree / "private", "the private token directory must be outside every Git working tree"),
+            (Path("relative-private"), "the private token directory must be an absolute path"),
+        )
+        api = self.api()
+        for folder, guidance in cases:
+            with self.subTest(guidance=guidance):
+                done = self.revoke(api, OPENWIZ_AGENT_TOKEN_DIR=str(folder))
+                self.assert_never_exposed(done)
+                self.assertEqual((done.returncode, done.stdout, done.stderr),
+                                 (1, "", f"openwiz: openwiz[bot] token not revoked ({guidance})\n"),
+                                 "catches: revoke calls an unsafe token folder empty")
+                self.assertEqual(api.seen, [])
+                self.assertEqual(list(self.private.iterdir()), [held])
+                self.assertEqual(sha(held.read_text()), before)
 
     def test_revoke_https_goes_only_to_the_configured_api_base(self):
         # comment-ok: catches: a revoke that follows a proxy setting or an arbitrary base, sending the
