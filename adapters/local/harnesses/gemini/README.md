@@ -59,7 +59,16 @@ The census start line holds as given. The census wake line puts `--resume` first
 
 ## Signed out
 
-When there is no sign-in, a headless turn prints `Please set an Auth method in your ~/.gemini/settings.json or specify one of the following environment variables before running: ...` and exits 41 ([`validateNonInterActiveAuth.ts`](https://github.com/google-gemini/gemini-cli/blob/v0.70.0/packages/cli/src/validateNonInterActiveAuth.ts)). The row's `signed_out` matches it, and `start` then names `gemini` as the sign-in command: run it, then choose Sign in with Google or set your own `GEMINI_API_KEY` ([README](https://github.com/google-gemini/gemini-cli/blob/v0.70.0/README.md)).
+A headless turn that can't sign in exits 41 and prints one of these v0.70.0 diagnostics; the row's `signed_out` matches each by its fixed first words:
+
+| When | Diagnostic | Source |
+| --- | --- | --- |
+| No auth type chosen, as on a fresh install | `Please set an Auth method in your ~/.gemini/settings.json or specify one of the following environment variables before running: ...` | [`validateNonInterActiveAuth.ts`](https://github.com/google-gemini/gemini-cli/blob/v0.70.0/packages/cli/src/validateNonInterActiveAuth.ts) |
+| Gemini API key auth chosen, no key set | `When using Gemini API, you must specify the GEMINI_API_KEY environment variable.` | [`auth.ts`](https://github.com/google-gemini/gemini-cli/blob/v0.70.0/packages/cli/src/config/auth.ts#L21-L29) |
+| Vertex AI chosen, no project, location or key set | `When using Vertex AI, you must specify either: ...` | [`auth.ts`](https://github.com/google-gemini/gemini-cli/blob/v0.70.0/packages/cli/src/config/auth.ts#L31-L44) |
+| Google sign-in chosen, no cached sign-in, browser launch suppressed | `Manual authorization is required but the current session is non-interactive. ...` | [`oauth2.ts`](https://github.com/google-gemini/gemini-cli/blob/v0.70.0/packages/core/src/code_assist/oauth2.ts#L260-L266) |
+
+`start` then fails with `the harness is not signed in` and names `gemini` as the sign-in command: run it, then choose Sign in with Google or set your own `GEMINI_API_KEY` ([README](https://github.com/google-gemini/gemini-cli/blob/v0.70.0/README.md)). The fake prints each diagnostic when told to, and `test_row.py` runs a signed-out first turn through the driver for each.
 
 ## The fake
 
