@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import os, subprocess, sys
+import json, os, shutil, subprocess, sys, tempfile
 
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -66,10 +66,28 @@ for level in EFFORTS:
           woke and len(argv) == 2 and argv[0][-2:] == ['--effort', level] and '--model' in argv[0]
           and '--effort' not in argv[1])
 
+with tempfile.TemporaryDirectory(prefix='amp-archives-') as rows:
+    shutil.copytree(HERE, os.path.join(rows, NAME))
+    with open(os.path.join(rows, NAME, 'row.json')) as f:
+        row = json.load(f)
+    row['start'].remove('--no-archive-after-execute')
+    with open(os.path.join(rows, NAME, 'row.json'), 'w') as f:
+        json.dump(row, f)
+    with th.ThrowawayMachine(rows, NAME, 'amp', os.path.join(rows, NAME, 'fake'), 'allow-all',
+                             ['AMP_SKIP_UPDATE_CHECK']) as env:
+        lines = env.kit()
+        logs = ''
+        for run in env.runs():
+            with open(os.path.join(env.state, run[:-len('.json')] + '.log')) as f:
+                logs += f.read()
+        check('without --no-archive-after-execute, amp archives the started thread and the wake fails: %s'
+              % next((x for x in lines if not x.startswith('pass ')), 'the kit passed'),
+              lines[:2] == th.PASS[:2] and lines[2:3] != th.PASS[2:3]
+              and 'This thread is archived and cannot be continued.' in logs
+              and [r['turn'] for r in env.records()] == ['first'])
+
 ok = {'AMP_SKIP_UPDATE_CHECK': '1'}
 for why, argv, env in (
-        ('the census start without --no-archive-after-execute, whose thread amp archives so it cannot be continued',
-         ['-x', 'with the build-ticket skill', '--stream-json', '--model', 'm'], ok),
         ('--stream-json without -x', ['--stream-json', '--model', 'm', 'with the build-ticket skill'], ok),
         ('--effort on a continued thread', ['threads', 'continue', 'T-1', '-x', 'You were woken with the x skill',
                                             '--stream-json', '--effort', 'high'], ok),

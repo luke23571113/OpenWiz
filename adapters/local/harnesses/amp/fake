@@ -6,12 +6,14 @@ import fake_cli
 
 HELP = '''The fake amp: it allows only the local execute-mode forms Amp CLI 0.0.1795392057-g03d1fb documents
 (ampcode.com/docs/cli/execute-mode, ampcode.com/docs/cli/streaming-json, ampcode.com/docs/model-selector):
-  amp -x <prompt> --stream-json --no-archive-after-execute --model <m> [--dangerously-allow-all] [--effort <level>]
+  amp -x <prompt> --stream-json [--no-archive-after-execute] --model <m> [--dangerously-allow-all] [--effort <level>]
   amp threads continue <thread id> -x <prompt> --stream-json [--dangerously-allow-all]
 with AMP_SKIP_UPDATE_CHECK=1. It prints the thread id in its stream-json init message and starts a background
-subagent outside the turn's process group; with AMP_FAKE_SIGNED_OUT=1 it answers as a signed-out amp does.'''
+subagent outside the turn's process group; with AMP_FAKE_SIGNED_OUT=1 it answers as a signed-out amp does.
+Like amp, a start without --no-archive-after-execute archives its thread, and continuing it then fails.'''
 EFFORTS = ('none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max')
 SIGNED_OUT = 'No API key found. Run `amp login` first.'
+ARCHIVED = 'This thread is archived and cannot be continued.'
 
 if sys.argv[1:] == ['--help']:
     print(HELP)
@@ -27,9 +29,11 @@ if len(a) < 3 or a[0] != '-x' or not a[1] or a[1].startswith('-') or a[2] != '--
     fake_cli.refuse()
 prompt, a = a[1], a[3:]
 if session is None:
-    if a[:2] != ['--no-archive-after-execute', '--model'] or len(a) < 3 or not a[2] or a[2].startswith('-'):
+    archives = a[:1] != ['--no-archive-after-execute']
+    a = a[0 if archives else 1:]
+    if a[:1] != ['--model'] or len(a) < 2 or not a[1] or a[1].startswith('-'):
         fake_cli.refuse()
-    model, a = a[2], a[3:]
+    model, a = a[1], a[2:]
 else:
     model = 'the thread\'s own model'
 if a[:1] == ['--dangerously-allow-all']:
@@ -38,6 +42,12 @@ if session is None and a[:1] == ['--effort'] and len(a) == 2 and a[1] in EFFORTS
     a = a[2:]
 if a or (session is not None) != prompt.startswith('You were woken'):
     fake_cli.refuse()
+archived = os.environ['FAKE_CLI_RECORD'] + '.archived'
+if session is not None and os.path.exists(archived):
+    print(ARCHIVED, file=sys.stderr, flush=True)
+    sys.exit(1)
+if session is None and archives:
+    open(archived, 'w').close()
 if os.environ.get('AMP_FAKE_SIGNED_OUT') == '1':
     print(SIGNED_OUT, file=sys.stderr, flush=True)
     sys.exit(1)
