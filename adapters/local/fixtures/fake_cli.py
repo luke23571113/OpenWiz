@@ -35,10 +35,16 @@ def background_service(how):
             pid = int(s.makefile().readline())
         return [pid, since(pid)]
     if not os.path.isdir('/proc/self'):
-        # macOS: a service the supervisor can always see, in the turn's process group and writing to its output;
-        # the hard-detached service below is the Linux proof, where the subreaper keeps it in reach.
-        p = subprocess.Popen([shutil.which('sleep', path=clean['PATH']), '300'], env=clean, stdin=subprocess.DEVNULL)
-        return [p.pid, since(p.pid)]
+        return service_in_the_turns_group_that_macos_stop_reaches(clean)
+    return hard_detached_service_that_only_the_linux_subreaper_keeps(clean)
+
+
+def service_in_the_turns_group_that_macos_stop_reaches(clean):
+    p = subprocess.Popen([shutil.which('sleep', path=clean['PATH']), '300'], env=clean, stdin=subprocess.DEVNULL)
+    return [p.pid, since(p.pid)]
+
+
+def hard_detached_service_that_only_the_linux_subreaper_keeps(clean):
     r, w = os.pipe()
     if os.fork() == 0:
         os.setsid()
