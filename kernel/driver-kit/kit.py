@@ -50,7 +50,7 @@ REFUSAL = ("this host can't set effort: remove the effort for this harness in yo
 CANT = "Effort: the host can't set it"
 NOT_DECLARED = 'not declared yet; required from EF14'
 PLACEHOLDER = re.compile(r'<[a-z][a-z-]*>')
-LISTED = re.compile(r'\bfor ([a-z][a-z0-9-]*(?:, [a-z][a-z0-9-]*)*(?:,? and [a-z][a-z0-9-]*)?)')
+LISTED = re.compile(r'\s*,? for ([a-z][a-z0-9-]*(?:, [a-z][a-z0-9-]*)*(?:,? and [a-z][a-z0-9-]*)?)(?=[,.;]| with|$)')
 PROBE = ['-I', '-c', "import sys; sys.stdout.write('.'); sys.stdout.flush(); sys.stdin.read()"]
 
 
@@ -1057,14 +1057,15 @@ def setting(text, word):
     if not span:
         return None
     tokens = span.group(1).split()
-    at = next((i for i, x in enumerate(tokens) if PLACEHOLDER.search(x)), None)
+    at = next((i for i, x in reversed(list(enumerate(tokens))) if PLACEHOLDER.search(x)), None)
     if at is None:
         return ('field', tokens[0]) if len(tokens) == 1 else None
     return 'argv', tokens[at - 1] if at else None, PLACEHOLDER.sub(word, tokens[at])
 
 
 def listed(text):
-    found = LISTED.search(re.sub(r'`[^`]*`', '', text or ''))
+    span = re.search(r'`[^`]*`', text or '')
+    found = span and LISTED.match(text, span.end())
     return re.split(r',? and |, ', found.group(1)) if found else None
 
 
