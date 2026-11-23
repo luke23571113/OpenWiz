@@ -488,15 +488,21 @@ def _gh_bytes(fd, copy):
 
 
 def sealed_gh(fd, digest):
+    seals = fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_GROW | fcntl.F_SEAL_WRITE | fcntl.F_SEAL_SEAL
     copy = os.memfd_create("openwiz-gh", os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING)
     try:
-        if _gh_bytes(fd, copy) != digest:
-            return None
-        fcntl.fcntl(copy, fcntl.F_ADD_SEALS, fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_GROW
-                    | fcntl.F_SEAL_WRITE | fcntl.F_SEAL_SEAL)
-        return os.open(f"/proc/self/fd/{copy}", os.O_RDONLY)
+        _gh_bytes(fd, copy)
+        fcntl.fcntl(copy, fcntl.F_ADD_SEALS, seals)
+        sealed = os.open(f"/proc/self/fd/{copy}", os.O_RDONLY)
     finally:
         os.close(copy)
+    try:
+        if fcntl.fcntl(sealed, fcntl.F_GET_SEALS) & seals == seals and _gh_bytes(sealed, None) == digest:
+            return sealed
+    except OSError:
+        pass
+    os.close(sealed)
+    return None
 
 
 def execute(command, env, wait=False):
