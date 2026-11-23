@@ -409,6 +409,25 @@ def credential_arguments_refused(planted):
     return ok
 
 
+def busy_wake_needs_no_write(env):
+    before = len(env.records())
+    code, out = env.start(FAKE_CLI_RECORD_ONLY='1', FAKE_CLI_LINGER='1')
+    if code != 0 or not until(lambda: len(env.records()) == before + 1):
+        return False
+    path = os.path.join(env.state, out['run'] + '.json')
+    first = env.driver('wake', out)
+    with open(path) as f:
+        kept = json.load(f)['session']
+    os.mkdir(path + '.new')
+    try:
+        again = env.driver('wake', out)
+    finally:
+        os.rmdir(path + '.new')
+        env.driver('stop', out)
+    return first == again == (0, {'run': out['run'], 'woke': True}) and kept == env.records()[-1]['session'] and \
+        len(env.records()) == before + 1
+
+
 def check_driver(rows):
     found = [("a broken row's D3 error names its row file and fits the error schema: a row folder with no row.json, "
               "a harness that is not a string, and a 60-character harness with a missing field",
@@ -436,6 +455,8 @@ def check_driver(rows):
                          and len(env.records()) == before == len(early) + 1)
         found.append(('a wake before the reported session id is known is a D3 error that starts nothing, whether '
                       'the first turn has ended or still runs', all(early)))
+        found.append(("a wake while the first turn runs saves its newly reported session id, and once it is saved "
+                      "answers woke with no state write and starts nothing", busy_wake_needs_no_write(env)))
     return ['%s driver: %s' % ('pass' if ok else 'fail', what) for what, ok in found]
 
 
