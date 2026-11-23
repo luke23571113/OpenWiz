@@ -18,7 +18,7 @@ local.__spec__.loader.exec_module(local)
 
 # SAFETY: no-op stubs for every known agent CLI, so no real one runs here; only a row's own fake goes ahead of them.
 STUBS = ('claude codex cursor-agent agent pi opencode copilot goose gemini kimi qwen cline kilo crush vibe auggie '
-         'kiro-cli junie amp agy oz sculpt hermes acpx droid').split()
+         'kiro-cli junie amp agy oz sculpt hermes acpx droid boat pane openclaw kiro cn aider').split()
 CANT_SET_EFFORT = ("this host can't set effort: remove the effort for this harness in your Models table or Roster "
                    "to run it at the host's default")
 PASS = ['pass version: openwiz:records v1, and the schema is driver v1',

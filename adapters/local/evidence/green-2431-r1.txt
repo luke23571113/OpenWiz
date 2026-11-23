@@ -1,4 +1,4 @@
-# HR1 #2431 green after R1 to R8: the runner on the planted rows and the driver checks (no-op agent CLI stubs first on PATH)
+# HR1 #2431 green after R1 to R8, with the runner's 31 agent CLI stubs: the planted rows and the driver checks (31 no-op agent CLI stubs first on PATH)
 $ python3 -I adapters/local/test_harnesses.py
 fail claude: row.json harness: claude is built in, and no row may use a built-in name
 fail credential-env: row.json env: a value looks like a credential; env holds only fixed settings that are not credentials
@@ -26,7 +26,7 @@ exit 0
 $ python3 -I adapters/local/test_harnesses.py --rows adapters/local/fixtures/rows  # planted only: expected exit 1
 exit 1
 $ python3 -I adapters/local/test_driver.py
-Ran 23 tests in 64.738s
+Ran 23 tests in 65.129s
 
 OK
 exit 0
