@@ -1119,5 +1119,26 @@ class FallbackRevoke(Helper):
         self.assert_never_exposed(*outputs)
 
 
+    def test_a_kept_fresh_token_is_never_reused_when_the_route_returns(self):
+        """catches: a fresh token kept after a failed fallback revoke (the pairing turned off)
+        being handed out again once the route is back, because its file still names its scope."""
+        held = self.minted()
+        refusing = self.api(status=401)
+        self.env["OPENWIZ_GITHUB_API_BASE"] = refusing.base()
+        off = self.start(OPENWIZ_TOKEN_SERVICE_READBACK="failed")
+        self.assertEqual(off.stderr, NOTE.replace("<reason>", "pairing-off") + "\n")
+        self.assertEqual(live_token_in(held), TOKEN, "the token is kept for a later revoke")
+        self.answers(answer(), answer(token=TOKEN2))
+        back = self.run_gh()
+        self.assertEqual((back.returncode, back.stderr), (0, ""))
+        self.assertEqual(self.calls("gh")[-1]["gh_token"], sha(TOKEN2), "a fresh mint, not the kept token")
+        self.assertEqual(len(self.service_calls()), 2)
+        self.assert_never_exposed(off, back)
+
+
+def live_token_in(path):
+    return json.loads(path.read_text()).get("token") if path.exists() else None
+
+
 if __name__ == "__main__":
     unittest.main()
