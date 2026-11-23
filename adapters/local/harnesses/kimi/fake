@@ -8,7 +8,7 @@ HELP = '''The fake kimi, after the `kimi` command reference (Kimi Code CLI 2.7.2
   kimi -p <prompt> --output-format stream-json -m <model>
   kimi -S <session_id> -p <prompt> [--output-format text|stream-json] [-m <model>]
 in any order, each option once, with --prompt, --model, --session and --resume as the long forms.
--p refuses --yolo, --auto and --plan, and --output-format needs -p, as kimi's option checks do.
+-p refuses --yolo, --auto and --plan, --output-format needs -p, and the model can't be blank, as kimi's option checks do.
 A stream-json start prints the session.resume_hint meta line that carries session_id.
 Without KIMI_CODE_NO_AUTO_UPDATE=1 the turn hands work to a process outside it, standing in for
 kimi's detached background updater, which stop can't be sure to reach.'''
@@ -26,7 +26,8 @@ while a:
         fake_cli.refuse()
     got[name], a = a[1], a[2:]
 prompt, fmt, session = got.get('prompt', ''), got.get('format', 'text'), got.get('session')
-if not prompt.strip() or fmt not in ('text', 'stream-json') or (session is not None and not session.strip()):
+if not prompt.strip() or fmt not in ('text', 'stream-json') or (session is not None and not session.strip()) or \
+        ('model' in got and not got['model'].strip()):
     fake_cli.refuse()
 if session is None and (fmt != 'stream-json' or 'model' not in got):
     fake_cli.refuse()
