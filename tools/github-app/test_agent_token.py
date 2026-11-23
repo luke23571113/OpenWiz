@@ -798,8 +798,6 @@ OTHER = 1001 if os.getuid() != 1001 else 1002
 
 
 class SystemGh(Helper):
-    """A gh installed by another non-root user, as in a cloud sandbox, with faked ownership."""
-
     def setUp(self):
         super().setUp()
         self.helper_module = helper = load_helper()
@@ -811,6 +809,9 @@ class SystemGh(Helper):
         self.checked = "#!/bin/sh\n# synthetic system gh\nexit 0\n"
         self.real.write_text(self.checked)
         self.real.chmod(0o755)
+        self.mine = Path(folder.name) / "mine"
+        self.mine.mkdir(mode=0o755)
+        (self.mine / "gh").symlink_to(self.real)
         self.name = "run-" + "0" * 32 + ".json"
         private = helper.Private(self.env, create=True)
         self.addCleanup(os.close, private.fd)
@@ -820,14 +821,15 @@ class SystemGh(Helper):
         self.run_env = dict(self.env, **{helper.RUN_MARK: str(self.private / self.name)})
 
     def table(self, **changes):
-        """Ownership as a cloud sandbox shows it: root-owned 0755 folders, gh owned by OTHER."""
         rows, folder = {str(self.real): (OTHER, 0o755)}, str(self.system)
         while True:
             rows[folder] = (0, 0o755)
             if folder == "/":
                 break
             folder = os.path.dirname(folder)
-        names = {"gh": str(self.real), "folder": str(self.system), "above": str(self.system.parent)}
+        rows[str(self.mine)] = (0, 0o755)
+        names = {"gh": str(self.real), "folder": str(self.system), "above": str(self.system.parent),
+                 "link folder": str(self.mine)}
         for key, row in changes.items():
             rows[names[key]] = row
         return rows
@@ -853,25 +855,42 @@ class SystemGh(Helper):
         helper = self.helper_module
         return mock.patch.multiple(helper.os, stat=fake(real_stat), lstat=fake(real_lstat))
 
-    def bind(self, rows):
+    def identity_of(self, rows, chosen=None):
         with self.faked(rows):
-            identity = self.helper_module.gh_identity(str(self.real))
+            return self.helper_module.gh_identity(chosen or str(self.real))
+
+    def bind(self, rows, **binding):
+        identity = self.identity_of(rows)
         self.private_dir.write(self.helper_module.gh_binding(self.name),
-                               {"gh": str(self.real), "refuse": self.refuse, "identity": identity})
+                               dict({"gh": str(self.real), "refuse": self.refuse, "identity": identity}, **binding))
         return identity
 
+    def rewrite_in_place(self, text):
+        before = os.stat(self.real)
+        text = text.ljust(before.st_size, "#")[:before.st_size]
+        with open(self.real, "r+") as handle:
+            handle.write(text)
+        os.utime(self.real, ns=(before.st_atime_ns, before.st_mtime_ns))
+        after = os.stat(self.real)
+        self.assertEqual([after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns],
+                         [before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns],
+                         "the same file, the same size and time: only its bytes changed")
+        return text
+
     def run_gh(self, rows, chosen=None, during=None):
-        helper, ran = self.helper_module, []
+        helper, ran, looked_up = self.helper_module, [], []
         load = helper.snapshot_token
 
         def load_then(*args, **kwargs):
+            looked_up.append(True)
             held = load(*args, **kwargs)
             if during:
                 during()
             return held
 
         def exec_boundary(path, args, child):
-            ran.append((path, Path(path).read_text(), list(args), child.get("GH_TOKEN")))
+            token = child.get("GH_TOKEN")
+            ran.append((path, Path(path).read_text(), list(args), token == TOKEN))
             raise OSError("synthetic exec boundary")
 
         with self.faked(rows), mock.patch.object(helper, "snapshot_token", load_then), \
@@ -884,40 +903,44 @@ class SystemGh(Helper):
                 code = "exec intercepted"
         said = "".join(call.args[0] for call in stderr.write.call_args_list)
         self.assertNotIn(TOKEN, said, "the token is never written out")
-        for _, _, args, _ in ran:
-            self.assertNotIn(TOKEN, " ".join(args), "the token is never on gh's argument list")
-        return code, ran, said
+        for path, content, args, _ in ran:
+            self.assertFalse(TOKEN in path or TOKEN in content or TOKEN in " ".join(args),
+                             "the token is never in gh's path, file or argument list")
+        return code, ran, said, looked_up
 
-    def assert_withheld(self, code, ran, said, reason):
+    def assert_withheld(self, code, ran, said, looked_up, reason, looked=True):
         self.assertEqual((code, ran), (128, []), "no gh runs with the token")
         self.assertEqual(said, f"openwiz: openwiz[bot] token withheld from gh ({reason}); "
                                "gh stops rather than use another account\n")
+        if not looked:
+            self.assertEqual(looked_up, [], "a refused gh never reaches the token lookup")
+
+    def assert_ran_checked(self, code, ran, said, looked_up):
+        self.assertEqual(code, "exec intercepted", said)
+        self.assertEqual(len(ran), 1)
+        path, content, args, token = ran[0]
+        self.assertTrue(path.startswith("/proc/self/fd/"), "gh runs through a pinned fd")
+        self.assertEqual((content, args, token), (self.checked, [str(self.real), "pr", "list"], True))
 
     def test_a_system_gh_owned_by_another_user_gets_the_token_through_its_pinned_fd(self):
-        # catches: the owner rule refusing a gh the agent can't modify or replace, so no cloud agent gets a token
-        accepted = {"root folders": {}, "a folder you own, owner-only": {"above": (os.getuid(), 0o755)}}
-        for case, changes in accepted.items():
-            with self.subTest(case):
-                rows = self.table(**changes)
-                self.assertIsNotNone(self.bind(rows), "a system gh the agent can't change is accepted")
-                code, ran, said = self.run_gh(rows)
-                self.assertEqual(code, "exec intercepted", said)
-                self.assertEqual(len(ran), 1)
-                path, content, args, token = ran[0]
-                self.assertTrue(path.startswith("/proc/self/fd/"), "gh runs through its pinned fd")
-                self.assertEqual((content, args, token), (self.checked, [str(self.real), "pr", "list"], TOKEN))
+        # comment-ok: catches: the owner rule refusing a gh the agent can't modify or replace, so no
+        # cloud agent gets a token
+        rows = self.table()
+        self.assertIsNotNone(self.bind(rows), "a system gh the agent can't change is accepted")
+        self.assert_ran_checked(*self.run_gh(rows))
 
-    def test_a_system_gh_anyone_else_could_change_or_replace_is_refused(self):
-        # catches: the widened owner rule accepting a gh writable by a group or others, or under a folder
-        # the agent (or anyone but root or the agent, owner-only) could write or replace
+    def test_a_system_gh_anyone_but_its_owner_could_change_or_replace_is_refused(self):
+        # comment-ok: catches: the widened owner rule accepting a gh writable by a group or others, or under
+        # a folder the agent owns or anyone else could write, so its entries can be replaced
         self.assertIsNotNone(self.bind(self.table()), "the baseline system gh is accepted")
         me = os.getuid()
         refused = {
             "gh writable by its group": {"gh": (OTHER, 0o775)},
             "gh writable by others": {"gh": (OTHER, 0o757)},
+            "gh's folder yours, owner-only": {"folder": (me, 0o755)},
             "gh's folder yours and group-writable": {"folder": (me, 0o775)},
-            "gh's folder yours and writable by others": {"folder": (me, 0o757)},
-            "a folder above, yours and group-writable": {"above": (me, 0o775)},
+            "a folder above yours, owner-only": {"above": (me, 0o755)},
+            "a folder above yours and writable by others": {"above": (me, 0o757)},
             "a root folder above, group-writable": {"above": (0, 0o775)},
             "a root folder above, writable by others": {"above": (0, 0o777)},
             "a sticky shared folder": {"folder": (0, 0o1777)},
@@ -926,26 +949,40 @@ class SystemGh(Helper):
         for case, changes in refused.items():
             with self.subTest(case):
                 rows = self.table(**changes)
-                self.assertIsNone(self._bind_only(rows), "the run binds no such gh")
+                self.assertIsNone(self.identity_of(rows), "the run binds no such gh")
                 self.bind(self.table())
-                self.assert_withheld(*self.run_gh(rows), "the gh this run chose was changed")
+                self.assert_withheld(*self.run_gh(rows), "the gh this run chose was changed", looked=False)
 
-    def _bind_only(self, rows):
-        with self.faked(rows):
-            return self.helper_module.gh_identity(str(self.real))
+    def test_a_system_gh_reached_through_a_symlink_in_your_folder_is_refused(self):
+        # comment-ok: catches: the folder walk trusting a symlink in a folder the agent owns, which the agent
+        # can point at another file
+        chosen = str(self.mine / "gh")
+        self.assertIsNotNone(self.identity_of(self.table(), chosen), "through root's folders it is accepted")
+        self.assertIsNone(self.identity_of(self.table(**{"link folder": (os.getuid(), 0o755)}), chosen),
+                          "the run binds no gh reached through your folder")
+
+    def test_a_refused_gh_never_matches_a_missing_identity(self):
+        # comment-ok: catches: a binding with a null or missing identity matching a gh whose own check
+        # failed, so a refused gh reaches the token lookup
+        rows = self.table(gh=(OTHER, 0o777))
+        for case, binding in {"null": {"identity": None}, "missing": {}}.items():
+            with self.subTest(case):
+                self.private_dir.write(self.helper_module.gh_binding(self.name),
+                                       dict({"gh": str(self.real), "refuse": self.refuse}, **binding))
+                self.assert_withheld(*self.run_gh(rows), "the gh this run chose was changed", looked=False)
 
     def test_a_system_gh_still_gets_nothing_by_a_caller_selected_path(self):
-        # catches: the widened owner rule letting a caller hand the token to another system-owned file
+        # comment-ok: catches: the widened owner rule letting a caller hand the token to another system-owned file
         self.assertIsNotNone(self.bind(self.table()))
         other = self.system / "gh-other"
         other.write_text("#!/bin/sh\n# synthetic other system program\nexit 0\n")
         other.chmod(0o755)
         rows = dict(self.table(), **{str(other): (OTHER, 0o755)})
-        self.assert_withheld(*self.run_gh(rows, chosen=str(other)), "not the gh this run chose")
+        self.assert_withheld(*self.run_gh(rows, chosen=str(other)), "not the gh this run chose", looked=False)
 
     def test_a_system_gh_replaced_while_it_is_checked_is_refused(self):
-        # catches: the folder walk vouching for whatever file sits at the path now, not the file whose
-        # owner and mode were checked
+        # comment-ok: catches: the folder walk vouching for whatever file sits at the path now, not the file
+        # whose owner and mode were checked
         swapped = []
 
         def swap():
@@ -961,21 +998,34 @@ class SystemGh(Helper):
         self.assertEqual(swapped, [True])
 
     def test_a_system_gh_swapped_between_its_check_and_its_exec_never_gets_the_token(self):
-        # catches: the widened owner rule bypassing R12's pinned exec, so a swapped-in file gets the token
+        # comment-ok: catches: the widened owner rule bypassing R12's pinned exec, so a swapped-in file
+        # gets the token
         self.assertIsNotNone(self.bind(self.table()))
-        rogue = "#!/bin/sh\n# synthetic rogue gh\nexit 0\n"
 
         def swap():
             swapped = self.system / "gh.swap"
-            swapped.write_text(rogue)
+            swapped.write_text("#!/bin/sh\n# synthetic rogue gh\nexit 0\n")
             swapped.chmod(0o755)
             os.replace(swapped, self.real)
 
-        code, ran, said = self.run_gh(self.table(), during=swap)
-        self.assertEqual(code, "exec intercepted", said)
-        self.assertEqual([(content, token) for _, content, _, token in ran], [(self.checked, TOKEN)],
-                         "only the checked gh runs, never the swapped one")
+        self.assert_ran_checked(*self.run_gh(self.table(), during=swap))
 
+    def test_a_system_gh_its_owner_rewrites_after_the_run_chose_it_gets_nothing(self):
+        # comment-ok: catches: the fd pinning the file but not its bytes, so gh's owner rewrites it in place,
+        # with the same size and time, and the rewrite gets the token
+        self.assertIsNotNone(self.bind(self.table()))
+        self.rewrite_in_place("#!/bin/sh\n# synthetic rewritten gh\nexit 0\n")
+        self.assert_withheld(*self.run_gh(self.table()), "the gh this run chose was changed", looked=False)
+
+    def test_a_system_gh_its_owner_rewrites_between_its_check_and_its_exec_runs_only_as_checked(self):
+        # comment-ok: catches: the run executing the system gh's file itself, so its owner rewrites it in
+        # place after the check and the rewrite gets the token
+        self.assertIsNotNone(self.bind(self.table()))
+        rewritten = []
+        self.assert_ran_checked(*self.run_gh(self.table(), during=lambda: rewritten.append(
+            self.rewrite_in_place("#!/bin/sh\n# synthetic rewritten gh\nexit 0\n"))))
+        self.assertEqual(len(rewritten), 1)
+        self.assertNotEqual(self.real.read_text(), self.checked, "the file really changed before the exec")
 
 if __name__ == "__main__":
     unittest.main()
