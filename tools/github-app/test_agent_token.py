@@ -1553,6 +1553,17 @@ class SnapshotByName(Helper):
         self.assertEqual(sorted(p.name for p in self.private.iterdir() if not p.name.startswith(("token-", "kept-"))),
                          [], "each run removes its snapshot and its reservation")
 
+    def test_a_run_that_cannot_reserve_a_free_name_is_refused(self):
+        # comment-ok: catches: a run that goes on under a name another run still holds once every
+        # name it draws is taken, instead of stopping with no token handed over.
+        self.minted()
+        helper, private, cache = self.loaded()
+        with mock.patch.object(helper.secrets, "token_hex", lambda size: "cd" * size):
+            name = helper.reserve(private, cache)
+            with self.assertRaises(helper.Refused):
+                helper.reserve(private, cache)
+        self.assertEqual([p.name for p in self.private.glob("slot-*")], [helper.slot_name(name)])
+
     def test_a_fallback_or_revoke_retires_a_readable_snapshot_named_before_the_upgrade(self):
         # comment-ok: catches: a fallback or revoke that selects snapshots by name alone, so a run started
         # before the upgrade, whose snapshot has a random name, keeps serving a token that was retired.
