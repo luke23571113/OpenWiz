@@ -1057,13 +1057,16 @@ def revoke(args, env):
     if reason is None:
         try:
             private = Private(env, create=False)
-        except Refused:
-            private = None
+        except Refused as error:
+            if isinstance(error.__context__, FileNotFoundError):
+                sys.stderr.write(NO_TOKEN)
+            else:
+                sys.stderr.write(f"openwiz: openwiz[bot] token not revoked ({error})\n")
+            return 1
         try:
             reason = revoke_request(private, base, cache)
         finally:
-            if private:
-                os.close(private.fd)
+            os.close(private.fd)
     if reason:
         sys.stderr.write(NO_TOKEN if reason == "no token found" else NOT_REVOKED.format(reason))
         return 1
