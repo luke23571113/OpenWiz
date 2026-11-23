@@ -1,6 +1,7 @@
-$ PATH=<stubs>:$PATH env -u OPENWIZ_GITHUB_APP_KEY python3 -I kernel/live-rig/test_rig.py   # at 44ad2faa858ca0520d00b26ff56963dc3c03132f, 37 refusing agent-CLI stubs first on PATH
+$ PATH=<stubs>:$PATH env -u OPENWIZ_GITHUB_APP_KEY python3 -I kernel/live-rig/test_rig.py   # at 00f26b4241254579d883113c4bb8db0434ded5cf, green, 37 refusing agent-CLI stubs first on PATH
 test_a_dirty_checkout_exits_2_and_runs_nothing (__main__.Rig.test_a_dirty_checkout_exits_2_and_runs_nothing) ... ok
 test_a_held_lock_exits_0_and_runs_nothing (__main__.Rig.test_a_held_lock_exits_0_and_runs_nothing) ... ok
+test_a_host_whose_cost_is_not_none_is_skipped_as_cost_before_any_status_probe_runs (__main__.Rig.test_a_host_whose_cost_is_not_none_is_skipped_as_cost_before_any_status_probe_runs) ... ok
 test_a_kit_line_quoting_the_checkout_or_the_repository_is_withheld_from_the_record_and_shown_on_stderr (__main__.Rig.test_a_kit_line_quoting_the_checkout_or_the_repository_is_withheld_from_the_record_and_shown_on_stderr) ... ok
 test_a_line_with_any_path_a_non_ascii_or_other_unusual_character_is_withheld_and_clean_lines_kept (__main__.Rig.test_a_line_with_any_path_a_non_ascii_or_other_unusual_character_is_withheld_and_clean_lines_kept) ... ok
 test_a_lock_error_other_than_another_run_exits_2 (__main__.Rig.test_a_lock_error_other_than_another_run_exits_2) ... ok
@@ -17,6 +18,6 @@ test_load_host_and_check_host_are_importable_and_give_the_exact_skip_reasons (__
 test_the_record_keeps_only_the_five_check_lines_each_free_of_paths_the_repository_the_login_and_shapes (__main__.Rig.test_the_record_keeps_only_the_five_check_lines_each_free_of_paths_the_repository_the_login_and_shapes) ... ok
 
 ----------------------------------------------------------------------
-Ran 16 tests in 106.437s
+Ran 17 tests in 107.355s
 
 OK
