@@ -17,7 +17,7 @@ DRIVER = os.path.join(HERE, 'driver')
 NO_PROC = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit', 'fixtures', 'no-proc')
 REPO = os.path.realpath(os.path.join(HERE, '..', '..'))
 HARNESSES = ('claude', 'claude-code', 'codex', 'gemini', 'opencode', 'openclaw', 'cursor-agent', 'amp', 'aider',
-             'goose')
+             'goose', 'pi')
 TOOLS = ('sh', 'ps', 'lsof', 'awk', 'sleep', 'dirname')
 START = {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket', 'harness': 'fake-harness',
          'model': 'Synthetic 1'}
@@ -222,18 +222,30 @@ class Template(unittest.TestCase):
         self.assertIn('effort', version['can'])
         lines = read(os.path.join(HERE, 'README.md')).splitlines()
         login = next(i for i, line in enumerate(lines) if line.startswith('Login:'))
-        self.assertEqual(lines[login + 1], 'Effort: passed as `--effort <level>`, for low, medium, high, xhigh and '
-                                           'max, with any harness')
+        self.assertEqual(lines[login + 1], "Effort: passed as each harness's own flag, for the harnesses and levels "
+                                           'in the table below; any other harness or level is refused')
+        rows = {}
+        for line in lines[login + 2:]:
+            if line.startswith('|'):
+                cells = [c.strip() for c in line.strip().strip('|').split('|')]
+                rows[cells[0]] = cells[1]
+            elif rows:
+                break
+        self.assertEqual(rows['`fake-harness`'], '`--effort <level>`, for low, medium, high, xhigh and max')
+        self.assertTrue(rows['`pi`'].startswith("can't ("), rows)
+        self.assertTrue(rows['any other harness'].startswith("can't ("), rows)
 
     def test_start_passes_its_effort_to_the_harness_and_wake_passes_it_again(self):
         for effort in ('low', 'medium', 'high', 'xhigh', 'max'):
             with self.subTest(effort=effort):
                 self.env['FAKE_ARGS'] = os.path.join(self.folder, 'args-' + effort)
+                self.turns = self.env['FAKE_TURNS'] = os.path.join(self.folder, 'turns-' + effort)
                 code, out = self.call('start', dict(START, effort=effort))
                 self.assertEqual(code, 0, out)
                 [first] = self.args(1)
                 self.assertEqual(self.effort_in(first), [effort], first)
-                self.assertTrue(self.until(lambda: not alive(self.logged()[-1][0])), 'the fake turn did not end')
+                [(turn, _, _)] = self.logged(1)
+                self.assertTrue(self.until(lambda: not alive(turn)), 'the fake turn did not end')
                 self.assertEqual(self.call('wake', out), (0, dict(out, woke=True)))
                 self.assertEqual(len(self.args(2)), 2, 'the wake started no turn')
                 self.assertEqual(self.effort_in(self.args()[1]), [effort], 'the wake dropped the effort')
@@ -256,6 +268,24 @@ class Template(unittest.TestCase):
                 self.assertIn('fake-harness', out['error'])
                 self.assertIn(effort, out['error'])
                 self.assertTrue(self.nothing_started(), 'a refused effort started something')
+
+    def test_a_harness_it_does_not_pass_effort_to_is_refused_and_nothing_starts(self):
+        for harness in ('pi', 'fake-other'):
+            with self.subTest(harness=harness):
+                code, out = self.call('start', dict(START, harness=harness, effort='medium'))
+                self.assertEqual(code, 1, out)
+                self.assertEqual(out['next'], REFUSAL)
+                self.assertIn(harness, out['error'])
+                self.assertIn('medium', out['error'])
+                self.assertTrue(self.nothing_started(), 'a refused harness started something')
+
+    def test_a_harness_without_effort_still_starts_at_its_default(self):
+        self.env['FAKE_ARGS'] = os.path.join(self.folder, 'args')
+        code, out = self.call('start', dict(START, harness='pi'))
+        self.assertEqual(code, 0, out)
+        [args] = self.args(1)
+        self.assertNotIn('--effort', args)
+        self.assertEqual(self.call('stop', out), (0, dict(out, stopped=True)))
 
     def test_an_effort_that_is_not_a_word_is_refused_as_input(self):
         for effort in ('Medium', '', 'x' * 21, 7, None):
