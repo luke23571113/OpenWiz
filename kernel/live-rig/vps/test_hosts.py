@@ -231,6 +231,13 @@ class Page(unittest.TestCase):
         self.assertIn('with or without `--post`', line)
         self.assertRegex(line, r'until both.*#2689.*#2755.*have merged')
 
+    def test_factory_and_pane_use_the_bootstrapped_tools(self):
+        for host, installed in [('factory', '`droid`'), ('pane', 'Pane and `runpane`')]:
+            with self.subTest(host=host):
+                sign_in = self.rows[host][1]
+                self.assertNotRegex(sign_in, r'(?i)\b(?:re)?install\b')
+                self.assertIn(f'The bootstrap installed {installed}.', sign_in)
+
     def test_the_paid_command_is_given_once_with_post_and_no_shell_placeholder(self):
         commands = [line for line in self.code.splitlines() if 'heads.py' in line]
         self.assertEqual(len(commands), 1, commands)
