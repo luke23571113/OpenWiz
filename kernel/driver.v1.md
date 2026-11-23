@@ -70,7 +70,10 @@ A driver merges into `adapters/` when it passes all five on its real host, with 
 | version | `version` names the kernel's records version, and `schema` prints `schema.json` unchanged |
 | token | No credential appears in the driver's output, on the command line of a process it started, or in such a process's environment under a variable the kit didn't give it; and `start` refuses a `token` field |
 
-The kit's `effort` check follows these five, on its own line after `token`:
+The `start` check also covers effort:
+
+- **A driver whose `can` lists `effort`:** the kit's start carries `effort` (`--effort <v>`, default `medium`), and `start` passes only once that value reaches the host: in the command line or environment of a process the run started, or, for a key-host driver, in the request its loopback fake host received. It also passes when that start is refused with exactly the refusal text, with no run, and the README's `Effort:` line or table says that harness can't.
+- **A driver without `effort` in `can`:** a start with `effort` must be refused (D1) with no run, and its README must have the `Effort:` line saying the host can't set it.
 
 - **A driver whose `can` lists `effort`:** the kit's start carries `effort` (`--effort <v>`, default `medium`). The check passes when that value appears in the command line or environment of a process the run started, or, for a key-host driver, in the request its loopback fake host received. It also passes when that start is refused with exactly the refusal text, with no run, and the README's `Effort:` line or table says that harness can't.
 - **A driver without `effort` in `can`:** the check passes only when a start with `effort` is refused (D1) with no run, and the README's `Effort:` line says the host can't set it.
