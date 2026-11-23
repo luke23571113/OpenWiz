@@ -4,7 +4,7 @@ test_a_credential_shape_in_a_token_writes_nothing (__main__.Receipt.test_a_crede
 test_a_fail_line_with_exit_0_writes_nothing (__main__.Receipt.test_a_fail_line_with_exit_0_writes_nothing) ... ok
 test_a_failed_write_leaves_no_receipt (__main__.Receipt.test_a_failed_write_leaves_no_receipt) ... ok
 test_a_listing_that_is_not_this_runs_writes_nothing (__main__.Receipt.test_a_listing_that_is_not_this_runs_writes_nothing) ... ok
-test_a_login_as_harness_or_model_writes_nothing (__main__.Receipt.test_a_login_as_harness_or_model_writes_nothing) ... 
+test_a_login_as_harness_or_model_writes_nothing (__main__.Receipt.test_a_login_as_harness_or_model_writes_nothing) ...
   test_a_login_as_harness_or_model_writes_nothing (__main__.Receipt.test_a_login_as_harness_or_model_writes_nothing) (value='octo-example') ... FAIL
   test_a_login_as_harness_or_model_writes_nothing (__main__.Receipt.test_a_login_as_harness_or_model_writes_nothing) (value='example-runner') ... FAIL
   test_a_login_as_harness_or_model_writes_nothing (__main__.Receipt.test_a_login_as_harness_or_model_writes_nothing) (value='example-login') ... FAIL
@@ -15,11 +15,11 @@ test_a_login_as_harness_or_model_writes_nothing (__main__.Receipt.test_a_login_a
   test_a_login_as_harness_or_model_writes_nothing (__main__.Receipt.test_a_login_as_harness_or_model_writes_nothing) (value='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa') ... FAIL
 test_a_malformed_record_writes_nothing (__main__.Receipt.test_a_malformed_record_writes_nothing) ... ok
 test_a_missing_or_extra_line_writes_nothing (__main__.Receipt.test_a_missing_or_extra_line_writes_nothing) ... FAIL
-test_a_nonzero_exit_is_one_fixed_line_without_its_value (__main__.Receipt.test_a_nonzero_exit_is_one_fixed_line_without_its_value) ... 
+test_a_nonzero_exit_is_one_fixed_line_without_its_value (__main__.Receipt.test_a_nonzero_exit_is_one_fixed_line_without_its_value) ...
   test_a_nonzero_exit_is_one_fixed_line_without_its_value (__main__.Receipt.test_a_nonzero_exit_is_one_fixed_line_without_its_value) (code=2) ... FAIL
   test_a_nonzero_exit_is_one_fixed_line_without_its_value (__main__.Receipt.test_a_nonzero_exit_is_one_fixed_line_without_its_value) (code=-9) ... FAIL
   test_a_nonzero_exit_is_one_fixed_line_without_its_value (__main__.Receipt.test_a_nonzero_exit_is_one_fixed_line_without_its_value) (code=123456789012) ... FAIL
-test_a_private_id_in_a_token_writes_nothing (__main__.Receipt.test_a_private_id_in_a_token_writes_nothing) ... 
+test_a_private_id_in_a_token_writes_nothing (__main__.Receipt.test_a_private_id_in_a_token_writes_nothing) ...
   test_a_private_id_in_a_token_writes_nothing (__main__.Receipt.test_a_private_id_in_a_token_writes_nothing) (value='thr_<example1>') ... FAIL
   test_a_private_id_in_a_token_writes_nothing (__main__.Receipt.test_a_private_id_in_a_token_writes_nothing) (value='proj_<example1>') ... FAIL
   test_a_private_id_in_a_token_writes_nothing (__main__.Receipt.test_a_private_id_in_a_token_writes_nothing) (value='mch_<example1>') ... FAIL
@@ -27,12 +27,12 @@ test_a_private_id_in_a_token_writes_nothing (__main__.Receipt.test_a_private_id_
   test_a_private_id_in_a_token_writes_nothing (__main__.Receipt.test_a_private_id_in_a_token_writes_nothing) (value='acct_<example1>') ... FAIL
   test_a_private_id_in_a_token_writes_nothing (__main__.Receipt.test_a_private_id_in_a_token_writes_nothing) (value='cr_<example1>') ... FAIL
 test_a_secret_from_the_environment_writes_nothing (__main__.Receipt.test_a_secret_from_the_environment_writes_nothing) ... ok
-test_a_too_deep_record_is_one_fixed_line (__main__.Receipt.test_a_too_deep_record_is_one_fixed_line) ... 
+test_a_too_deep_record_is_one_fixed_line (__main__.Receipt.test_a_too_deep_record_is_one_fixed_line) ...
   test_a_too_deep_record_is_one_fixed_line (__main__.Receipt.test_a_too_deep_record_is_one_fixed_line) (raw=b'[[[[[[[[') ... FAIL
   test_a_too_deep_record_is_one_fixed_line (__main__.Receipt.test_a_too_deep_record_is_one_fixed_line) (raw=b'{"a": {"') ... FAIL
 test_a_too_large_record_is_one_fixed_line (__main__.Receipt.test_a_too_large_record_is_one_fixed_line) ... FAIL
 test_a_usage_error_is_one_fixed_line (__main__.Receipt.test_a_usage_error_is_one_fixed_line) ... ok
-test_a_uuid_shaped_id_writes_nothing (__main__.Receipt.test_a_uuid_shaped_id_writes_nothing) ... 
+test_a_uuid_shaped_id_writes_nothing (__main__.Receipt.test_a_uuid_shaped_id_writes_nothing) ...
   test_a_uuid_shaped_id_writes_nothing (__main__.Receipt.test_a_uuid_shaped_id_writes_nothing) (value='12345678-1234-4abc-8def-123456789abc') ... FAIL
   test_a_uuid_shaped_id_writes_nothing (__main__.Receipt.test_a_uuid_shaped_id_writes_nothing) (value='1234567812344abc8def123456789abc') ... FAIL
   test_a_uuid_shaped_id_writes_nothing (__main__.Receipt.test_a_uuid_shaped_id_writes_nothing) (value='claude-12345678-1234-4abc-8def-123456789abc') ... FAIL
@@ -50,7 +50,7 @@ test_receipt_matches_wizmarkets_own_valid_fixture (__main__.Receipt.test_receipt
 test_run_by_must_be_a_login (__main__.Receipt.test_run_by_must_be_a_login) ... ok
 test_skipped_record_writes_nothing (__main__.Receipt.test_skipped_record_writes_nothing) ... ok
 test_start_and_wake_must_be_kits_text_with_only_the_note_id_varying (__main__.Receipt.test_start_and_wake_must_be_kits_text_with_only_the_note_id_varying) ... ok
-test_start_and_wake_must_name_the_same_note (__main__.Receipt.test_start_and_wake_must_name_the_same_note) ... 
+test_start_and_wake_must_name_the_same_note (__main__.Receipt.test_start_and_wake_must_name_the_same_note) ...
   test_start_and_wake_must_name_the_same_note (__main__.Receipt.test_start_and_wake_must_name_the_same_note) (new='edited builder status note 1000000002') ... FAIL
   test_start_and_wake_must_name_the_same_note (__main__.Receipt.test_start_and_wake_must_name_the_same_note) (new='posted builder status note 1') ... FAIL
 test_the_first_receipt_is_kept (__main__.Receipt.test_the_first_receipt_is_kept) ... ok
@@ -69,7 +69,7 @@ Traceback (most recent call last):
     self.one_line(p, 1, why)
   File "<checkout>/kernel/live-rig/test_receipt.py", line 104, in one_line
     self.assertEqual(p.returncode, code, p.stderr)
-AssertionError: 0 != 1 : 
+AssertionError: 0 != 1 :
 
 ======================================================================
 FAIL: test_a_login_as_harness_or_model_writes_nothing (__main__.Receipt.test_a_login_as_harness_or_model_writes_nothing) (value='example-runner')
@@ -371,7 +371,7 @@ Traceback (most recent call last):
     self.one_line(p, 1, why)
   File "<checkout>/kernel/live-rig/test_receipt.py", line 104, in one_line
     self.assertEqual(p.returncode, code, p.stderr)
-AssertionError: 0 != 1 : 
+AssertionError: 0 != 1 :
 
 ======================================================================
 FAIL: test_a_uuid_shaped_id_writes_nothing (__main__.Receipt.test_a_uuid_shaped_id_writes_nothing) (value='12345678-1234-4abc-8def-123456789abc')
@@ -383,7 +383,7 @@ Traceback (most recent call last):
     self.one_line(p, 1, why)
   File "<checkout>/kernel/live-rig/test_receipt.py", line 104, in one_line
     self.assertEqual(p.returncode, code, p.stderr)
-AssertionError: 0 != 1 : 
+AssertionError: 0 != 1 :
 
 ======================================================================
 FAIL: test_a_uuid_shaped_id_writes_nothing (__main__.Receipt.test_a_uuid_shaped_id_writes_nothing) (value='1234567812344abc8def123456789abc')
@@ -473,7 +473,7 @@ Traceback (most recent call last):
     self.one_line(p, 1, why)
   File "<checkout>/kernel/live-rig/test_receipt.py", line 104, in one_line
     self.assertEqual(p.returncode, code, p.stderr)
-AssertionError: 0 != 1 : 
+AssertionError: 0 != 1 :
 
 ======================================================================
 FAIL: test_start_and_wake_must_name_the_same_note (__main__.Receipt.test_start_and_wake_must_name_the_same_note) (new='posted builder status note 1')
