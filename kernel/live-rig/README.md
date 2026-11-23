@@ -6,8 +6,9 @@ Runs the [driver v1 kit](../driver-kit/README.md) against real hosts, on a sched
 
 - It never signs in, installs anything, spends money or starts a paid run: a host whose tool is missing, isn't signed in, or whose run might cost money is skipped.
 - It never reads, adds or prints an environment value, and never passes a key: each status command and the kit get the caller's environment unchanged.
-- It writes nothing to GitHub. The kit only reads the throwaway ticket, through the signed-in `gh`.
-- It keeps only the kit's stdout and exit code; the kit's stderr goes straight to the rig's. Status commands get no stdin and their output is discarded.
+- The rig itself never writes to GitHub: it and the kit only read, through the signed-in `gh` (the kit reads the throwaway ticket; the rig reads the signed-in login). The agent the driver starts posts its one status note on the throwaway ticket the settings name, and edits it when woken, as the kit's start and wake checks require.
+- It reads only the kit's stdout and exit code. The kit's stderr goes straight to the rig's, and the rig writes the kit's whole stdout to its own stderr for the person; the run record keeps only the check lines described below. Status commands get no stdin and their output is discarded.
+- Status commands run only from reviewed code: `--hosts` must be a folder inside the clean checkout, and every host config in it must be tracked by git, so a command comes only from a merged host config. Each host ticket's review checks that its commands are read-only; the rig itself cannot tell a read-only command from one that signs in or writes.
 
 ## Run it
 
@@ -15,12 +16,14 @@ From the root of a clean checkout (a run record names its commit, so uncommitted
 
 ```sh
 python3 -I kernel/live-rig/rig.py --hosts kernel/live-rig/hosts --settings <file> --out <dir> [--host <name>]
-python3 -I kernel/live-rig/test_rig.py      # its own tests, on fixtures only
+PATH=<stubs>:$PATH env -u OPENWIZ_GITHUB_APP_KEY python3 -I kernel/live-rig/test_rig.py   # its own tests, on fixtures
 ```
+
+`<stubs>` is a fresh `mktemp -d` folder holding a refusing stub (it prints a refusal to stderr and exits 1) for each agent CLI: claude, codex, cursor-agent, agent, pi, opencode, copilot, goose, gemini, kimi, qwen, cline, kilo, crush, vibe, auggie, kiro-cli, junie, amp, agy, oz, sculpt, hermes, acpx and droid. CI's step makes the same folder and runs every `kernel/live-rig/test_*.py` and `kernel/live-rig/*/test_*.py` this way.
 
 - `--settings`: a local JSON file outside the repository, `{"repo": "<owner>/<name>", "ticket": <n>}`, naming the throwaway repository and ticket the kit uses ([the kit's throwaway ticket](../driver-kit/README.md#the-throwaway-ticket)).
 - `--out`: a folder outside the checkout. It holds the lock (`rig.lock`), so two runs never overlap: a second one prints `rig.py: another run holds the lock` and exits 0.
-- `--hosts`: only its `*.json` files are host configs; anything else there (a host's `test_<host>.py`) is ignored.
+- `--hosts`: a folder inside the checkout whose `*.json` files git tracks; only those files are host configs, and anything else there (a host's `test_<host>.py`) is ignored. A folder outside the checkout, or an untracked config, refuses (exit 2). Two `runs` entries that would write the same run record refuse too.
 
 Per host, in order: every `needs` program, then every `signed_in` command, then `cost`, then one kit run per `runs` entry:
 `python3 -I kernel/driver-kit/kit.py --driver <driver> --repo <repo> --ticket <n> --harness <h> --model <m> --wait <w>`.
@@ -43,9 +46,9 @@ Other tools import the host checks from `rig.py` without running it: `load_host(
 
 ## Run record
 
-`<out>/<YYYY-MM-DD>/<host>-<harness>-<model>.json`, one per `runs` entry, with exactly: `host`, `harness`, `model`, `date` (UTC), `driver_commit` and `kit_commit` (the checkout's 40-hex `HEAD`), `outcome` (`ran` or `skipped`), `skipped` (the reason or `null`), `kit_exit` (integer or `null`), `stdout` (the kit's stdout, or `null`) and `seconds` (whole seconds). It holds no login or environment value; where the kit's stdout quotes the checkout's path or the settings' repository, those read `<checkout>` and `<repository>`. The receipt writer reads these records.
+`<out>/<YYYY-MM-DD>/<host>-<harness>-<model>.json`, one per `runs` entry, with exactly: `host`, `harness`, `model`, `date` (UTC), `driver_commit` and `kit_commit` (the checkout's 40-hex `HEAD`), `outcome` (`ran` or `skipped`), `skipped` (the reason or `null`), `kit_exit` (integer or `null`), `stdout` (the kit's check lines, or `null`) and `seconds` (whole seconds). `stdout` keeps only the kit's check lines (`pass` or `fail`, then `version`, `start`, `wake`, `stop` or `token`, then `: `), in the kit's order. A line whose text after that prefix matches the kit's credential shapes, or holds a path (`/` and a name), the settings' repository, its owner or its name, or the signed-in `gh` login, is kept as `<pass|fail> <check>: withheld`; when the login can't be read, every line is. The receipt writer reads these records, and needs only the clean `pass` lines.
 
 ## Fixtures
 
-- `fixtures/hosts/`: fixture host configs: one on `adapters/template/driver` that runs 5 of 5, one with a missing program, one whose status command fails, one with `cost: unknown`, one on a planted driver, and one whose driver quotes the checkout's path and the repository.
-- `fixtures/rig/`: the tests' fakes. `gh` answers the kit's two GraphQL reads from the kit's fake harness's tracker file, so the kit runs with the rig's exact command line and never reaches GitHub; `fake-signed-in` and `fake-signed-out` are status commands; `planted-driver` becomes `adapters/planted/driver` in the tests' throwaway checkout, the kit's `wake-does-nothing` planted driver, and `quoting-driver` becomes `adapters/quoting/driver`, whose refused start quotes both. Every test puts refusing stubs for the agent CLIs first on `PATH`, so a fixture mistake can never start a real one.
+- `fixtures/hosts/`: fixture host configs: one on `adapters/template/driver` that runs 5 of 5, one with a missing program, one whose status command fails, one with `cost: unknown`, one on a planted driver, and one whose driver quotes the checkout's path and the repository. The tests copy them into a throwaway git checkout and commit them, so they are tracked there.
+- `fixtures/rig/`: the tests' fakes. `gh` answers the rig's login read and the kit's two GraphQL reads (from the kit's fake harness's tracker file), so the kit runs with the rig's exact command line and never reaches GitHub; `fake-signed-in` and `fake-signed-out` are status commands; `planted-driver` becomes `adapters/planted/driver` in the tests' throwaway checkout, the kit's `wake-does-nothing` planted driver, and `quoting-driver` becomes `adapters/quoting/driver`, whose refused start quotes both. Every test puts its own refusing stubs for the agent CLIs first on `PATH` before it runs or imports `rig.py`, so a fixture mistake can never start a real one. The test process is its runs' child subreaper, and its teardown ends only its own descendant processes, found through `/proc/<pid>/stat`, never another process's environment.

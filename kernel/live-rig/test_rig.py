@@ -239,7 +239,7 @@ class Rig(unittest.TestCase):
                  'kit.py: a line that is no check': None, 'pass other: not one of the five': None}
         for line, kept in cases.items():
             with self.subTest(line):
-                self.assertEqual(rig.record_stdout(line + '\n', settings, LOGIN), kept and kept + '\n')
+                self.assertEqual(rig.record_stdout(line + '\n', settings, LOGIN), kept + '\n' if kept else '')
         self.assertEqual(rig.record_stdout(PASS[0] + '\n', settings, None), 'pass version: withheld\n')
 
     def test_load_host_and_check_host_are_importable_and_give_the_exact_skip_reasons(self):
@@ -292,6 +292,10 @@ class Rig(unittest.TestCase):
         self.assertEqual((p.returncode, p.stdout), (2, ''), p.stderr)
         self.assertIn('rig.py: --hosts', p.stderr)
         self.assertEqual((self.kit_calls(), self.records()), ([], []))
+        shutil.copy2(os.path.join(self.hosts, 'cost-unknown.json'), os.path.join(self.hosts, 'untracked.json'))
+        code, out, err = self.rig('--host', 'fixture-cost')
+        self.assertEqual((code, out, self.records()), (2, [], []), err)
+        self.assertIn('git does not track', err)
 
     def test_a_lock_error_other_than_another_run_exits_2(self):
         rig = self.module()
