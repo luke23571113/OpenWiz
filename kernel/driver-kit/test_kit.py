@@ -24,8 +24,10 @@ HARNESSES = ('claude', 'claude-code', 'codex', 'gemini', 'opencode', 'openclaw',
              'goose')
 TOOLS = ('sh', 'ps', 'lsof', 'awk', 'sleep', 'dirname', 'true')
 TOKEN = 'gh' + 'p_' + 'Synthetic0Kit0Value' * 2 + '00'
+STARTED = 'pass start: the run posted builder status note 2'
+NOT_DECLARED = '; effort: not declared yet; required from EF14'
 PASS = ['pass version: openwiz:records v1, and the schema is driver v1',
-        'pass start: the run posted builder status note 2',
+        STARTED + NOT_DECLARED,
         'pass wake: the run edited builder status note 2',
         'pass stop: the run ended, and a wake after it is refused',
         'pass token: no login or token passed through the driver']
@@ -82,6 +84,31 @@ PLANTED_KEY = {
                                                'does not name, %s' % (IN_ARGS, SCRIPT)],
     'key-local-login': PASS[:4] + [KEY_PASS],
 }
+EFFORT_FAIL = [PASS[0], 'fail start: effort: %s'] + NOT_RUN
+EFFORT = {
+    'effort': [PASS[0], STARTED + '; effort: medium reached a process the run started'] + PASS[2:],
+    'effort-refused': [PASS[0], STARTED + '; effort: refused for fake-harness with the refusal text, as the README '
+                       'says'] + PASS[2:],
+    'effort-cant': [PASS[0], STARTED + "; effort: a start with it was refused, as the README's Effort: line says"]
+    + PASS[2:],
+    'planted/effort-dropped': EFFORT_FAIL + [PASS[4]],
+    'planted/effort-wrong-next': EFFORT_FAIL + [PASS[4]],
+    'planted/effort-no-readme-line': EFFORT_FAIL + [PASS[4]],
+    'planted/effort-taken-without-can': EFFORT_FAIL + [PASS[4]],
+}
+EFFORT_WHY = {
+    'planted/effort-dropped': 'medium never reached a process the run started',
+    'planted/effort-wrong-next': 'start refused medium without the refusal text: harness fake-harness cannot run at '
+                                 'effort medium',
+    'planted/effort-no-readme-line': "its can lists effort, but its README has no Effort: line naming the flag",
+    'planted/effort-taken-without-can': 'its can does not list effort, but a start with it was taken',
+}
+HARNESS_EFFORTS = {'effort': 2, 'planted/effort-taken-without-can': 1}
+EFFORT_KEY = {
+    'effort-key-host': [PASS[0], STARTED + "; effort: medium reached the kit's fake devin host"] + PASS[2:4] + [KEY_PASS],
+    'planted/effort-dropped-key-host': [PASS[0], "fail start: effort: medium never reached the kit's fake devin host"]
+    + NOT_RUN + [KEY_PASS],
+}
 HOST_SCHEMA = {'type': 'object', 'required': ['origin', 'variable', 'keychain', 'header'],
                'additionalProperties': False,
                'properties': {'origin': {'type': 'string',
@@ -92,6 +119,13 @@ HOST_SCHEMA = {'type': 'object', 'required': ['origin', 'variable', 'keychain', 
 HOST_NAME = {'type': 'string', 'pattern': '^(?=.{1,40}$)[a-z0-9]+(-[a-z0-9]+)*$'}
 CONTRACT_FORMATS = ['token=', 'key=', 'secret=', 'password=', 'sig=', 'password:', 'Bearer', 'gh?_', 'github_pat_',
                     'AKIA', 'xox?-', 'sk-']
+
+
+def efforts(path):
+    if not os.path.exists(path):
+        return []
+    with open(path) as f:
+        return [a[a.index('--effort') + 1] for a in map(json.loads, f) if '--effort' in a]
 
 
 def planted(name):
@@ -161,12 +195,12 @@ class Kit(unittest.TestCase):
             except OSError:
                 pass
 
-    def kit(self, driver, python=sys.executable, wait='8', **env):
+    def kit(self, driver, python=sys.executable, wait='8', extra=(), **env):
         env = dict(self.env, **env)
         no_real_harness(env['PATH'])
         p = subprocess.run([python, '-I', os.path.join(HERE, 'kit.py'), '--driver', driver,
                             '--repo', 'example/site', '--ticket', '7', '--harness', 'fake-harness',
-                            '--model', 'Synthetic 1', '--tracker', self.env['KIT_TRACKER'], '--wait', wait],
+                            '--model', 'Synthetic 1', '--tracker', self.env['KIT_TRACKER'], '--wait', wait] + list(extra),
                            env=env, capture_output=True, text=True, timeout=120)
         return p.returncode, p.stdout.splitlines(), p.stderr
 
@@ -306,6 +340,35 @@ class Kit(unittest.TestCase):
 
     def test_template_passes_all_five(self):
         self.assertEqual(self.kit(TEMPLATE)[:2], (0, PASS))
+
+    def test_each_effort_driver_prints_its_own_start_line(self):
+        for name, lines in EFFORT.items():
+            with self.subTest(name):
+                self.tearDown()
+                self.setUp()
+                args = os.path.join(self.folder, 'args')
+                if name in EFFORT_WHY:
+                    lines = [x % EFFORT_WHY[name] if x.startswith('fail start') else x for x in lines]
+                code, out, err = self.kit(os.path.join(FIXTURES, name, 'driver'), FAKE_ARGS=args)
+                self.assertEqual((code, out), (0 if all(x.startswith('pass') for x in lines) else 1, lines), err)
+                self.assertEqual(efforts(args), ['medium'] * HARNESS_EFFORTS.get(name, 0), name)
+
+    def test_the_effort_flag_names_the_value_the_kit_sends(self):
+        args = os.path.join(self.folder, 'args')
+        code, out, err = self.kit(os.path.join(FIXTURES, 'effort', 'driver'), extra=['--effort', 'xhigh'],
+                                  FAKE_ARGS=args)
+        self.assertEqual((code, out[1]), (0, STARTED + '; effort: xhigh reached a process the run started'), err)
+        self.assertEqual(efforts(args), ['xhigh', 'xhigh'])
+        code, out, err = self.kit(TEMPLATE, extra=['--effort', 'Not A Word'])
+        self.assertEqual((code, out), (2, []), err)
+
+    def test_each_key_host_effort_driver_prints_its_own_start_line(self):
+        for name, lines in EFFORT_KEY.items():
+            with self.subTest(name):
+                self.tearDown()
+                self.setUp()
+                code, out, host = self.keyed(os.path.join(FIXTURES, name, 'driver'))
+                self.assertEqual((code, out), (0 if all(x.startswith('pass') for x in lines) else 1, lines))
 
     def test_without_proc_as_on_macos_the_template_passes_all_five(self):
         macos = {'PATH': NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable}
