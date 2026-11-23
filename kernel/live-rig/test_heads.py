@@ -315,14 +315,22 @@ class Heads(unittest.TestCase):
         self.assertFalse(self.kit_ran())
         self.assertEqual(len(self.calls()), 1, self.calls())
 
-    def test_a_ticket_with_a_second_page_is_refused_after_one_read_even_from_the_saved_etag(self):
-        for run in (1, 2):
-            code, out, err = self.heads(['fixture-five'], '--allow-cost', 'fixture-five',
-                                        env=dict(self.env, HEADS_PAGED='101'))
-            self.assertEqual((code, out), (1, 'refused fixture-five: #101 has more comments than one read gives, so its '
-                                              'latest frozen head is unknown\n'), err)
+    def test_a_full_or_paged_comment_window_is_refused_after_one_read_even_from_the_saved_etag(self):
+        with open(self.comments) as f:
+            comments = json.load(f)
+        comments['101'] = [{'id': n, 'user': {'login': 'example-lead'}, 'body': LINE % (201, self.head) if n == 99 else
+                            'a note'} for n in range(100)]
+        for run in (1, 2, 3, 4):
+            with open(self.comments, 'w') as f:
+                json.dump(comments, f)
+            if run == 3:
+                os.remove(os.path.join(self.out, 'heads-etags.json'))
+            code, out, err = self.heads(['fixture-five'], *(['--allow-cost', 'fixture-five'] if run > 1 else []))
+            self.assertEqual((code, out), (0, 'skipped fixture-five: cost\n') if run == 1 else (
+                1, 'refused fixture-five: #101 has more comments than one read gives, so its latest frozen head is unknown\n'), err)
             self.assertEqual(len(self.calls()), run, self.calls())
-        self.assertTrue(self.calls()[1]['args'][3].startswith('If-None-Match: '))
+            comments['101'][100:] = [{'id': 100, 'user': {'login': 'example-lead'}, 'body': LINE % (201, 'e' * 40)}]
+        self.assertEqual([len(c['args']) for c in self.calls()], [3, 5, 3, 5])
         self.assertFalse(self.kit_ran())
 
     def test_a_post_retried_after_a_lost_write_finishes_it_without_a_second_kit_run_comment_or_branch(self):

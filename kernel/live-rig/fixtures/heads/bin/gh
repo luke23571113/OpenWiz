@@ -72,9 +72,8 @@ if args[:2] == ['api', '-i']:
     if comments is None:
         print('HTTP/2.0 404 Not Found\r\n\r\n{"message": "Not Found"}')
         sys.exit(1)
-    paged = number in os.environ.get('HEADS_PAGED', '').split(',')
-    comments = comments[:1] if paged and page == 1 else comments[1:] if paged else comments
-    link = 'Link: <https://api.github.com/%s&page=2>; rel="next"\r\n' % path if paged and page == 1 else ''
+    link = 'Link: <https://api.github.com/%s&page=2>; rel="next"\r\n' % path if page == 1 and len(comments) > 100 else ''
+    comments = comments[100:] if page == 2 else comments[:100]
     body = json.dumps(comments)
     tag = 'W/"%s"' % hashlib.sha256(body.encode()).hexdigest()
     if etag == tag:
