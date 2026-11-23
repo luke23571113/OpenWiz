@@ -599,9 +599,8 @@ class Kit:
         line, rows = self.effort_readme()
         row = rows.get(a.harness, '')
         cant = bool(line) and line.startswith(CANT) or row.startswith("can't")
-        said = re.sub(r'`[^`]*`', '', row or line or '')
-        listed = LISTED.search(said)
-        unlisted = bool(listed) and a.effort not in re.split(r',? and |, ', listed.group(1))
+        words = listed(row or line)
+        unlisted = words is not None and a.effort not in words
         if 'effort' in self.can:
             self.setting = setting(row if row and not cant else line, a.effort)
             if not line or not (line.startswith('Effort: passed as ') or rows) or not (self.setting or cant):
@@ -1062,6 +1061,11 @@ def setting(text, word):
     if at is None:
         return ('field', tokens[0]) if len(tokens) == 1 else None
     return 'argv', tokens[at - 1] if at else None, PLACEHOLDER.sub(word, tokens[at])
+
+
+def listed(text):
+    found = LISTED.search(re.sub(r'`[^`]*`', '', text or ''))
+    return re.split(r',? and |, ', found.group(1)) if found else None
 
 
 def holds_field(body, name, word):

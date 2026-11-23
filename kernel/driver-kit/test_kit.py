@@ -561,6 +561,20 @@ class Kit(unittest.TestCase):
                                            'its README does not list for fake-harness'] + PASS[2:]), err)
         self.assertEqual(efforts(args), [])
 
+    def test_the_setting_is_the_effort_placeholder_and_a_list_follows_the_setting(self):
+        kit = module(os.path.join(HERE, 'kit.py'))
+        cases = [('`--effort <level>`', ('argv', '--effort', 'medium'), None),
+                 ('`set -s <run> effort <effort>`, for each level `claude-agent-acp` 0.95 lists',
+                  ('argv', 'effort', 'medium'), None),
+                 ('`-c model_reasoning_effort=<level>`, for low and high, with any harness',
+                  ('argv', '-c', 'model_reasoning_effort=medium'), ['low', 'high']),
+                 ('passed as `--effort <level>`, for low, medium, high, xhigh and max, with any harness',
+                  ('argv', '--effort', 'medium'), ['low', 'medium', 'high', 'xhigh', 'max']),
+                 ('the `effort` field of the start request', ('field', 'effort'), None)]
+        for text, want, words in cases:
+            with self.subTest(text):
+                self.assertEqual((kit.setting(text, 'medium'), kit.listed(text)), (want, words))
+
     def test_effort_given_only_to_a_one_shot_host_command_during_start_is_seen(self):
         args = os.path.join(self.folder, 'args')
         code, out, err = self.kit(os.path.join(FIXTURES, 'effort-one-shot', 'driver'), FAKE_ARGS=args)
