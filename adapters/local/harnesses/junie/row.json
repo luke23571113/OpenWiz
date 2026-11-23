@@ -37,7 +37,7 @@
   "login": "Junie's own sign-in: the JetBrains account you sign in to in an interactive `junie` (kept under ~/.junie), or JUNIE_API_KEY set in your own environment; the row never reads, sets or stores a key",
   "daemon": "none",
   "signed_out": [
-    "cannot find authorization\\. please authenticate before running junie"
+    "^\\s*\\{\\s*\"errors\"\\s*:\\s*\\[\\s*\"cannot find authorization\\. please authenticate before running junie\\.\"\\s*\\]\\s*\\}\\s*$"
   ],
   "login_command": "junie"
 }
