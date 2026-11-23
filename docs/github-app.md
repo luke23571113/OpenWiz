@@ -410,9 +410,9 @@ python3 -I tools/github-app/agent-token.py run $REQ -- git push origin HEAD
 - **Refresh.** Before each use, a token with 300 seconds or less left is replaced by a
   fresh request. An answer is used only when it names exactly the requested
   repositories and permissions and has more than 300 and at most 3900 seconds left.
-- **Fallback.** When no token can be had, the helper revokes the live token in the request's
-  cache file and only then deletes the file, keeping the file for a later `revoke` if that revoke
-  fails ([Revoke](#revoke)). It hands no App token to the command (one handed down by an outer `run` included), and
+- **Fallback.** When no token can be had, the helper takes the request's cache file out of use:
+  it revokes a live token and deletes the file only after GitHub confirms, and keeps the file
+  for a later `revoke` if that revoke fails or the file can't be read ([Revoke](#revoke)). It hands no App token to the command (one handed down by an outer `run` included), and
   writes exactly one line to standard error:
   `openwiz: no openwiz[bot] token (<reason>); using the owner's GitHub account`. The
   reasons are `unreachable`, `bad-answer`, `pairing-off` and the service's refusal
@@ -433,25 +433,33 @@ python3 -I tools/github-app/agent-token.py revoke $REQ
   `Authorization` header, to `https://api.github.com` only, through no proxy and following no
   redirect. It never runs gh, its guard or any shim, so a refused or missing gh can't stop it.
   `OPENWIZ_GITHUB_API_BASE` exists for the tests and accepts only `http://127.0.0.1:PORT`.
-- It reads the token by name, from this run's snapshot (inside a `run`) and the request's
-  cache file, so it still works when the folder is partly gone, the cache file is unreadable,
-  or the folder was moved (point `OPENWIZ_AGENT_TOKEN_DIR` at its new place).
-- Only after GitHub confirms (`204`) does it remove the files holding that token, then the
-  folder if nothing else is left in it. Another request's token is never touched.
-- **A fallback revokes first.** When the helper falls back to the owner's account and the
-  request's cache file still holds a live token, it revokes that token the same way before
-  deleting the file. If that revoke fails, it keeps the file for a later `revoke` and writes only
-  the usual fallback note. A kept token is never handed out again: the kept file holds only the
-  token and its expiry, so no request matches it, and one with 300 seconds or less left fails the
-  refresh check anyway, so gh, git and the caller never get it. Each later fallback tries the
-  revoke again. A later mint for the same request revokes the kept token first; if that revoke
-  fails, the kept token moves to its own `kept-*.json` file beside the new one, never
-  overwritten, and `revoke` with the same request revokes it there.
+- It finds the request's tokens by name: the request's cache file, its kept files, and every
+  run snapshot that records this request, the current run's included. Inside a `run` it also
+  reads the run's own copy, an open file the run hands down, so it still works when the folder
+  is partly gone, the cache file is unreadable, or the folder was moved (point
+  `OPENWIZ_AGENT_TOKEN_DIR` at its new place) or deleted. A snapshot or copy for another
+  request is never used.
+- Before its call it moves each token it found into a kept file, so it is never handed out
+  again. Only after GitHub confirms (`204`) does it remove every file holding exactly that
+  token, then the folder if nothing else is left in it. A token minted meanwhile and another
+  request's token are never touched.
+- **Kept files.** A token is never deleted or replaced while it may be live and unrevoked. The
+  helper moves it to its own `kept-<request>-<random>.json` file in the same 0700 folder, and
+  revokes it there. The helper does this when it falls back, when a refresh replaces a token
+  that no running `run` still holds, when a `run` ends holding a token nothing else holds, and
+  when `revoke` starts. The cache lookup reads only the cache file, and a run's gh and git
+  check that their token is in no kept file, so a kept token never reaches gh, git or the
+  caller again. A file the helper can't read is kept the same way, never deleted or
+  overwritten; an expired token's file is deleted. Every later mint or fallback for the request
+  tries the kept tokens' revoke again, and `revoke` with the same request tries it at once.
+  Locking keeps two helpers from racing on these files, and no lock is held during a call to
+  GitHub.
 - It fails closed with exactly one line on standard error and exit 1, and never prints the
   token: `openwiz: openwiz[bot] token not revoked (no token found)` when it holds no current
-  token, or `openwiz: openwiz[bot] token not revoked (<reason>); the token is kept where it was`
-  with `GitHub refused`, `GitHub unreachable` or `not the GitHub API`. The token then stays
-  where it was, so you can retry; never delete it, which leaves a live token nobody can revoke.
+  token, or `openwiz: openwiz[bot] token not revoked (<reason>); the token is kept for a later
+  revoke` with `GitHub refused`, `GitHub unreachable` or `not the GitHub API`. The token then
+  stays in its kept file, so you can retry; never delete it, which leaves a live token nobody
+  can revoke.
 - **Last resort.** GitHub revokes an installation token only with the token itself. If it is
   lost or can't be revoked, the owner suspends the installation (**Settings → Applications →
   Installed GitHub Apps → Configure → Suspend**), which stops every token it has minted.

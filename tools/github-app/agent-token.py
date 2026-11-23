@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import contextlib
 import fcntl
 import hashlib
 import json
@@ -30,6 +31,7 @@ TOKEN = re.compile(r"[A-Za-z0-9._~+/-]+=*")
 REFUSAL_MESSAGE = re.compile(r"Token refused: [^\n]+\.")
 GIT_HELPER_KEY = "credential.https://github.com.helper"
 RUN_MARK, GIT_MARK = "OPENWIZ_AGENT_TOKEN_RUN", "OPENWIZ_AGENT_TOKEN_GIT_AT"
+COPY_MARK = "OPENWIZ_AGENT_TOKEN_COPY"
 EXEC_MARK = "OPENWIZ_AGENT_TOKEN_EXEC_WAS"
 PATH_MARK = "OPENWIZ_AGENT_TOKEN_PATH_WAS"
 ALLOWED_PROTOCOLS, SSH_STAND_IN = "file:https:ssh", "openwiz-ssh"
@@ -259,21 +261,32 @@ def cache_name(wanted):
     return f"token-{digest[:32]}.json"
 
 
-def token_for(private, wanted, env):
+def token_for(private, wanted, env, snapshot=None):
     name = cache_name(wanted)
     reason, argv = route(env)
     if not reason:
-        held = private.read(name)
-        if (usable(held, int(time.time())) and held.get("repositories") == wanted["repositories"]
-                and held.get("permissions") == wanted["permissions"]):
-            return held["token"], held["expires_at"]
+        with locked(private):
+            held = private.read(name)
+            if (usable(held, int(time.time())) and held.get("repositories") == wanted["repositories"]
+                    and held.get("permissions") == wanted["permissions"]):
+                if snapshot:
+                    private.write(snapshot, {"token": held["token"], "expires_at": held["expires_at"],
+                                             "request": name})
+                return held["token"], held["expires_at"]
         reason, token, expires_at = mint(argv, wanted, env)
+    with locked(private):
+        drop(private, name, name, retire=bool(reason))
+        if not reason:
+            private.write(name, {"token": token, "expires_at": expires_at, **wanted})
+            if snapshot:
+                private.write(snapshot, {"token": token, "expires_at": expires_at, "request": name})
+        kept = list(bound_tokens(private, name, kept_only=True))
+    base = revoke_base(env)
+    for held in kept:
+        revoke_held(private, base, held)
     if reason:
-        revoke_before_remove(private, name, env)
         sys.stderr.write(NOTE.format(reason))
         return None, None
-    keep_aside(private, name, env)
-    private.write(name, {"token": token, "expires_at": expires_at, **wanted})
     return token, expires_at
 
 
@@ -321,6 +334,7 @@ def without_inherited(env):
     if RUN_MARK not in child:
         return child
     child.pop(RUN_MARK)
+    child.pop(COPY_MARK, None)
     child.pop("GH_TOKEN", None)
     for key, mark in GUARDED:
         was = child.pop(mark, "")
@@ -353,15 +367,16 @@ def run(args, env):
         return execute(command, env)
     no_legacy_app_key(env)
     private = Private(env, create=True)
-    token, expires_at = token_for(private, wanted, env)
+    name = f"run-{secrets.token_hex(16)}.json"
+    token, expires_at = token_for(private, wanted, env, snapshot=name)
     child = without_inherited(env)
     if not token:
         return execute(command, child)
-    name = f"run-{secrets.token_hex(16)}.json"
     snapshot = os.path.join(private.path, name)
-    private.write(name, {"token": token, "expires_at": expires_at})
-    farm = None
+    farm = copy = None
     try:
+        copy = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=private.fd)
+        os.set_inheritable(copy, True)
         farm, real_gh = exec_folder(private, child)
         folder = os.path.join(private.path, farm)
         try:
@@ -382,10 +397,16 @@ def run(args, env):
             child[f"GIT_CONFIG_KEY_{count + offset}"] = GIT_HELPER_KEY
             child[f"GIT_CONFIG_VALUE_{count + offset}"] = value
         child.pop("GH_TOKEN", None)
-        child.update({"GIT_CONFIG_COUNT": str(count + 2), RUN_MARK: snapshot, GIT_MARK: str(count)})
-        return execute(command, child, wait=True)
+        child.update({"GIT_CONFIG_COUNT": str(count + 2), RUN_MARK: snapshot, GIT_MARK: str(count),
+                      COPY_MARK: str(copy)})
+        return execute(command, child, wait=True, keep=copy)
     finally:
-        private.unlink(name)
+        if copy is not None:
+            os.close(copy)
+        with locked(private):
+            retired = drop(private, name, cache_name(wanted), retire=False)
+        if retired:
+            revoke_held(private, revoke_base(env), retired)
         private.unlink(gh_binding(name))
         if farm:
             private.remove_folder(farm)
@@ -508,11 +529,11 @@ def sealed_gh(fd, digest):
     return None
 
 
-def execute(command, env, wait=False):
+def execute(command, env, wait=False, keep=None):
     try:
         if not wait:
             os.execvpe(command[0], command, env)
-        child = subprocess.Popen(command, env=env)
+        child = subprocess.Popen(command, env=env, pass_fds=() if keep is None else (keep,))
     except OSError:
         raise Refused("cannot run the command")
     signal.signal(signal.SIGTERM, lambda number, frame: child.send_signal(number))
@@ -591,6 +612,8 @@ def snapshot_token(snapshot, env, check=only_git_transport):
     if (isinstance(held, dict) and isinstance(held.get("token"), str)
             and TOKEN.fullmatch(held["token"]) and type(held.get("expires_at")) is int
             and held["expires_at"] > time.time()):
+        if any(found.startswith("kept-") for found in holders(private, held["token"])):
+            return "its token is kept for a revoke", None
         return None, held["token"]
     return "no current token", None
 
@@ -747,16 +770,17 @@ def gh_checked(fd, path, refuse, args, env):
 
 
 API_BASE = "https://api.github.com"
-NOT_REVOKED = "openwiz: openwiz[bot] token not revoked ({}); the token is kept where it was\n"
+NOT_REVOKED = "openwiz: openwiz[bot] token not revoked ({}); the token is kept for a later revoke\n"
 NO_TOKEN = "openwiz: openwiz[bot] token not revoked (no token found)\n"
+SNAPSHOT = re.compile(r"run-[0-9a-f]{32}\.json")
 
 
 def revoke_base(env):
     base = env.get("OPENWIZ_GITHUB_API_BASE", API_BASE)
     if base == API_BASE:
         return base
-    parts = urllib.parse.urlsplit(base)
     try:
+        parts = urllib.parse.urlsplit(base)
         port = parts.port
     except ValueError:
         return None
@@ -766,52 +790,96 @@ def revoke_base(env):
     return None
 
 
-def held_tokens(private, wanted, env):
-    names = [cache_name(wanted)]
-    snapshot = env.get(RUN_MARK, "")
-    if (os.path.dirname(snapshot) == private.path
-            and re.fullmatch(r"run-[0-9a-f]{32}\.json", os.path.basename(snapshot))):
-        names.insert(0, os.path.basename(snapshot))
+@contextlib.contextmanager
+def locked(private):
+    fcntl.flock(private.fd, fcntl.LOCK_EX)
     try:
-        listed = os.listdir(private.fd)
-    except OSError:
-        listed = []
-    side = re.compile(re.escape("kept-" + names[-1][len("token-"):-len(".json")]) + r"-[0-9a-f]{32}\.json")
-    names += sorted(entry for entry in listed if side.fullmatch(entry))
-    found = {}
-    for name in names:
-        token = live_token(private.read(name))
-        if token:
-            found.setdefault(token, []).append(name)
-    return found
+        yield
+    finally:
+        fcntl.flock(private.fd, fcntl.LOCK_UN)
 
 
-def live_token(held):
+def token_of(held):
     if (isinstance(held, dict) and isinstance(held.get("token"), str)
-            and TOKEN.fullmatch(held["token"]) and type(held.get("expires_at")) is int
-            and held["expires_at"] > time.time()):
+            and TOKEN.fullmatch(held["token"]) and type(held.get("expires_at")) is int):
         return held["token"]
     return None
 
 
-def revoke_before_remove(private, name, env):
+def live_token(held):
+    return token_of(held) if token_of(held) and held["expires_at"] > time.time() else None
+
+
+def listed(private):
+    try:
+        return sorted(os.listdir(private.fd))
+    except OSError:
+        return []
+
+
+def holders(private, token):
+    return [name for name in listed(private) if re.fullmatch(r"(token|kept|run)-[0-9a-f-]+\.json", name)
+            and live_token(private.read(name)) == token]
+
+
+def kept_name(cache):
+    return f"kept-{cache[len('token-'):-len('.json')]}-{secrets.token_hex(16)}.json"
+
+
+def drop(private, name, cache, retire):
+    try:
+        os.stat(name, dir_fd=private.fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return None
     held = private.read(name)
     token = live_token(held)
-    if token:
-        base = revoke_base(env)
-        if base is None or revoke_call(base, token):
-            private.write(name, {"token": token, "expires_at": held["expires_at"], "kept": True})
-            return False
-    private.unlink(name)
-    return True
+    expired = token_of(held) and not token
+    others = [found for found in holders(private, token) if found != name] if token else []
+    if expired or any(found.startswith("kept-") for found in others) or (others and not retire):
+        private.unlink(name)
+        return None
+    os.rename(name, kept_name(cache), src_dir_fd=private.fd, dst_dir_fd=private.fd)
+    return token
 
 
-def keep_aside(private, name, env):
-    held = private.read(name)
-    if isinstance(held, dict) and held.get("kept") is True and live_token(held):
-        if not revoke_before_remove(private, name, env):
-            os.rename(name, f"kept-{name[len('token-'):-len('.json')]}-{secrets.token_hex(16)}.json",
-                      src_dir_fd=private.fd, dst_dir_fd=private.fd)
+def bound_tokens(private, cache, env=None, kept_only=False):
+    kept = re.compile(f"kept-{cache[len('token-'):-len('.json')]}-[0-9a-f]{{32}}\\.json")
+    names = [name for name in listed(private) if kept.fullmatch(name)
+             or not kept_only and (name == cache or SNAPSHOT.fullmatch(name))]
+    mark = os.path.basename((env or {}).get(RUN_MARK, ""))
+    if not kept_only and SNAPSHOT.fullmatch(mark) and mark not in names:
+        names.append(mark)
+    found = {}
+    for name in names:
+        held = private.read(name)
+        if name.startswith("run-") and not (isinstance(held, dict) and held.get("request") == cache):
+            continue
+        if live_token(held):
+            found.setdefault(held["token"], held["expires_at"])
+    return found
+
+
+def copied_token(env, cache):
+    raw = env.get(COPY_MARK, "")
+    if not raw.isdigit():
+        return None
+    try:
+        info = os.fstat(int(raw))
+        if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077 or info.st_uid != os.getuid():
+            return None
+        held = _parse(os.pread(int(raw), 1 << 16, 0))
+    except (OSError, OverflowError):
+        return None
+    return held if isinstance(held, dict) and held.get("request") == cache and live_token(held) else None
+
+
+def revoke_held(private, base, token):
+    reason = revoke_call(base, token) if base else "not the GitHub API"
+    if not reason and private:
+        with locked(private):
+            for name in holders(private, token):
+                private.unlink(name)
+    return reason
 
 
 def revoke_call(base, token):
@@ -848,31 +916,37 @@ def revoke(args, env):
     if base is None:
         sys.stderr.write(NOT_REVOKED.format("not the GitHub API"))
         return 1
+    cache, found = cache_name(wanted), {}
+    copy = copied_token(env, cache)
+    if copy:
+        found[copy["token"]] = copy["expires_at"]
     try:
         private = Private(env, create=False)
     except Refused:
-        sys.stderr.write(NO_TOKEN)
-        return 1
+        private = None
     try:
-        found = held_tokens(private, wanted, env)
+        if private:
+            with locked(private):
+                found.update(bound_tokens(private, cache, env))
+                drop(private, cache, cache, retire=True)
+                for token, expires_at in found.items():
+                    if not any(name.startswith("kept-") for name in holders(private, token)):
+                        private.write(kept_name(cache), {"token": token, "expires_at": expires_at})
         if not found:
             sys.stderr.write(NO_TOKEN)
             return 1
         failed = None
-        for token, names in found.items():
-            reason = revoke_call(base, token)
-            if reason:
-                failed = failed or reason
-                continue
-            for name in names:
-                private.unlink(name)
+        for token in found:
+            failed = revoke_held(private, base, token) or failed
         if failed:
             sys.stderr.write(NOT_REVOKED.format(failed))
             return 1
-        remove_if_empty(private)
+        if private:
+            remove_if_empty(private)
         return 0
     finally:
-        os.close(private.fd)
+        if private:
+            os.close(private.fd)
 
 
 def main(argv):

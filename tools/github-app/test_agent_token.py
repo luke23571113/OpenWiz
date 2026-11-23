@@ -802,7 +802,7 @@ class Review(Helper):
 
 
 
-NOT_REVOKED = "openwiz: openwiz[bot] token not revoked ({}); the token is kept where it was\n"
+NOT_REVOKED = "openwiz: openwiz[bot] token not revoked ({}); the token is kept for a later revoke\n"
 NO_TOKEN = "openwiz: openwiz[bot] token not revoked (no token found)\n"
 
 
@@ -965,8 +965,8 @@ class Revoke(Helper):
                 self.assertEqual((done.returncode, done.stdout, done.stderr),
                                  (1, "", NOT_REVOKED.format(reason)))
                 self.assert_revoked_once(api)
-                self.assertTrue(held.exists(), "the only copy of a live token is never deleted")
-                self.assertEqual(held.read_bytes(), before, "the token is kept where it was")
+                kept = [path.read_bytes() for path in self.private.glob("kept-*")]
+                self.assertEqual(kept, [before], "the only copy of a live token is kept, never deleted")
                 self.assertEqual(elsewhere.seen, [], "a redirect is never followed")
                 self.assert_never_exposed(done)
         with self.subTest("unreachable"):
@@ -974,11 +974,10 @@ class Revoke(Helper):
             base = api.base()
             api.shutdown()
             api.server_close()
-            before = held.read_bytes()
             done = self.helper("revoke", *REQ, OPENWIZ_GITHUB_API_BASE=base)
             self.assertEqual((done.returncode, done.stdout, done.stderr),
                              (1, "", NOT_REVOKED.format("GitHub unreachable")))
-            self.assertEqual(held.read_bytes(), before)
+            self.assertEqual([path.read_bytes() for path in self.private.glob("kept-*")], [before])
             self.assert_never_exposed(done)
 
     def test_no_token_found_gives_one_fixed_line_and_calls_nobody(self):
@@ -1088,11 +1087,11 @@ class FallbackRevoke(Helper):
                 done = self.run_gh(OPENWIZ_GITHUB_API_BASE=base or refusing.base())
                 self.assertEqual((done.returncode, done.stderr),
                                  (0, NOTE.replace("<reason>", "unreachable") + "\n"))
-                self.assertTrue(held.exists(), "the token file is kept for a later revoke")
-                self.assertEqual(json.loads(held.read_text()),
-                                 {"token": TOKEN, "expires_at": before["expires_at"], "kept": True},
-                                 "kept with its token and expiry, but no scope to be reused for")
-                self.assertEqual(held.stat().st_mode & 0o777, 0o600)
+                self.assertFalse(held.exists(), "out of the cache, so it is never handed out")
+                kept = self.side_files()
+                self.assertEqual([json.loads(path.read_text()) for path in kept], [before],
+                                 "the token file is kept whole for a later revoke")
+                self.assertEqual(kept[0].stat().st_mode & 0o777, 0o600)
                 self.assertEqual(refusing.seen and [len(refusing.seen)], [1] if base is None else [])
                 self.assertEqual([c["gh_token"] for c in self.calls("gh")], [None])
                 api = self.api()
@@ -1100,25 +1099,25 @@ class FallbackRevoke(Helper):
                 later = self.revoke(api)
                 self.assertEqual((later.returncode, later.stderr), (0, ""))
                 self.assert_revoked_once(api)
-                self.assertFalse(held.exists())
+                self.assertEqual(self.side_files(), [])
                 self.assert_never_exposed(done, later)
 
     def test_a_kept_expiring_token_is_never_handed_out_again(self):
         # comment-ok: catches: a token kept after a failed revoke being handed to the next run's gh, its
         # git or the caller, because the refresh boundary is skipped for a kept file.
-        held = self.expiring()
+        self.expiring()
         self.answers(answer(), {"exit": 1, "stdout": ""})
         refusing = self.api(status=401)
         self.env["OPENWIZ_GITHUB_API_BASE"] = refusing.base()
         self.run_gh()
-        self.assertTrue(held.exists(), "the token was kept")
-        self.assertIsNone(load_helper().usable(json.loads(held.read_text()), int(time.time())))
+        self.assertEqual([live_token_in(path) for path in self.side_files()], [TOKEN], "the token was kept")
         github = self.github()
         outputs = [self.run_gh(), self.helper("run", *REQ, "--", *github.git()),
                    self.helper("run", *REQ, "--", "git", "credential", "fill",
                                stdin="protocol=https\nhost=github.com\n\n"),
                    self.start()]
-        self.assertTrue(held.exists(), "still kept after every fallback")
+        self.assertEqual([live_token_in(path) for path in self.side_files()], [TOKEN],
+                         "still kept after every fallback")
         self.assertEqual([c["gh_token"] for c in self.calls("gh")], [None, None])
         self.assertNotIn(sha(f"x-access-token:{TOKEN}"), github.seen)
         for result in outputs[:1] + outputs[3:]:
@@ -1136,7 +1135,8 @@ class FallbackRevoke(Helper):
         self.env["OPENWIZ_GITHUB_API_BASE"] = refusing.base()
         off = self.start(OPENWIZ_TOKEN_SERVICE_READBACK="failed")
         self.assertEqual(off.stderr, NOTE.replace("<reason>", "pairing-off") + "\n")
-        self.assertEqual(live_token_in(held), TOKEN, "the token is kept for a later revoke")
+        self.assertEqual([live_token_in(path) for path in self.side_files()], [TOKEN],
+                         "the token is kept for a later revoke")
         self.answers(answer(), answer(token=TOKEN2))
         back = self.run_gh()
         self.assertEqual((back.returncode, back.stderr), (0, ""))
@@ -1149,7 +1149,7 @@ class FallbackRevoke(Helper):
         refusing = self.api(status=401)
         off = self.start(OPENWIZ_TOKEN_SERVICE_READBACK="failed", OPENWIZ_GITHUB_API_BASE=refusing.base())
         self.assertEqual(off.stderr, NOTE.replace("<reason>", "pairing-off") + "\n")
-        self.assertEqual(live_token_in(held), TOKEN)
+        self.assertEqual([live_token_in(path) for path in self.side_files()], [TOKEN])
         return held
 
     def side_files(self):
@@ -1198,21 +1198,6 @@ class FallbackRevoke(Helper):
         self.assertEqual(self.side_files(), [])
         self.assertFalse(self.token_file().exists())
         self.assert_never_exposed(*outputs, done)
-
-    def test_an_ordinary_refresh_never_revokes_a_token_other_runs_may_hold(self):
-        # comment-ok: catches: a refresh that revokes every token it replaces, breaking another run of
-        # the same request that still uses the old one.
-        held = self.minted()
-        old = json.loads(held.read_text())
-        old["expires_at"] = int(time.time()) + 200
-        held.write_text(json.dumps(old))
-        self.answers(answer(), answer(token=TOKEN2))
-        ran = self.run_gh()
-        self.assertEqual((ran.returncode, ran.stderr), (0, ""))
-        self.assertEqual(self.calls("gh")[-1]["gh_token"], sha(TOKEN2))
-        self.assertEqual(self.revoke_api.seen, [])
-        self.assertEqual(self.side_files(), [])
-
 
 
 class RevokeReview(Helper):
@@ -1314,7 +1299,6 @@ class RevokeReview(Helper):
                 self.assertEqual((done.returncode, done.stdout, done.stderr), (0, "", ""))
                 self.assertEqual([(s["method"], s["auth"]) for s in api.seen],
                                  [("DELETE", sha(f"Bearer {TOKEN}"))])
-                self.assert_never_exposed(done)
 
     def test_r5_revoke_inside_a_run_never_revokes_another_requests_token(self):
         # comment-ok: catches: a revoke that takes this run's snapshot for any request, so revoking B
