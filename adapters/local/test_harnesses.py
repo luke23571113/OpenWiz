@@ -394,6 +394,21 @@ def supervisor_keeps_the_drivers_environment(planted):
         len(turns) == 1 and turns[0]['env'] == {'EXAMPLE_CLI_BACKEND': 'local', 'EXAMPLE_CLI_THINKING': 'max'}
 
 
+def credential_arguments_refused(planted):
+    example = local.read_row(os.path.join(planted, 'example', 'row.json'), 'example')
+    value, ok = 'synthetic-0000', True
+    for field, fields in (
+            ('modes', {'modes': dict(example['modes'], auto=['--yes', '--token=' + value])}),
+            ('modes', {'modes': dict(example['modes'], auto=['--api-key', value])}),
+            ('start', {'start': ['password=' + value] + example['start']}),
+            ('effort', {'effort': dict(example['effort'], low=['--effort', 'low', '--auth', value])})):
+        with example_variant('example', **fields) as rows, ThrowawayMachine(rows, 'example', mode='auto') as env:
+            ok = env.start_refused_starting_nothing(
+                lambda out: 'harnesses/example/row.json' in out['error'] and '(%s:' % field in out['error'] and
+                value not in json.dumps(out)) and ok
+    return ok
+
+
 def check_driver(rows):
     found = [("a broken row's D3 error names its row file and fits the error schema: a row folder with no row.json, "
               "a harness that is not a string, and a 60-character harness with a missing field",
@@ -401,7 +416,9 @@ def check_driver(rows):
              ("a row's session id and signed_out patterns are read from its first turn's output, never the clone's, "
               "and the first line that has the session's JSON path decides it", rows_read_first_turn_output(rows)),
              ("an effort the row can't take is refused before the driver looks for its program, and a row's effort "
-              "ids are lower-case words of up to 20 characters", effort_checked_first_with_its_grammar(rows))]
+              "ids are lower-case words of up to 20 characters", effort_checked_first_with_its_grammar(rows)),
+             ("a row whose fixed arguments in start, wake, modes or effort look like a credential, joined or as a "
+              "flag and its value, is refused naming only its field", credential_arguments_refused(rows))]
     if os.path.isdir('/proc/self'):
         found.append(("a row's env and effort setting reach only the harness, never the turn's supervisor",
                       supervisor_keeps_the_drivers_environment(rows)))
