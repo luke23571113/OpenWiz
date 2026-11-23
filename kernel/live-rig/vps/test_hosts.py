@@ -91,6 +91,8 @@ class Skips(unittest.TestCase):
         self.hosts = os.path.join(self.checkout, 'kernel', 'live-rig', 'vps', 'hosts')
         shutil.copytree(HOSTS, self.hosts)
         shutil.copy2(RIG, os.path.join(self.checkout, 'kernel', 'live-rig', 'rig.py'))
+        os.makedirs(os.path.join(self.checkout, 'kernel', 'driver-kit'))
+        shutil.copy2(KIT, os.path.join(self.checkout, 'kernel', 'driver-kit', 'kit.py'))
         git(self.checkout, 'init', '-q')
         git(self.checkout, 'add', '-A')
         git(self.checkout, 'commit', '-q', '-m', 'fixture checkout')
