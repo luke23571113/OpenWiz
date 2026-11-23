@@ -31,7 +31,7 @@ CONFIGS = {
                   'harness': 'claude'},
     'cursor': {'host': 'Cursor', 'driver': 'adapters/cursor/driver', 'tool': 'curl', 'key': 'CURSOR_API_KEY', 'harness': 'cursor'},
 }
-GH_PROBE = ['gh', 'auth', 'status', '--hostname', 'github.com', '--active', '--no-refresh']
+GH_PROBE = ['env', 'GH_TELEMETRY=0', 'gh', 'config', 'get', '-h', 'github.com', 'user']
 BILLS = {'hermes': 'unknown', 'pane': 'unknown', 'factory': 'unknown', 'conductor': 'unknown', 'cursor': 'unknown'}
 SKIPS = {
     'hermes': {'tool missing': 'not installed: hermes', 'gh missing': 'not installed: gh', 'tool signed out': 'cost',
@@ -80,7 +80,9 @@ class Configs(unittest.TestCase):
                 self.assertEqual(config['cost'], 'paid')
                 self.assertEqual([r['harness'] for r in config['runs']], [want['harness']])
                 self.assertEqual(config['signed_in'][-1], GH_PROBE)
-                self.assertEqual([c for c in config['signed_in'] if c[0] == 'gh'], [GH_PROBE])
+                self.assertEqual([c for c in config['signed_in'] if c[0] == 'gh' or
+                                  c[0] == 'env' and 'gh' in c], [GH_PROBE])
+                self.assertFalse(any(c[:3] == ['claude', 'auth', 'status'] for c in config['signed_in']))
 
 
 class Skips(unittest.TestCase):
@@ -249,6 +251,15 @@ class Page(unittest.TestCase):
         self.assertIn('`Record authors`', self.page)
         self.assertIn('claude auth status', self.page)
         self.assertRegex(self.page, r'--allow-cost[^.]*only[^.]*(checked|signed in)')
+
+    def test_the_status_column_names_the_no_prompt_github_probe(self):
+        table = self.page.partition('## One row per host')[2]
+        legend = table.partition('| Host |')[0]
+        self.assertTrue('The GitHub probe is `' + ' '.join(GH_PROBE) + '`' in legend)
+        for host, cells in self.rows.items():
+            with self.subTest(host=host):
+                self.assertIn('the GitHub probe', cells[3])
+                self.assertNotIn('claude auth status', cells[3])
 
     def test_the_page_holds_names_never_values(self):
         self.assertTrue(self.page, 'no sign-in page')
