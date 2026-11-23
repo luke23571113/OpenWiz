@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""The five VPS host configs, through rig.py, on fakes only; and the sign-in page that goes with them."""
 import importlib.machinery
 import importlib.util
 import json
@@ -24,7 +23,6 @@ AGENT_CLIS = ['claude', 'codex', 'cursor-agent', 'agent', 'pi', 'opencode', 'cop
               'qwen', 'cline', 'kilo', 'crush', 'vibe', 'auggie', 'kiro-cli', 'junie', 'amp', 'agy', 'oz', 'sculpt',
               'hermes', 'acpx', 'droid']
 SECRET = 'fk-' + 'Synthetic0Vps0Value' * 2
-# What each config (hosts/<file>.json) must be: the lead's fixed host names, the spec's "VPS session files", the ticket and each driver's README on its build branch.
 CONFIGS = {
     'hermes': {'host': 'Hermes', 'driver': 'adapters/hermes/driver', 'tool': 'hermes', 'key': None, 'harness': 'claude'},
     'pane': {'host': 'Pane', 'driver': 'adapters/pane/driver', 'tool': 'runpane', 'key': None, 'harness': 'claude'},
@@ -33,21 +31,18 @@ CONFIGS = {
                   'harness': 'claude'},
     'cursor': {'host': 'Cursor', 'driver': 'adapters/cursor/driver', 'tool': 'curl', 'key': 'CURSOR_API_KEY', 'harness': 'cursor'},
 }
-# The exact skip reason per host and situation, written out (never computed from the configs).
-# tool missing: the host's tool is not on PATH; gh missing: gh is not; tool out: the tool's status command fails;
-# no key: the key's name is not in the environment; gh out: `gh auth status` fails; signed in: everything passes.
 SKIPS = {
-    'hermes': {'tool missing': 'not installed: hermes', 'gh missing': 'not installed: gh', 'tool out': 'cost',
-               'no key': 'cost', 'gh out': 'not signed in: gh', 'signed in': 'cost'},
+    'hermes': {'tool missing': 'not installed: hermes', 'gh missing': 'not installed: gh', 'tool signed out': 'cost',
+               'key name unset': 'cost', 'gh signed out': 'not signed in: gh', 'signed in': 'cost'},
     'pane': {'tool missing': 'not installed: runpane', 'gh missing': 'not installed: gh',
-             'tool out': 'not signed in: runpane', 'no key': 'cost', 'gh out': 'not signed in: gh',
+             'tool signed out': 'not signed in: runpane', 'key name unset': 'cost', 'gh signed out': 'not signed in: gh',
              'signed in': 'cost'},
-    'factory': {'tool missing': 'not installed: droid', 'gh missing': 'not installed: gh', 'tool out': 'cost',
-                'no key': 'not signed in: python3', 'gh out': 'not signed in: gh', 'signed in': 'cost'},
-    'conductor': {'tool missing': 'not installed: curl', 'gh missing': 'not installed: gh', 'tool out': 'cost',
-                  'no key': 'not signed in: python3', 'gh out': 'not signed in: gh', 'signed in': 'cost'},
-    'cursor': {'tool missing': 'not installed: curl', 'gh missing': 'not installed: gh', 'tool out': 'cost',
-               'no key': 'not signed in: python3', 'gh out': 'not signed in: gh', 'signed in': 'cost'},
+    'factory': {'tool missing': 'not installed: droid', 'gh missing': 'not installed: gh', 'tool signed out': 'cost',
+                'key name unset': 'not signed in: python3', 'gh signed out': 'not signed in: gh', 'signed in': 'cost'},
+    'conductor': {'tool missing': 'not installed: curl', 'gh missing': 'not installed: gh', 'tool signed out': 'cost',
+                  'key name unset': 'not signed in: python3', 'gh signed out': 'not signed in: gh', 'signed in': 'cost'},
+    'cursor': {'tool missing': 'not installed: curl', 'gh missing': 'not installed: gh', 'tool signed out': 'cost',
+               'key name unset': 'not signed in: python3', 'gh signed out': 'not signed in: gh', 'signed in': 'cost'},
 }
 
 
@@ -86,15 +81,12 @@ class Configs(unittest.TestCase):
 
 
 class Skips(unittest.TestCase):
-    """rig.py --host <name> on each real VPS config, with fakes on PATH: every situation gives its exact skip line,
-    no kit starts, and no status check calls a fake beyond a read-only status command."""
-
     def setUp(self):
         self.folder = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.folder, True)
-        # A throwaway clean checkout holding only rig.py: rig.py refuses a dirty one, and no kit is in it to start.
         self.checkout = os.path.join(self.folder, 'checkout')
-        os.makedirs(os.path.join(self.checkout, 'kernel', 'live-rig'))
+        self.hosts = os.path.join(self.checkout, 'kernel', 'live-rig', 'vps', 'hosts')
+        shutil.copytree(HOSTS, self.hosts)
         shutil.copy2(RIG, os.path.join(self.checkout, 'kernel', 'live-rig', 'rig.py'))
         git(self.checkout, 'init', '-q')
         git(self.checkout, 'add', '-A')
@@ -104,12 +96,11 @@ class Skips(unittest.TestCase):
             json.dump({'repo': 'example/vps-throwaway', 'ticket': 7}, f)
         self.log = os.path.join(self.folder, 'calls.log')
 
-    def path(self, situation, tool):
-        """PATH for one run: the refusing stubs first, then the fakes, then only git and python3."""
+    def path_of_stubs_then_fakes(self, situation, tool):
         stubs, fakes = tempfile.mkdtemp(dir=self.folder), tempfile.mkdtemp(dir=self.folder)
         wired = {'tool missing': [], 'gh missing': [tool]}.get(situation, [tool, 'gh'])
-        # A missing tool has no stub either, or the stub would count as installed. PATH holds only these folders,
-        # so nothing real can answer in its place.
+        # SAFETY: PATH holds only these folders, so nothing real can answer for a missing tool, which gets no stub
+        # either (a stub would count as installed).
         absent = [tool] if situation == 'tool missing' else []
         for name in AGENT_CLIS:
             if name not in wired + absent:
@@ -118,7 +109,7 @@ class Skips(unittest.TestCase):
                             'exit 1\n' % name)
                 os.chmod(os.path.join(stubs, name), 0o755)
         for name in wired:
-            out = name == 'gh' and situation == 'gh out' or name == tool and situation == 'tool out'
+            out = name == 'gh' and situation == 'gh signed out' or name == tool and situation == 'tool signed out'
             with open(os.path.join(fakes, name), 'w') as f:
                 f.write('#!/bin/sh\necho "%s $*" >> "%s"\nexit %d\n' % (name, self.log, 1 if out else 0))
             os.chmod(os.path.join(fakes, name), 0o755)
@@ -128,13 +119,13 @@ class Skips(unittest.TestCase):
 
     def rig(self, host, situation):
         want = CONFIGS[host]
-        env = {'PATH': self.path(situation, want['tool']), 'HOME': self.folder, 'LANG': 'C.UTF-8'}
+        env = {'PATH': self.path_of_stubs_then_fakes(situation, want['tool']), 'HOME': self.folder, 'LANG': 'C.UTF-8'}
         for key in ('FACTORY_API_KEY', 'CONDUCTOR_API_KEY', 'CURSOR_API_KEY'):
-            if situation != 'no key':
+            if situation != 'key name unset':
                 env[key] = SECRET
         out = os.path.join(self.folder, 'out-' + host + '-' + situation.replace(' ', '-'))
         p = subprocess.run([sys.executable, '-I', os.path.join(self.checkout, 'kernel', 'live-rig', 'rig.py'),
-                            '--hosts', HOSTS, '--settings', self.settings, '--out', out, '--host', want['host']],
+                            '--hosts', self.hosts, '--settings', self.settings, '--out', out, '--host', want['host']],
                            cwd=self.checkout, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True,
                            timeout=120)
         records = []
@@ -165,7 +156,6 @@ class Skips(unittest.TestCase):
         if os.path.isfile(self.log):
             with open(self.log) as f:
                 calls = f.read().splitlines()
-        # Exactly one `gh auth status` per host and Pane's one `runpane repos list --json`, and nothing else.
         self.assertEqual(sorted(calls), sorted(['gh auth status'] * 5 + ['runpane repos list --json']))
 
 
@@ -175,7 +165,6 @@ class Page(unittest.TestCase):
         if os.path.isfile(PAGE):
             with open(PAGE) as f:
                 self.page = f.read()
-        # Each host's row starts with its host name; this keys the rows by the config file that names it.
         files = {c['host']: name for name, c in CONFIGS.items()}
         self.rows = {}
         for line in self.page.splitlines():
