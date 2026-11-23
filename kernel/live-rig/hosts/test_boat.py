@@ -15,15 +15,22 @@ AGENT_CLIS = ['claude', 'codex', 'cursor-agent', 'agent', 'cursor', 'pi', 'openc
               'kimi', 'qwen', 'cline', 'kilo', 'kilocode', 'crush', 'vibe', 'auggie', 'kiro-cli', 'junie', 'amp', 'agy',
               'oz', 'sculpt', 'hermes', 'acpx', 'droid', 'boat', 'room-cli', 'runpane', 'pane', 'openhands', 'devin',
               'warp', 'grok', 'codespaces', 'conductor']
-STATUS = {'boat': 'boat status --check', 'gh': 'gh auth status --hostname github.com --active --no-refresh'}
+STATUS = {'boat': ['boat', 'status', '--check'], 'gh': ['gh', 'config', 'get', '-h', 'github.com', 'user']}
+GH_PROBE = ['env', 'GH_TELEMETRY=0', *STATUS['gh']]
 RUNS = [('claude', 'opus-5-5'), ('codex', 'gpt-5.4-mini')]
-BOAT_PROVIDERS = {'claude', 'codex', 'pi', 'opencode', 'prime', 'kimi', 'mistral'}
-FAKE = '''#!/bin/sh
-printf '%%s\\n' "%s $*" >> "$FAKE_LOG"
-if [ "%s $*" = "%s" ]; then exit %d; fi
-echo "%s: refused, the boat host tests answer only its status command" >&2
-exit 3
-'''
+FAKE = """#!{python}
+import json
+import os
+import sys
+
+command = [{name!r}, *sys.argv[1:]]
+with open(os.environ['FAKE_LOG'], 'a') as log:
+    print(json.dumps(command), file=log)
+if command == {command!r} and ({name!r} != 'gh' or os.environ.get('GH_TELEMETRY') == '0'):
+    sys.exit({status})
+print({name!r} + ': refused unexpected probe or enabled telemetry', file=sys.stderr)
+sys.exit(3)
+"""
 
 
 def git(cwd, *args):
@@ -54,7 +61,8 @@ class BoatHost(unittest.TestCase):
         self.stubs, self.fakes, tools = (os.path.join(self.folder, d) for d in ('stubs', 'fakes', 'tools'))
         for d in (self.stubs, self.fakes, tools):
             os.mkdir(d)
-        os.symlink(shutil.which('git'), os.path.join(tools, 'git'))
+        for name in ('git', 'env'):
+            os.symlink(shutil.which(name), os.path.join(tools, name))
         for name in AGENT_CLIS:
             if name in STATUS:
                 continue
@@ -69,12 +77,13 @@ class BoatHost(unittest.TestCase):
             if name in missing:
                 continue
             with open(os.path.join(self.fakes, name), 'w') as f:
-                f.write(FAKE % (name, name, command, 0 if name in signed_in else 1, name))
+                f.write(FAKE.format(python=sys.executable, name=name, command=command,
+                                    status=0 if name in signed_in else 1))
             os.chmod(os.path.join(self.fakes, name), 0o700)
         for name in AGENT_CLIS:
             want = None if name in missing else os.path.join(self.fakes if name in STATUS else self.stubs, name)
             self.assertEqual(shutil.which(name, path=self.path), want, name)
-        env = dict(os.environ, PATH=self.path, HOME=self.folder, FAKE_LOG=self.log)
+        env = dict(os.environ, PATH=self.path, HOME=self.folder, FAKE_LOG=self.log, GH_TELEMETRY='enabled')
         p = subprocess.run([sys.executable, '-I', os.path.join(self.checkout, 'kernel', 'live-rig', 'rig.py'),
                             '--hosts', os.path.join(self.checkout, 'kernel', 'live-rig', 'hosts'),
                             '--settings', self.settings, '--out', self.out, '--host', 'boat.dev'],
@@ -98,7 +107,7 @@ class BoatHost(unittest.TestCase):
         if not os.path.exists(self.log):
             return []
         with open(self.log) as f:
-            return f.read().splitlines()
+            return [json.loads(line) for line in f]
 
     def test_the_config_checks_only_the_cited_read_only_status_commands(self):
         self.assertTrue(os.path.isfile(os.path.join(HERE, 'boat.json')), 'kernel/live-rig/hosts/boat.json is missing')
@@ -106,9 +115,8 @@ class BoatHost(unittest.TestCase):
             config = json.load(f)
         self.assertEqual((config['host'], config['driver'], config['needs'], config['cost'], config['wait']),
                          ('boat.dev', 'adapters/boat/driver', ['boat', 'gh'], 'unknown', 900))
-        self.assertEqual([' '.join(c) for c in config['signed_in']], [STATUS['boat'], STATUS['gh']])
+        self.assertEqual(config['signed_in'], [STATUS['boat'], GH_PROBE])
         self.assertEqual([(r['harness'], r['model']) for r in config['runs']], RUNS)
-        self.assertLessEqual({h for h, _ in RUNS}, BOAT_PROVIDERS)
 
     def test_signed_in_everywhere_is_skipped_as_cost_and_starts_nothing(self):
         self.why = 'cost'
@@ -119,7 +127,7 @@ class BoatHost(unittest.TestCase):
         self.assertEqual(self.rig(signed_in=('gh',)), [STATUS['boat']])
 
     def test_gh_signed_out_is_skipped(self):
-        self.why = 'not signed in: gh'
+        self.why = 'not signed in: env'
         self.assertEqual(self.rig(signed_in=('boat',)), [STATUS['boat'], STATUS['gh']])
 
     def test_boat_missing_is_skipped_and_runs_no_status_command(self):
