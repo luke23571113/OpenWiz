@@ -1343,6 +1343,120 @@ class RevokeReview(Helper):
         self.assertEqual([live_token_in(p) for p in [held, *self.side_files()] if p.exists()], [TOKEN])
 
 
+PROBE = r"""
+import os
+held = 0
+for fd in map(int, os.listdir("/proc/self/fd")):
+    try:
+        held += fd > 2 and b'"token"' in os.pread(fd, 1 << 16, 0)
+    except OSError:
+        pass
+print(held)
+"""
+
+
+class FinalRound(Helper):
+    api, minted, revoke = Revoke.api, Revoke.minted, Revoke.revoke
+    expiring, run_gh, side_files = FallbackRevoke.expiring, FallbackRevoke.run_gh, FallbackRevoke.side_files
+    inside_run = RevokeReview.inside_run
+
+    def deletes(self, api):
+        return [(seen["method"], seen["auth"]) for seen in api.seen]
+
+    def test_r4_a_failed_revoke_after_the_folder_went_leaves_a_retry_copy(self):
+        # comment-ok: catches: a run whose folder was deleted ending with its token live and no copy left,
+        # after an in-run revoke GitHub refused or with no revoke at all, so a later revoke finds nothing.
+        for name, script, code in (
+                ("in-run revoke refused", f'rm -rf "$PRIV"; "$PY" -I "$H" revoke {" ".join(REQ)}', 1),
+                ("no revoke before the run ends", 'rm -rf "$PRIV"', 0)):
+            with self.subTest(name):
+                shutil.rmtree(self.private, True)
+                self.minted()
+                refusing = self.api(status=401)
+                done = self.inside_run(script, refusing)
+                stderr = NOT_REVOKED.format("GitHub refused") if code else ""
+                self.assertEqual((done.returncode, done.stdout, done.stderr), (code, "", stderr))
+                self.assertEqual(self.deletes(refusing), [("DELETE", sha(f"Bearer {TOKEN}"))])
+                api = self.api()
+                later = self.revoke(api)
+                self.assertEqual((later.returncode, later.stderr), (0, ""), "a retry copy survives the run")
+                self.assertEqual(self.deletes(api), [("DELETE", sha(f"Bearer {TOKEN}"))])
+                self.assert_never_exposed(done, later)
+
+    def test_r6_a_fallback_retires_an_unreadable_entry_for_every_active_run(self):
+        # comment-ok: catches: an active run's gh still getting the token after a fallback kept the
+        # request's unreadable cache entry, because retirement was read from the damaged bytes.
+        self.minted()
+        refusing = self.api(status=401)
+        inner = (f'chmod 000 "$CACHE"; OPENWIZ_TOKEN_SERVICE_READBACK=failed "$PY" -I "$H" start {" ".join(REQ)}'
+                 '; gh pr list')
+        done = self.inside_run(inner, refusing)
+        self.assertEqual(done.returncode, 128)
+        self.assertEqual(self.calls("gh"), [], "the active run's gh gets no retired token")
+        self.assertEqual(self.deletes(refusing), [("DELETE", sha(f"Bearer {TOKEN}"))])
+        self.assert_never_exposed(done)
+
+    def gated(self):
+        gated, gate = self.root / "gated", self.root / "gate"
+        gated.mkdir(exist_ok=True)
+        (gated / "room-cli").write_text(f'#!/bin/sh\n: > "{gate}.started"\n'
+                                        f'while [ ! -e "{gate}" ]; do sleep 0.05; done\n'
+                                        f'exec "{self.bin}/room-cli" "$@"\n')
+        (gated / "room-cli").chmod(0o755)
+        full = dict(self.env, PATH=f"{gated}:{self.env['PATH']}")
+        minting = subprocess.Popen([sys.executable, "-I", str(HELPER), "start", *REQ], env=full,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.addCleanup(minting.kill)
+        deadline = time.monotonic() + 20
+        while not Path(f"{gate}.started").exists():
+            self.assertLess(time.monotonic(), deadline, "the mint reached the service")
+            time.sleep(0.05)
+        return minting, gate
+
+    def test_r8_a_mint_in_flight_stores_or_revokes_its_answer(self):
+        # comment-ok: catches: a revoke removing the token folder under an in-flight mint, or a mint that
+        # cannot store its answer leaving the fresh token live with no copy and no DELETE.
+        with self.subTest("a revoke during the mint"):
+            self.expiring()
+            self.answers(answer(), answer(token=TOKEN2))
+            minting, gate = self.gated()
+            api = self.api()
+            done = self.revoke(api)
+            self.assertEqual((done.returncode, done.stderr), (0, ""))
+            gate.touch()
+            out, err = minting.communicate(timeout=30)
+            self.assertEqual((minting.returncode, out, err), (0, "", ""))
+            self.assertEqual(self.held()["token"], TOKEN2, "the fresh token is stored")
+            self.assertEqual(self.private.stat().st_mode & 0o777, 0o700)
+        with self.subTest("the folder deleted during the mint"):
+            shutil.rmtree(self.private, True)
+            for left in ("gate", "gate.started"):
+                (self.root / left).unlink()
+            self.log.unlink()
+            self.expiring()
+            self.answers(answer(), answer(token=TOKEN2))
+            minting, gate = self.gated()
+            shutil.rmtree(self.private)
+            gate.touch()
+            out, err = minting.communicate(timeout=30)
+            self.assertEqual((minting.returncode, out, len(err.splitlines())), (2, "", 1), err)
+            self.assertEqual(self.deletes(self.revoke_api), [("DELETE", sha(f"Bearer {TOKEN2}"))],
+                             "the fresh token it could not store is revoked")
+            self.assertNotIn(TOKEN2, err)
+
+    @unittest.skipUnless(os.path.isdir("/proc/self/fd"), "needs /proc/self/fd")
+    def test_r9_no_child_inherits_a_readable_credential_handle(self):
+        # comment-ok: catches: a run handing its children an open, readable copy of the token, which a
+        # nested fallback child running as the owner keeps after the token is retired.
+        self.minted()
+        (self.root / "probe.py").write_text(PROBE)
+        nested = (f'"$PY" -I "$PROBE"; OPENWIZ_TOKEN_SERVICE_READBACK=failed "$PY" -I "$H" run {" ".join(REQ)}'
+                  ' -- "$PY" -I "$PROBE"')
+        done = self.inside_run(nested, self.api(), PROBE=str(self.root / "probe.py"))
+        self.assertEqual((done.returncode, done.stdout), (0, "0\n0\n"), "no fd that reads as a token")
+        self.assert_never_exposed(done)
+
+
 
 def live_token_in(path):
     return json.loads(path.read_text()).get("token") if path.exists() else None
