@@ -8,13 +8,15 @@ PROMPT = 'Work on the ticket with the build-ticket skill.'
 WOKEN = 'You were woken. Carry on with the build-ticket skill.'
 START = ['-p', PROMPT, '--output-format', 'stream-json', '-m', 'kimi-code/kimi-for-coding']
 
-# External: kimi refuses -p with --yolo, --auto or --plan, and --output-format without -p,
+# External: kimi refuses -p with --yolo, --auto or --plan, --output-format without -p, and an empty or blank model,
 # https://github.com/MoonshotAI/kimi-code/blob/56145f849caa305d42acd09b67fb65d11146f887/apps/kimi-code/src/cli/options.ts
 REFUSED = [START + ['--yolo'], START + ['-y'], START + ['--yes'], START + ['--auto-approve'], START + ['--auto'],
            START + ['--plan'], START[2:], START + ['-p', PROMPT], ['-p', ' '] + START[2:],
            ['-p', PROMPT, '--output-format', 'json', '-m', 'm'], ['-p', PROMPT, '-m', 'm'],
            ['-p', PROMPT, '--output-format', 'stream-json'], ['--continue'] + START, START + ['extra'],
-           ['-S', '', '-p', WOKEN], ['-S', 'fake-1', '-p', WOKEN, '--yolo'], ['-S', 'fake-1'], ['--prompt=' + PROMPT]]
+           ['-S', '', '-p', WOKEN], ['-S', 'fake-1', '-p', WOKEN, '--yolo'], ['-S', 'fake-1'], ['--prompt=' + PROMPT],
+           START[:-1] + [''], START[:-1] + [' \t'], ['--model', ' ', '--output-format', 'stream-json', '--prompt', PROMPT],
+           ['-S', 'fake-1', '-p', WOKEN, '-m', '']]
 ALLOWED = [(START, None), (['--model', 'm', '--output-format', 'stream-json', '--prompt', PROMPT], None),
            (['-S', 'fake-1', '-p', WOKEN], 'fake-1'), (['--resume', 'fake-2', '--prompt', WOKEN, '-m', 'm'], 'fake-2')]
 
