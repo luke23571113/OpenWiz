@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import json, os, re, subprocess, sys, tempfile
+import json, os, re, secrets, signal, subprocess, sys, tempfile
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 FAKE = os.path.join(HERE, 'fake')
@@ -42,6 +42,50 @@ def signed_out(folder):
     bad += ['the row\'s signed_out matches %r' % line for line in NOT_SIGNED_OUT if any(x.search(line) for x in patterns)]
     return bad
 
+# External: kimi runs each background Bash task with spawn's detached: true and piped stdio on Unix, so the task
+# leads its own session and process group and its output goes back to kimi.
+# https://github.com/MoonshotAI/kimi-code/blob/56145f849caa305d42acd09b67fb65d11146f887/packages/agent-core-v2/src/os/backends/node-local/hostProcessService.ts
+
+
+def background_shape(folder):
+    if not os.path.isdir('/proc/self'):
+        return []
+    mark = secrets.token_hex(8)
+    with open(os.path.join(folder, 'tracker'), 'w') as f:
+        json.dump({'comments': []}, f)
+    with open(os.path.join(folder, 'run-1.json'), 'w') as f:
+        json.dump({'starting': False}, f)
+    record = os.path.join(folder, 'record-shape')
+    env = dict(PATH=os.environ.get('PATH', ''), FAKE_CLI_LIB=LIB, FAKE_CLI_RECORD=record, KIMI_CODE_NO_AUTO_UPDATE='1',
+               KIT_TRACKER=os.path.join(folder, 'tracker'), OPENWIZ_LOCAL_STATE=folder, OPENWIZ_RUN='run-1',
+               KIMI_TEST_MARK=mark)
+    turn = subprocess.Popen([sys.executable, '-I', FAKE] + START, env=env, stdin=subprocess.DEVNULL,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    pids = []
+    try:
+        turn.wait(timeout=60)
+        with open(record) as f:
+            pids.append(json.loads(f.readline())['daemon'][0])
+        pid, bad = pids[0], []
+        if not (os.getsid(pid) == os.getpgid(pid) == pid != os.getsid(0)):
+            bad.append('the background process does not lead its own session and process group, as a kimi Bash task does')
+        fds = [os.readlink('/proc/%d/fd/%d' % (pid, n)) for n in (0, 1, 2)]
+        if not all(x.startswith('pipe:') for x in fds):
+            bad.append('the background process has stdio %r, not the pipes a kimi Bash task has' % fds)
+        return bad
+    finally:
+        for p in [x for x in os.listdir('/proc') if x.isdigit()]:
+            try:
+                with open('/proc/%s/environ' % p, 'rb') as f:
+                    if ('KIMI_TEST_MARK=' + mark).encode() in f.read().split(b'\0'):
+                        pids.append(int(p))
+            except OSError:
+                pass
+        for pid in pids:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except OSError:
+                pass
 
 def run(argv, folder, **extra):
     env = dict(PATH=os.environ.get('PATH', ''), FAKE_CLI_LIB=LIB, FAKE_CLI_RECORD=os.path.join(folder, 'record'),
@@ -69,6 +113,7 @@ def main():
             if sessions[2:] != ['fake-1', 'fake-2']:
                 bad.append('the fake\'s woken turns got %r' % sessions[2:])
         bad += signed_out(folder)
+        bad += background_shape(folder)
     for line in bad:
         print('fail: ' + line)
     print('fail' if bad else 'pass: the fake takes only the documented kimi command lines, and signed_out matches only kimi\'s missing login')
