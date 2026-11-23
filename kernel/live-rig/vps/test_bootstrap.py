@@ -119,7 +119,7 @@ class Fixture:
     def entry(self, path, **extra):
         return {p: dict({'url': 'file://' + path, 'sha256': sha256(path)}, **extra) for p in PLATFORMS}
 
-    def write_tools(self, droid_version='1.17.2', droid_says='1.17.2'):
+    def write_tools(self, droid_version='1.17.2', droid_says='1.17.2', pane_says='2.4.246'):
         tools = [
             {'name': 'python3', 'kind': 'system', 'min_version': '3.9', 'hosts': ['all'],
              'source': 'the system package manager', 'why': 'synthetic'},
@@ -139,8 +139,8 @@ class Fixture:
              'source': 'synthetic', 'why': 'synthetic', 'files': self.entry(self.raw('fakeapp', '2.4.246'))},
             {'name': 'runpane', 'kind': 'wheel', 'version': '2.4.246', 'module': 'fakewheel.cli',
              'hosts': ['pane'], 'source': 'synthetic', 'why': 'synthetic',
-             'files': {'any': {'url': 'file://' + self.wheel('fake.whl', '2.4.246'),
-                               'sha256': sha256(os.path.join(self.dl, 'fake.whl'))}}},
+             'files': {'any': {'url': 'file://' + self.wheel('fake-%s.whl' % pane_says, pane_says),
+                               'sha256': sha256(os.path.join(self.dl, 'fake-%s.whl' % pane_says))}}},
             {'name': 'fakeagent', 'kind': 'installer', 'version': '3.2.1', 'needs': ['git', 'curl'],
              'args': ['--pin', 'abc123', '--dir', '{home}/.fakeagent'], 'home_only': '~/.fakeagent',
              'hosts': ['hermes'], 'source': 'synthetic', 'why': 'synthetic',
@@ -287,6 +287,21 @@ class BootstrapTest(unittest.TestCase):
                       self.summary(r.stdout)[1])
         self.assertEqual(sha256(dst), working)
         self.assertFalse(os.path.exists(os.path.join(self.fx.prefix, 'lib', 'openwiz-vps', 'staged')))
+
+    def test_same_version_repin_that_fails_keeps_the_working_wheel(self):
+        self.assertEqual(self.fx.run().returncode, 0)
+        lib = os.path.join(self.fx.prefix, 'lib', 'openwiz-vps')
+        launcher = os.path.join(self.fx.prefix, 'bin', 'runpane')
+        imported = re.findall(r"(%s/[^' ]+\.whl)" % re.escape(lib), read(launcher))
+        self.assertEqual(len(imported), 1, read(launcher))
+        before = {p: sha256(p) for p in self.fx.tree()}
+        r = self.fx.run(tools=self.fx.write_tools(pane_says='9.9.9'))
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('left out runpane: `runpane --version` does not name 2.4.246 (the existing one is kept)',
+                      self.summary(r.stdout)[1])
+        self.assertEqual({p: sha256(p) for p in self.fx.tree()}, before)
+        self.assertEqual(subprocess.run([launcher, '--version'], capture_output=True, text=True).stdout,
+                         'fake 2.4.246 (synthetic)\n')
 
     def test_home_only_installer_is_refused_under_another_prefix(self):
         prefix = os.path.join(self.root, 'elsewhere')
