@@ -39,7 +39,19 @@ The driver chooses the session id, a UUID (`{"chosen": "uuid"}`), and runs every
 
 | Mode | Arguments | What it allows |
 | --- | --- | --- |
-| `yolo` | `--approval-mode yolo --skip-trust` | Every tool runs without asking. `--skip-trust` trusts the run's clone for this session, because with folder trust on a headless run in an untrusted folder exits with `FatalUntrustedWorkspaceError` ([trusted folders](https://github.com/google-gemini/gemini-cli/blob/v0.70.0/docs/cli/trusted-folders.md)) |
+| `yolo` | `--approval-mode yolo --skip-trust` | Every tool runs without asking. `--skip-trust` trusts the run's clone for the turn, because with folder trust on a headless run in an untrusted folder exits with `FatalUntrustedWorkspaceError` ([trusted folders](https://github.com/google-gemini/gemini-cli/blob/v0.70.0/docs/cli/trusted-folders.md#headless-and-automated-environments)). Trust grants more than tool approval; see below |
+
+**What the owner authorizes with `--skip-trust`.** Trusting a folder lifts Gemini's untrusted-workspace safe mode for that turn ([why trust matters](https://github.com/google-gemini/gemini-cli/blob/v0.70.0/docs/cli/trusted-folders.md#why-trust-matters-the-impact-of-an-untrusted-workspace)). In the run's clone, so in whatever the repository holds, Gemini CLI then:
+
+- loads the repository's `.gemini/settings.json`, which can add tools and other settings;
+- loads the repository's `.env` files into its environment;
+- allows installing, updating and removing extensions;
+- auto-accepts tools as settings allow;
+- loads memory files from the directories local settings name;
+- connects to MCP servers at startup, the repository's own included;
+- loads custom commands from `.toml` files.
+
+The flag also sets `GEMINI_CLI_TRUST_WORKSPACE=true` in the CLI's own environment ([`config.ts`](https://github.com/google-gemini/gemini-cli/blob/v0.70.0/packages/cli/src/config/config.ts#L530-L532)), which the tools it runs inherit. So approving `yolo` for a repository means trusting that repository's Gemini configuration as much as its code. Gemini's secure-mode and disable-YOLO settings can still refuse `yolo`.
 
 Only `yolo` is offered. Headless, any tool that would ask is denied ([policy engine](https://github.com/google-gemini/gemini-cli/blob/v0.70.0/docs/reference/policy-engine.md)), so `default`, which asks before tools, and Gemini's auto-edit mode, which asks before shell commands, can't post a builder's status note unless the user's own policy allows them. `plan` is read-only. The auto-edit mode's value is also left out because OpenWiz's privacy check reads its `auto_`-prefixed name as a private identifier.
 
