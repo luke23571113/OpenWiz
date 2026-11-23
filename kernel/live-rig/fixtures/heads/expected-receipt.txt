@@ -3,7 +3,7 @@
 # driver: openwizdev/OpenWiz@{head}
 # kit: openwizdev/OpenWiz@{kit}
 # harness: fake-harness
-# model: Synthetic 1
+# model: synthetic-1
 # date: {date}
 # run by: example-runner
 pass version: openwiz:records v1, and the schema is driver v1

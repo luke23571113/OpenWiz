@@ -25,9 +25,10 @@ EARLIER = '<!-- openwiz:status v1 -->\nagent: builder\nstate: stopped\nharness: 
           'skills: build-ticket@0.1.2\nstep: an earlier run\ntime: 2030-01-02T03:04:05Z\n'
 LINE = 'launch-fleet: look: live run due at the approved frozen head of #%d: %s (APPROVE 1). Run the kit 5 of 5.'
 # SAFETY: no-op stubs first on PATH for every agent CLI, so a fixture mistake can never start a real one.
-AGENT_CLIS = ['claude', 'codex', 'cursor-agent', 'agent', 'pi', 'opencode', 'copilot', 'goose', 'gemini', 'kimi',
-              'qwen', 'cline', 'kilo', 'crush', 'vibe', 'auggie', 'kiro-cli', 'junie', 'amp', 'agy', 'oz', 'sculpt',
-              'hermes', 'acpx', 'droid']
+AGENT_CLIS = ('claude codex cursor-agent agent cursor pi opencode copilot goose gemini kimi qwen cline kilo kilocode '
+              'crush vibe auggie kiro-cli junie amp agy oz sculpt hermes acpx droid boat room-cli runpane pane '
+              'openhands devin warp grok codespaces conductor').split()
+AUTH = {'GH_TOKEN': SECRET, 'GITHUB_TOKEN': SECRET, 'GH_ENTERPRISE_TOKEN': SECRET, 'GH_HOST': 'example.invalid'}
 CHECKOUT = ['kernel/live-rig/heads.py', 'kernel/live-rig/rig.py', 'kernel/live-rig/receipt.py', 'kernel/driver-kit/kit.py',
             'kernel/driver-kit/schema.json', 'kernel/records-kit/check.py', 'kernel/records.v1.md']
 DRIVER_PR_HEAD = {'adapters/template/driver': os.path.join(ROOT, 'adapters', 'template', 'driver'),
@@ -120,11 +121,11 @@ class Heads(unittest.TestCase):
         env = {k: v for k, v in os.environ.items() if k != 'OPENWIZ_GITHUB_APP_KEY'}
         self.env = dict(env, PATH=path, KIT_TRACKER=tracker, HEADS_TEST=self.mark, HEADS_GH_LOG=self.gh_log,
                         HEADS_GH_STATE=self.state, HEADS_COMMENTS=self.comments, HEADS_KIT_REPO=REPO,
-                        HEADS_KIT_TICKET=str(TICKET), HEADS_GH_LOGIN=LOGIN, GH_TOKEN=SECRET,
+                        HEADS_KIT_TICKET=str(TICKET), HEADS_GH_LOGIN=LOGIN, **AUTH,
                         OPENWIZ_TEMPLATE_STATE=os.path.join(self.folder, 'template-state'))
 
     def tearDown(self):
-        for pid in filter(str.isdigit, os.listdir('/proc')):
+        for pid in filter(str.isdigit, os.listdir('/proc') if os.path.isdir('/proc') else []):
             try:
                 with open('/proc/%s/environ' % pid, 'rb') as f:
                     if ('HEADS_TEST=' + self.mark).encode() in f.read().split(b'\0'):
@@ -162,7 +163,7 @@ class Heads(unittest.TestCase):
 
     def day(self):
         days = self.found('.json')
-        records = [d for d in days if d.endswith('-fake-harness-Synthetic 1.json')]
+        records = [d for d in days if d.endswith('-fake-harness-synthetic-1.json')]
         self.assertTrue(records, days)
         return records[0].split(os.sep)[0]
 
@@ -223,11 +224,11 @@ class Heads(unittest.TestCase):
         self.assertEqual(len(receipts), 1, receipts)
         self.assertTrue(receipts[0].endswith(receipt), receipts)
         self.assertEqual(read(os.path.join(self.out, receipts[0])), self.expected_receipt(day))
-        text = read(os.path.join(self.out, day, 'fixture-five-fake-harness-Synthetic 1.json'))
+        text = read(os.path.join(self.out, day, 'fixture-five-fake-harness-synthetic-1.json'))
         record = json.loads(text)
         self.assertEqual(list(record), KEYS)
         self.assertEqual({k: record[k] for k in KEYS[:9]}, {
-            'host': 'fixture-five', 'harness': 'fake-harness', 'model': 'Synthetic 1', 'date': day,
+            'host': 'fixture-five', 'harness': 'fake-harness', 'model': 'synthetic-1', 'date': day,
             'driver_commit': self.head, 'kit_commit': self.kit_head, 'outcome': 'ran', 'skipped': None,
             'kit_exit': 0})
         self.assertIn(day, {(datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=n)).strftime(
@@ -254,11 +255,13 @@ class Heads(unittest.TestCase):
         code, out, err = self.heads(['fixture-five', 'fixture-four'], '--allow-cost', 'fixture-five',
                                     '--allow-cost', 'fixture-four', '--post')
         self.assertEqual(code, 1, err)
+        for c in self.calls():
+            if c['args'][:2] != ['api', 'graphql']:
+                self.assertEqual((c['hostname'], c['auth']), ('github.com', []), c['args'])
         day = self.day()
         self.assertEqual(out.splitlines(), [
-            'ran fixture-five: 5 of 5 at %s' % self.head[:12],
+            'ran fixture-five: 5 of 5 at %s' % self.head[:12], 'ran fixture-four: 4 of 5 at %s' % self.head[:12],
             'posted https://github.com/openwizdev/OpenWiz/pull/201#issuecomment-901',
-            'ran fixture-four: 4 of 5 at %s' % self.head[:12],
             'posted https://github.com/openwizdev/OpenWiz/pull/202#issuecomment-902',
             'posted https://github.com/openwizdev/WizMarket/pull/41'])
         writes = self.writes()
@@ -283,17 +286,6 @@ class Heads(unittest.TestCase):
             for private in (REPO, 'heads-throwaway', self.folder):
                 if c['args'][:2] != ['api', 'graphql']:
                     self.assertNotIn(private, json.dumps(c))
-
-    def test_a_planted_credential_is_refused_before_anything_is_printed_or_posted(self):
-        env = dict(self.env, HEADS_PLANTED_TOKEN=self.head)
-        code, out, err = self.heads(['fixture-five'], '--allow-cost', 'fixture-five', '--post', env=env)
-        self.assertEqual(code, 1, err)
-        lines = out.splitlines()
-        self.assertEqual(lines[:2], ['ran fixture-five: 5 of 5 at %s' % self.head[:12],
-                                     'refused fixture-five: the comment holds a credential, so it is not posted'])
-        self.assertFalse([line for line in lines if line.startswith('posted')], out)
-        self.assertEqual(self.writes(), [])
-        self.assertNotIn(self.head, out + err)
 
     def test_an_allow_cost_naming_no_listed_host_and_a_bad_tickets_file_exit_2(self):
         self.assertEqual(self.heads(['fixture-paid'], '--allow-cost', 'fixture-typo')[:2], (2, ''))
@@ -322,21 +314,59 @@ class Heads(unittest.TestCase):
         self.assertEqual((p.returncode, p.stdout), (0, 'skipped fixture-paid: the frozen head names #205, not the build '
                                                        'PR #999\nskipped fixture-absent: no host config\n'), p.stderr)
         self.assertFalse(self.kit_ran())
+        self.assertEqual(len(self.calls()), 1, self.calls())
 
-    def test_a_kit_line_quoting_a_path_the_repository_or_the_login_is_withheld_from_the_record_and_comment(self):
-        code, out, err = self.heads(['fixture-quoting'], '--allow-cost', 'fixture-quoting')
-        self.assertEqual(code, 1, err)
-        day = self.day()
-        record = json.loads(read(os.path.join(self.out, day, 'fixture-quoting-fake-harness-Synthetic 1.json')))
-        self.assertEqual(record['stdout'].splitlines()[:2], [
-            'pass version: openwiz:records v1, and the schema is driver v1', 'fail start: withheld'])
-        self.assertEqual(len(record['stdout'].splitlines()), 5, record['stdout'])
-        self.assertIn('```\npass version: openwiz:records v1, and the schema is driver v1\nfail start: withheld\n', out)
-        self.assertIn('cannot start %s in ' % REPO, err)
-        comment = out.split('```\n', 1)[1]
-        self.assertEqual(comment, record['stdout'] + '```\n')
-        for private in (self.folder, os.path.realpath(self.folder), REPO, 'heads-throwaway', '/'):
-            self.assertNotIn(private, record['stdout'])
+    def test_a_ticket_with_a_second_page_is_refused_after_one_read_even_from_the_saved_etag(self):
+        for run in (1, 2):
+            code, out, err = self.heads(['fixture-five'], '--allow-cost', 'fixture-five',
+                                        env=dict(self.env, HEADS_PAGED='101'))
+            self.assertEqual((code, out), (1, 'refused fixture-five: #101 has more comments than one read gives, so its '
+                                              'latest frozen head is unknown\n'), err)
+            self.assertEqual(len(self.calls()), run, self.calls())
+        self.assertTrue(self.calls()[1]['args'][3].startswith('If-None-Match: '))
+        self.assertFalse(self.kit_ran())
+
+    def test_a_post_retried_after_a_lost_write_finishes_it_without_a_second_kit_run_comment_or_branch(self):
+        hosts, extra = ['fixture-five', 'fixture-four'], ['--allow-cost', 'fixture-five', '--allow-cost', 'fixture-four']
+        self.assertEqual(self.heads(hosts, *extra, '--post', env=dict(self.env, HEADS_LOSE='PUT', HEADS_REFUSE='pulls'))[0], 2)
+        first = len(self.calls())
+        self.assertEqual(self.heads(hosts, *extra)[:2], (2, ''))
+        code, out, err = self.heads(hosts, *extra, '--post')
+        self.assertEqual((code, out), (0, 'finishing the publish an earlier --post left unfinished\n'
+                                          'posted https://github.com/openwizdev/WizMarket/pull/41\n'), err)
+        self.assertFalse([c for c in self.calls()[first:] if c['args'][:2] == ['api', 'graphql']])
+        self.assertEqual([c['args'][2:4] for c in self.writes()], [
+            ['POST', 'repos/openwizdev/OpenWiz/issues/201/comments'], ['POST', 'repos/openwizdev/OpenWiz/issues/202/comments'],
+            ['POST', 'repos/openwizdev/WizMarket/forks'], ['POST', 'repos/%s/WizMarket/git/refs' % LOGIN]] +
+            [['PUT', 'repos/%s/WizMarket/contents/receipts/fixture-five/%s-%s.txt' % (LOGIN, self.day(), self.head[:12])]] +
+            [['POST', 'repos/openwizdev/WizMarket/pulls']] * 2)
+        self.assertEqual(self.heads(hosts, *extra)[0], 1)
+
+    def test_help_and_a_skip_never_load_the_kit_module_or_its_credential_reads(self):
+        marker = os.path.join(self.folder, 'kit-loaded')
+        with open(os.path.join(self.checkout, 'kernel', 'driver-kit', 'kit.py'), 'w') as f:
+            f.write('import re\nSHAPES = re.compile(r"x", re.I)\nopen(%r, "w").close()\n' % marker)
+        git(self.checkout, 'commit', '-q', '-am', 'a kit that marks its loading')
+        self.assertEqual(subprocess.run([sys.executable, '-I', os.path.join(self.checkout, 'kernel', 'live-rig', 'heads.py'),
+                                         '--help'], env=self.env, capture_output=True, timeout=60).returncode, 0)
+        self.assertEqual(self.heads(['fixture-nohead'])[:2], (0, 'skipped fixture-nohead: no frozen head\n'))
+        self.assertFalse(os.path.exists(marker))
+
+    def test_a_kit_line_quoting_any_one_private_value_is_withheld_from_the_record_and_comment(self):
+        for quoted in ('heads-throwaway', REPO, '<path>', LOGIN, 'example', SECRET):
+            with self.subTest(quoted=quoted):
+                shutil.rmtree(self.out, ignore_errors=True)
+                code, out, err = self.heads(['fixture-quoting'], '--allow-cost', 'fixture-quoting',
+                                            env=dict(self.env, HEADS_QUOTE=quoted))
+                self.assertEqual(code, 1, err)
+                record = json.loads(read(os.path.join(self.out, self.day(), 'fixture-quoting-fake-harness-synthetic-1.json')))
+                kept = 'its start output held a credential, which the kit does not show' if quoted == SECRET else 'withheld'
+                self.assertEqual(record['stdout'].splitlines()[:2], [
+                    'pass version: openwiz:records v1, and the schema is driver v1', 'fail start: ' + kept])
+                self.assertEqual(len(record['stdout'].splitlines()), 5, record['stdout'])
+                self.assertEqual(out.split('```\n', 1)[1], record['stdout'] + '```\n')
+                for private in (self.folder, os.path.realpath(self.folder), 'heads-throwaway', LOGIN, SECRET, '/'):
+                    self.assertNotIn(private, record['stdout'] if private == '/' else record['stdout'] + out)
 
     def test_hosts_outside_the_checkout_or_untracked_in_it_exit_2_and_run_nothing(self):
         self.assertEqual(self.heads(['fixture-paid'], folder=os.path.join(FIX, 'hosts'))[:2], (2, ''))
