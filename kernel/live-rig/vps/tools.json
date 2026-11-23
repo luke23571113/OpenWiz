@@ -106,17 +106,19 @@
         "--skip-browser",
         "--skip-computer-use",
         "--dir",
-        "{prefix}/lib/hermes-agent"
+        "{home}/.hermes/hermes-agent",
+        "--hermes-home",
+        "{home}/.hermes"
       ],
-      "provides": "{home}/.local/bin/hermes",
       "source": "https://github.com/NousResearch/hermes-agent/releases/tag/v0.23.3",
-      "why": "The Hermes driver (room/1988-hermes-driver) names no Hermes version; its fixture says v0.0.0 (synthetic). Hermes Agent ships no release binary, only its installer, so this pins scripts/install.sh at the v0.23.3 tag's commit (the latest stable release on 2026-11-22, the day this was pinned, byte-identical to hermes-agent.nousresearch.com/install.sh that day) and runs it with --commit pinned to that same commit, non-interactive, without its browser or computer-use extras. The installer clones that commit, checks its own pinned uv download's sha256, and publishes hermes in ~/.local/bin. It never signs in: hermes setup (the model and provider) is yours to run.",
+      "why": "The Hermes driver (room/1988-hermes-driver) names no Hermes version; its fixture says v0.0.0 (synthetic). Hermes Agent ships no release binary, only its installer, so this pins scripts/install.sh at the v0.23.3 tag's commit (the latest stable release on 2026-11-22, byte-identical to hermes-agent.nousresearch.com/install.sh that day) and runs it with --commit pinned to that same commit and --non-interactive, so its setup and gateway stages do nothing. Its other stages, authorised by the spec's lead on the pull request: prerequisites, the git clone and checkout, uv's pinned and sha256-checked install, uv python find and python install, python -m pm.cli install, the config folders, and the product build. Upstream installs into your home, as these arguments say, and adds ~/.local/bin to your shell startup files with no option to skip that; so Hermes is never installed under another --prefix, and an existing ~/.local/bin/hermes is never replaced. It never signs in: hermes setup (the model and provider) is yours to run.",
       "files": {
         "any": {
           "url": "https://raw.githubusercontent.com/NousResearch/hermes-agent/caafe5389ae585ef77387a962aee05b1bcf17029/scripts/install.sh",
           "sha256": "c73dad4dcf7c9ecadb98578e28cc763d23d7be3fa1b513545319038795493214"
         }
-      }
+      },
+      "home_only": "~/.hermes and ~/.local/bin/hermes, and it adds ~/.local/bin to your shell startup files"
     },
     {
       "name": "runpane",

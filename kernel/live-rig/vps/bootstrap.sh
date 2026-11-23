@@ -7,7 +7,9 @@ if [ -z "$py" ] || ! "$py" -I -c 'import sys; sys.exit(sys.version_info < (3, 9)
     exit 2
 fi
 here="$(cd "$(dirname "$0")" && pwd)"
-exec "$py" -I - "$here" "$@" <<'PY'
+code="$(sed '1,/^#-- python --$/d' "$0")"
+exec "$py" -I -c "$code" "$here" "$@"
+#-- python --
 import hashlib
 import json
 import os
@@ -27,12 +29,16 @@ USAGE = '''usage: bootstrap.sh [--dry-run] [--prefix DIR] [--tools FILE]
 Installs the free CLIs the waiting live-check hosts need, pinned in tools.json, into --prefix
 (default ~/.local; commands go in <prefix>/bin). Every download is checked against its pinned
 sha256 before anything is run or installed from it. It never signs in, never installs a paid tool,
-never runs sudo, and runs nothing it installed except `<tool> --version`. A second run installs
-nothing. --dry-run prints each step and changes nothing.
+never runs sudo, and runs nothing it installed except `<tool> --version`; a tool is published only
+after its staged copy names its pinned version, so a working one is never replaced by a broken one.
+Each program it starts gets only HOME, USER, LOGNAME, SHELL, LANG, LC_ALL, LC_CTYPE, TERM, TMPDIR
+and TZ from your environment, never a token or key. A second run installs nothing. --dry-run prints
+each step and writes nothing, not even a temporary file.
 
 Exit 0 when every tool is installed, already there or left out by design; 1 when a download,
 checksum or install failed; 2 on a usage error or a missing python3 3.9+.'''
 NO_SUDO = 'this bootstrap never runs sudo'
+PASSED_ON = ('HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TERM', 'TMPDIR', 'TZ')
 
 
 class Refused(Exception):
@@ -70,14 +76,16 @@ def platform_key():
     return '%s-%s' % (system, machine)
 
 
-def env():
-    return dict(os.environ, DO_NOT_TRACK='1')
+def child_env(path=None):
+    env = {name: os.environ[name] for name in PASSED_ON if name in os.environ}
+    env.update(PATH=path or os.environ.get('PATH', '/usr/bin:/bin'), DO_NOT_TRACK='1')
+    return env
 
 
 def run_version(command):
     try:
         r = subprocess.run([command, '--version'], stdin=subprocess.DEVNULL, capture_output=True, text=True,
-                           timeout=60, env=env())
+                           timeout=60, env=child_env())
     except (OSError, subprocess.TimeoutExpired):
         return None
     return (r.stdout + r.stderr).strip() if r.returncode == 0 else None
@@ -137,50 +145,64 @@ def member(path, name):
         return f.read()
 
 
+def check_version(tool, command):
+    if tool.get('run_version', True):
+        said = run_version(command)
+        if not said or tool['version'] not in said:
+            raise Refused('`%s --version` does not name %s' % (tool['name'], tool['version']))
+
+
+def run_installer(tool, script, prefix, work):
+    home = os.path.expanduser('~')
+    dst = os.path.join(prefix, 'bin', tool['name'])
+    # SAFETY: a third-party installer finds a refusing sudo first on its PATH; this bootstrap never runs sudo.
+    guard = os.path.join(work, 'guard')
+    place(('#!/bin/sh\necho "bootstrap: sudo refused; %s" >&2\nexit 1\n' % NO_SUDO).encode(),
+          os.path.join(guard, 'sudo'))
+    args = [a.replace('{home}', home) for a in tool['args']]
+    path = os.pathsep.join([guard, os.path.join(prefix, 'bin'), os.environ.get('PATH', '')])
+    r = subprocess.run(['bash', script] + args, stdin=subprocess.DEVNULL, stdout=sys.stderr, cwd=work,
+                       env=child_env(path))
+    if r.returncode:
+        raise Refused('its installer exited %d' % r.returncode)
+    if not os.path.isfile(dst):
+        raise Refused('its installer left no %s' % dst)
+    check_version(tool, dst)
+
+
 def install(tool, file, prefix, work):
     name, kind = tool['name'], tool['kind']
     dst = os.path.join(prefix, 'bin', name)
     path = fetch(file, work)
-    if kind == 'binary':
-        place(open(path, 'rb').read(), dst)
-    elif kind == 'archive':
-        try:
-            place(member(path, file['member']), dst)
-        except (KeyError, OSError, tarfile.TarError, zipfile.BadZipFile) as e:
-            raise Refused('cannot unpack %s: %s' % (file['member'], type(e).__name__))
-    elif kind == 'wheel':
-        wheel = os.path.join(prefix, 'lib', 'openwiz-vps', '%s-%s.whl' % (name, tool['version']))
-        place(open(path, 'rb').read(), wheel)
-        code = 'import importlib, sys; sys.path.insert(0, sys.argv.pop(1)); ' \
-               'sys.exit(importlib.import_module(%r).main())' % tool['module']
-        place(('#!/bin/sh\nexec %s -I -c %s %s "$@"\n' % (shlex.quote(sys.executable), shlex.quote(code),
-                                                         shlex.quote(wheel))).encode(), dst)
-    elif kind == 'installer':
-        # SAFETY: a third-party installer finds a refusing sudo first on its PATH; this bootstrap never runs sudo.
-        guard = os.path.join(work, 'guard')
-        place(('#!/bin/sh\necho "bootstrap: sudo refused; %s" >&2\nexit 1\n' % NO_SUDO).encode(),
-              os.path.join(guard, 'sudo'))
-        fill = {'{prefix}': prefix, '{home}': os.path.expanduser('~')}
-        args = [re.sub(r'\{prefix\}|\{home\}', lambda m: fill[m.group()], a) for a in tool['args']]
-        path_var = os.pathsep.join([guard, os.path.join(prefix, 'bin'), os.environ.get('PATH', '')])
-        r = subprocess.run(['bash', path] + args, stdin=subprocess.DEVNULL, stdout=sys.stderr, cwd=work,
-                           env=dict(env(), PATH=path_var))
-        if r.returncode:
-            raise Refused('its installer exited %d' % r.returncode)
-        provides = re.sub(r'\{prefix\}|\{home\}', lambda m: fill[m.group()], tool['provides'])
-        if not os.path.isfile(provides):
-            raise Refused('its installer left no %s' % provides)
-        if os.path.abspath(provides) != os.path.abspath(dst):
-            os.makedirs(os.path.dirname(dst), exist_ok=True)
-            if os.path.lexists(dst):
-                os.remove(dst)
-            os.symlink(provides, dst)
-    else:
-        raise Refused('unknown kind %r in tools.json' % kind)
-    if tool.get('run_version', True):
-        said = run_version(dst)
-        if not said or tool['version'] not in said:
-            raise Refused('installed, but `%s --version` does not name %s' % (name, tool['version']))
+    if kind == 'installer':
+        return run_installer(tool, path, prefix, work)
+    staged = os.path.join(prefix, 'lib', 'openwiz-vps', 'staged', name)
+    wheel = os.path.join(prefix, 'lib', 'openwiz-vps', '%s-%s.whl' % (name, tool['version']))
+    new_wheel = False
+    try:
+        if kind == 'binary':
+            place(open(path, 'rb').read(), staged)
+        elif kind == 'archive':
+            try:
+                place(member(path, file['member']), staged)
+            except (KeyError, OSError, tarfile.TarError, zipfile.BadZipFile) as e:
+                raise Refused('cannot unpack %s: %s' % (file['member'], type(e).__name__))
+        elif kind == 'wheel':
+            new_wheel = not os.path.exists(wheel)
+            place(open(path, 'rb').read(), wheel)
+            code = 'import importlib, sys; sys.path.insert(0, sys.argv.pop(1)); ' \
+                   'sys.exit(importlib.import_module(%r).main())' % tool['module']
+            place(('#!/bin/sh\nexec %s -I -c %s %s "$@"\n' % (shlex.quote(sys.executable), shlex.quote(code),
+                                                             shlex.quote(wheel))).encode(), staged)
+        else:
+            raise Refused('unknown kind %r in tools.json' % kind)
+        check_version(tool, staged)
+    except Refused:
+        if new_wheel:
+            os.remove(wheel)
+        raise
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    os.replace(staged, dst)
 
 
 def stamp_path(prefix, name):
@@ -200,21 +222,28 @@ def stamped(tool, file, prefix):
 def main():
     opts = options(sys.argv[1], sys.argv[2:])
     prefix, dry, key = opts['prefix'], opts['dry'], platform_key()
+    home_prefix = os.path.join(os.path.expanduser('~'), '.local')
     try:
         with open(opts['tools']) as f:
             tools = json.load(f)['tools']
     except (OSError, ValueError, KeyError) as e:
         usage('cannot read %s: %s' % (opts['tools'], type(e).__name__))
-    installed, there, left, available, failed = 0, 0, [], set(), False
+    installed, there, left, available, failed, work = 0, 0, [], set(), False, None
 
     def leave(name, why):
         left.append('left out %s: %s' % (name, why))
         print(left[-1], flush=True)
 
-    work = tempfile.mkdtemp(prefix='openwiz-vps-')
+    def already(name, have):
+        nonlocal there
+        there += 1
+        available.add(name)
+        print('already there %s %s' % (name, have), flush=True)
+
     try:
         for tool in tools:
             name = tool['name']
+            dst = os.path.join(prefix, 'bin', name)
             if tool.get('left_out'):
                 leave(name, tool['left_out'])
                 continue
@@ -223,9 +252,12 @@ def main():
                 if why:
                     leave(name, why)
                 else:
-                    there += 1
-                    available.add(name)
-                    print('already there %s %s' % (name, have), flush=True)
+                    already(name, have)
+                continue
+            if tool.get('home_only') and prefix != home_prefix:
+                leave(name, 'its installer installs into your home (%s) with no option to confine it, so it '
+                            'is never installed under --prefix; run without --prefix to install it'
+                            % tool['home_only'])
                 continue
             file = tool['files'].get(key) or tool['files'].get('any')
             have = None
@@ -234,9 +266,7 @@ def main():
             elif tool.get('system_min'):
                 have = system_tool(name, tool['system_min'])[0]
             if have:
-                there += 1
-                available.add(name)
-                print('already there %s %s' % (name, have), flush=True)
+                already(name, have)
                 continue
             if not file:
                 leave(name, 'no %s build pinned in tools.json%s' % (key, '; ' + tool['note'] if 'note' in tool else ''))
@@ -245,21 +275,32 @@ def main():
             if missing:
                 leave(name, 'needs ' + ', '.join(missing))
                 continue
+            if tool['kind'] == 'installer' and os.path.lexists(dst):
+                said = run_version(dst) or ''
+                if tool['version'] in said:
+                    already(name, tool['version'])
+                else:
+                    leave(name, 'your existing %s is kept (it does not name %s); move it aside to install the '
+                                'pinned one' % (dst, tool['version']))
+                continue
             if dry:
                 print('would install %s %s from %s, sha256 %s' % (name, tool['version'], file['url'], file['sha256']),
                       flush=True)
                 installed += 1
                 available.add(name)
                 continue
+            work = work or tempfile.mkdtemp(prefix='openwiz-vps-')
             step = tempfile.mkdtemp(dir=work)
+            kept = ' (the existing one is kept)' if os.path.lexists(dst) else ''
             try:
                 install(tool, file, prefix, step)
             except Refused as e:
                 failed = True
-                leave(name, str(e))
+                leave(name, str(e) + kept)
                 continue
             finally:
                 shutil.rmtree(step, ignore_errors=True)
+                shutil.rmtree(os.path.join(prefix, 'lib', 'openwiz-vps', 'staged'), ignore_errors=True)
             stamp = stamp_path(prefix, name)
             place(json.dumps({'version': tool['version'], 'sha256': file['sha256']}).encode(), stamp)
             os.chmod(stamp, 0o644)
@@ -267,7 +308,8 @@ def main():
             available.add(name)
             print('installed %s %s' % (name, tool['version']), flush=True)
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        if work:
+            shutil.rmtree(work, ignore_errors=True)
     if dry:
         print('bootstrap: dry run, %d to install, %d already there, %d left out' % (installed, there, len(left)))
     else:
@@ -278,4 +320,3 @@ def main():
 
 
 sys.exit(main())
-PY
