@@ -350,6 +350,23 @@ class Heads(unittest.TestCase):
             [['POST', 'repos/openwizdev/WizMarket/pulls']] * 2)
         self.assertEqual(self.heads(hosts, *extra)[0], 1)
 
+    def test_a_lost_comment_answer_is_found_on_resume_and_a_closed_earlier_pull_request_is_never_adopted(self):
+        extra = ['--allow-cost', 'fixture-five', '--post']
+        self.assertEqual(self.heads(['fixture-five'], *extra, env=dict(self.env, HEADS_LOSE='comment'))[0], 2)
+        branch = 'receipts-fixture-five-%s-%s' % (self.day(), self.head[:12])
+        with open(os.path.join(self.state, 'pulls.json'), 'w') as f:
+            json.dump({LOGIN + ':' + branch: [{'html_url': 'https://github.com/openwizdev/WizMarket/pull/7', 'state':
+                       'closed', 'head': {'label': LOGIN + ':' + branch}, 'base': {'ref': 'main'}}]}, f)
+        code, out, err = self.heads(['fixture-five'], *extra, env=dict(self.env, HEADS_REFUSE='pulls'))
+        self.assertEqual(len([c for c in self.writes() if c['args'][3].endswith('/comments')]), 1, out)
+        self.assertEqual(code, 2, out + err)
+        code, out, err = self.heads(['fixture-five'], *extra)
+        self.assertEqual((code, out), (0, 'finishing the publish an earlier --post left unfinished\n'
+                                          'posted https://github.com/openwizdev/OpenWiz/pull/201#issuecomment-901\n'
+                                          'posted https://github.com/openwizdev/WizMarket/pull/41\n'), err)
+        self.assertEqual([c['args'][2:4] for c in self.writes()][-1:], [['POST', 'repos/openwizdev/WizMarket/pulls']])
+        self.assertEqual(len([c for c in self.writes() if c['args'][3].endswith('/comments')]), 1)
+
     def test_help_and_a_skip_never_load_the_kit_module_or_its_credential_reads(self):
         marker = os.path.join(self.folder, 'kit-loaded')
         with open(os.path.join(self.checkout, 'kernel', 'driver-kit', 'kit.py'), 'w') as f:
