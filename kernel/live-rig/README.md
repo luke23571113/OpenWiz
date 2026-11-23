@@ -8,7 +8,7 @@ Runs the [driver v1 kit](../driver-kit/README.md) against real hosts, on a sched
 - It never reads, adds or prints an environment value, and never passes a key: each status command and the kit get the caller's environment unchanged.
 - The rig itself never writes to GitHub: it and the kit only read, through the signed-in `gh` (the kit reads the throwaway ticket; the rig reads the signed-in login). The agent the driver starts posts its one status note on the throwaway ticket the settings name, and edits it when woken, as the kit's start and wake checks require.
 - It reads only the kit's stdout and exit code. The kit's stderr goes straight to the rig's, and the rig writes the kit's whole stdout to its own stderr for the person; the run record keeps only the check lines described below. Status commands get no stdin and their output is discarded.
-- Status commands run only from reviewed code: `--hosts` must be a folder inside the clean checkout, and every host config in it must be tracked by git, so a command comes only from a merged host config. Each host ticket's review checks that its commands are read-only; the rig itself cannot tell a read-only command from one that signs in or writes.
+- Status commands run only from reviewed code: `--hosts` must be a folder inside the clean checkout, reached through no symlink inside the checkout, and every host config in it must be a regular file git tracks (never a symlink), so a command comes only from a merged host config. Each host ticket's review checks that its commands are read-only; the rig itself cannot tell a read-only command from one that signs in or writes.
 
 ## Run it
 
@@ -23,7 +23,7 @@ PATH=<stubs>:$PATH env -u OPENWIZ_GITHUB_APP_KEY python3 -I kernel/live-rig/test
 
 - `--settings`: a local JSON file outside the repository, `{"repo": "<owner>/<name>", "ticket": <n>}`, naming the throwaway repository and ticket the kit uses ([the kit's throwaway ticket](../driver-kit/README.md#the-throwaway-ticket)).
 - `--out`: a folder outside the checkout. It holds the lock (`rig.lock`), so two runs never overlap: a second one prints `rig.py: another run holds the lock` and exits 0.
-- `--hosts`: a folder inside the checkout whose `*.json` files git tracks; only those files are host configs, and anything else there (a host's `test_<host>.py`) is ignored. A folder outside the checkout, or an untracked config, refuses (exit 2). Two `runs` entries that would write the same run record refuse too.
+- `--hosts`: a folder inside the checkout whose `*.json` files git tracks; only those files are host configs, and anything else there (a host's `test_<host>.py`) is ignored. A folder outside the checkout or through a symlink, an untracked config, or a config that is a symlink, refuses (exit 2). Two `runs` entries that would write the same run record, ignoring case (a case-insensitive disk would merge them), refuse too, and so do two host names that differ only in case.
 
 Per host, in order: every `needs` program, then every `signed_in` command, then `cost`, then one kit run per `runs` entry:
 `python3 -I kernel/driver-kit/kit.py --driver <driver> --repo <repo> --ticket <n> --harness <h> --model <m> --wait <w>`.
@@ -46,7 +46,7 @@ Other tools import the host checks from `rig.py` without running it: `load_host(
 
 ## Run record
 
-`<out>/<YYYY-MM-DD>/<host>-<harness>-<model>.json`, one per `runs` entry, with exactly: `host`, `harness`, `model`, `date` (UTC), `driver_commit` and `kit_commit` (the checkout's 40-hex `HEAD`), `outcome` (`ran` or `skipped`), `skipped` (the reason or `null`), `kit_exit` (integer or `null`), `stdout` (the kit's check lines, or `null`) and `seconds` (whole seconds). `stdout` keeps only the kit's check lines (`pass` or `fail`, then `version`, `start`, `wake`, `stop` or `token`, then `: `), in the kit's order. A line whose text after that prefix matches the kit's credential shapes, or holds a path (`/` and a name), the settings' repository, its owner or its name, or the signed-in `gh` login, is kept as `<pass|fail> <check>: withheld`; when the login can't be read, every line is. The receipt writer reads these records, and needs only the clean `pass` lines.
+`<out>/<YYYY-MM-DD>/<host>-<harness>-<model>.json`, one per `runs` entry, with exactly: `host`, `harness`, `model`, `date` (UTC), `driver_commit` and `kit_commit` (the checkout's 40-hex `HEAD`), `outcome` (`ran` or `skipped`), `skipped` (the reason or `null`), `kit_exit` (integer or `null`), `stdout` (the kit's check lines, or `null`) and `seconds` (whole seconds). `stdout` keeps only the kit's check lines (`pass` or `fail`, then `version`, `start`, `wake`, `stop` or `token`, then `: `), in the kit's order. A line whose text after that prefix matches the kit's credential shapes, holds anything but plain ASCII letters, digits, spaces and `.,;:'()-` (so any `/`, `\`, `~`, `=`, `@`, other symbol, non-ASCII letter or control character), or holds the settings' repository, its owner or its name, or the signed-in `gh` login, is kept as `<pass|fail> <check>: withheld`; when the login can't be read, every line is. The receipt writer reads these records, and needs only the clean `pass` lines.
 
 ## Fixtures
 

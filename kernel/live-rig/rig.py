@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -22,7 +23,9 @@ KIT_MODEL = r'[A-Za-z0-9][A-Za-z0-9 ._:@+-]{0,59}'
 REPO = r'[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}'
 STATUS_SECONDS = 30
 CHECK_LINE = re.compile(r'(pass|fail) (version|start|wake|stop|token): ')
-PATH_LIKE = re.compile(r'/[A-Za-z0-9_.~-]')
+# Only plain ASCII words, digits and light punctuation survive into a record; a '/', '\\', '~', '=', '@',
+# any other symbol, any non-ASCII letter and any control character makes the line withheld.
+PLAIN = re.compile(r"[A-Za-z0-9 .,;:'()-]*")
 
 
 class Refused(Exception):
@@ -84,22 +87,39 @@ def record_name(host, entry):
     return '%s-%s-%s.json' % (host['host'], entry['harness'], entry['model'])
 
 
+def _inside(path):
+    return os.path.commonpath([os.path.realpath(path), ROOT]) == ROOT
+
+
 def load_hosts(folder, only):
+    given = os.path.abspath(folder)
     folder = os.path.realpath(folder)
     if os.path.commonpath([folder, ROOT]) != ROOT:
         raise Refused('--hosts is not a folder inside this checkout, so its host configs are not reviewed code')
+    while given != os.path.dirname(given):
+        if os.path.islink(given) and _inside(os.path.dirname(given)):
+            raise Refused('--hosts goes through a symlink inside the checkout, so its host configs are not '
+                          'reviewed code')
+        given = os.path.dirname(given)
     try:
         names = sorted(n for n in os.listdir(folder) if n.endswith('.json'))
     except OSError as e:
         raise Refused('cannot read --hosts: %s' % e)
-    tracked = set(git('ls-files', '-z', '--', os.path.relpath(folder, ROOT)).split('\0'))
+    modes = {}
+    for entry in git('ls-files', '-s', '-z', '--', os.path.relpath(folder, ROOT)).split('\0'):
+        meta, _, path = entry.partition('\t')
+        modes[path] = meta.split(' ')[0]
     for n in names:
-        if os.path.relpath(os.path.join(folder, n), ROOT) not in tracked:
+        path = os.path.join(folder, n)
+        mode = modes.get(os.path.relpath(path, ROOT))
+        if mode is None:
             raise Refused('--hosts holds %s, which git does not track, so it is not reviewed code' % n)
+        if mode not in ('100644', '100755') or not stat.S_ISREG(os.lstat(path).st_mode):
+            raise Refused('--hosts holds %s, which is not a regular file, so it is not reviewed code' % n)
     hosts = [load_host(os.path.join(folder, n)) for n in names]
-    if len({h['host'] for h in hosts}) != len(hosts):
-        raise Refused('two host configs name the same host')
-    files = [record_name(h, e) for h in hosts for e in h['runs']]
+    if len({h['host'].casefold() for h in hosts}) != len(hosts):
+        raise Refused('two host configs name the same host, ignoring case')
+    files = [record_name(h, e).casefold() for h in hosts for e in h['runs']]
     if len(set(files)) != len(files):
         raise Refused('two runs entries would write the same run record')
     if only is not None:
@@ -189,7 +209,7 @@ def record_stdout(text, settings, login):
         if not check:
             continue
         what = line[check.end():]
-        if login is None or shapes.search(what) or PATH_LIKE.search(what) or \
+        if login is None or shapes.search(what) or not PLAIN.fullmatch(what) or \
                 any(v in what.lower() for v in private):
             line = '%s %s: withheld' % check.groups()
         kept.append(line + '\n')
