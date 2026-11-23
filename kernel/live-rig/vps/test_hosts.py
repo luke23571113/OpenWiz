@@ -202,13 +202,25 @@ class Page(unittest.TestCase):
 
     def test_the_session_is_written_out_in_order(self):
         steps = ['kernel/live-rig/vps/bootstrap.sh', '../../driver-kit/README.md#the-throwaway-ticket',
-                 'curl -fsSL https://claude.ai/install.sh | bash', 'runpane agents doctor --agent claude',
+                 'curl -fsSL https://claude.ai/install.sh | bash',
                  'gh auth login',
                  'python3 -I kernel/live-rig/heads.py --tickets kernel/live-rig/vps/live-tickets.json '
                  '--hosts kernel/live-rig/vps/hosts --settings ']
         at = [self.page.find(s) for s in steps]
         self.assertNotIn(-1, at, steps)
         self.assertEqual(at, sorted(at))
+
+    def test_pane_doctor_follows_daemon_start_and_registration_of_the_same_checkout(self):
+        commands = re.findall(r'`([^`]+)`', self.page)
+        doctors = [command for command in commands if command.startswith('runpane agents doctor ')]
+        self.assertEqual(len(doctors), 1)
+        start = 'pane --daemon-headless'
+        register = 'runpane repos add --path "$CHECKOUT"'
+        self.assertIn(start, commands)
+        self.assertIn(register, commands)
+        self.assertLess(commands.index(start), commands.index(register))
+        self.assertLess(commands.index(register), commands.index(doctors[0]))
+        self.assertEqual(doctors[0], 'runpane agents doctor --agent claude --repo "$CHECKOUT" --json')
 
     def test_the_paid_command_is_given_once_with_post_and_no_shell_placeholder(self):
         commands = [line for line in self.code.splitlines() if 'heads.py' in line]
