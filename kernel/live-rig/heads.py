@@ -35,6 +35,7 @@ FROZEN = re.compile(r'launch-fleet: look: live run due at the approved frozen he
 ETAGS = 'heads-etags.json'
 JOURNAL = 'publish.json'
 FORK_READY_TRIES = 6
+PAGE = 100
 CHECK_PREFIX = re.compile(r'^(?:pass|fail) (?:version|start|wake|stop|token): ', re.M)
 GH_OVERRIDES = ('GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN', 'GH_HOST')
 SHAPES = []
@@ -107,7 +108,7 @@ def gh_json(args, send=None):
 
 
 def read_comments(number, cache):
-    path = 'repos/%s/issues/%d/comments?per_page=100' % (OPENWIZ, number)
+    path = 'repos/%s/issues/%d/comments?per_page=%d' % (OPENWIZ, number, PAGE)
     saved = cache.get(path)
     if not (isinstance(saved, dict) and set(saved) == {'etag', 'comments', 'more'}):
         saved = None
@@ -116,14 +117,15 @@ def read_comments(number, cache):
     lines = head.splitlines()
     status = lines[0].split()[1] if lines and len(lines[0].split()) > 1 else ''
     headers = {k.strip().lower(): v.strip() for k, _, v in (h.partition(':') for h in lines[1:])}
+    linked = bool(re.search(r'rel="(?:next|last)"', headers.get('link', '')))
     if status == '304' and saved:
-        found, more = saved['comments'], saved['more']
+        found, more = saved['comments'], saved['more'] or linked or len(saved['comments']) >= PAGE
     elif status == '200' and p.returncode == 0:
         try:
             found = [{'id': c['id'], 'login': c['user']['login'], 'body': c['body'] or ''} for c in json.loads(body)]
         except (ValueError, KeyError, TypeError):
             raise Refused('GitHub gave an unreadable answer for #%d' % number)
-        more = bool(re.search(r'rel="(?:next|last)"', headers.get('link', '')))
+        more = linked
         if headers.get('etag'):
             cache[path] = {'etag': headers['etag'], 'comments': found, 'more': more}
     else:
