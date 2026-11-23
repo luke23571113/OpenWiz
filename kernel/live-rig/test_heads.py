@@ -329,7 +329,7 @@ class Heads(unittest.TestCase):
         hosts, extra = ['fixture-five', 'fixture-four'], ['--allow-cost', 'fixture-five', '--allow-cost', 'fixture-four']
         self.assertEqual(self.heads(hosts, *extra, '--post', env=dict(self.env, HEADS_LOSE='PUT', HEADS_REFUSE='pulls'))[0], 2)
         first = len(self.calls())
-        self.assertEqual(self.heads(hosts, *extra, '--post', env=dict(self.env, HEADS_GH_LOGIN='example-other'))[:2], (2, ''))
+        self.assertEqual(self.heads(hosts, *extra, '--post', env=dict(self.env, HEADS_GH_LOGIN='example-other'))[0], 2)
         self.assertEqual(self.heads(hosts, *extra)[:2], (2, ''))
         code, out, err = self.heads(hosts, *extra, '--post')
         self.assertEqual((code, out), (0, 'finishing the publish an earlier --post left unfinished\n'

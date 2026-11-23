@@ -81,9 +81,13 @@ def record_authors():
     return {a.lower() for a in authors}
 
 
+def stored_login_env():
+    # SECURITY: every gh call, the kit's included, goes as the person's stored github.com login, never an override.
+    return dict({k: v for k, v in os.environ.items() if k not in GH_OVERRIDES}, GH_HOST='github.com')
+
+
 def gh(args, send=None):
-    # SECURITY: every read and write goes as the person's stored github.com login, never a token or host override.
-    env = {k: v for k, v in os.environ.items() if k not in GH_OVERRIDES}
+    env = stored_login_env()
     try:
         return subprocess.run(['gh'] + args + ['--hostname', 'github.com'], input=None if send is None else json.dumps(send),
                               stdin=subprocess.DEVNULL if send is None else None, capture_output=True, text=True,
@@ -144,7 +148,8 @@ def run_kit(driver, entry, wait, settings, login):
     command = [sys.executable, '-I', rig.KIT, '--driver', driver, '--repo', settings['repo'],
                '--ticket', str(settings['ticket']), '--harness', entry['harness'], '--model', entry['model'],
                '--wait', str(wait)]
-    p = subprocess.run(command, cwd=ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, text=True)
+    p = subprocess.run(command, cwd=ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, text=True,
+                       env=stored_login_env())
     sys.stderr.write(p.stdout)
     sys.stderr.flush()
     return p.returncode, rig.record_stdout(p.stdout, settings, login)
@@ -164,7 +169,7 @@ def save(path, plan):
 class Session:
     def __init__(self, args):
         self.args, self.failed, self.login, self.folder, self.read = args, False, None, None, {}
-        self.plan = {'comments': [], 'receipts': [], 'fork': None, 'ref': False, 'put': [], 'pull': None}
+        self.plan = {'login': None, 'comments': [], 'receipts': [], 'fork': None, 'ref': False, 'put': [], 'pull': None}
 
     def say(self, line):
         print(line, flush=True)
@@ -290,6 +295,8 @@ class Publish:
         save(self.path, self.plan)
 
     def run(self):
+        if gh_json(['api', 'user']).get('login') != self.plan['login']:
+            raise Refused('gh is signed in as another login than this publish was planned under, so nothing is posted')
         for c in self.plan['comments']:
             if c['url'] is None:
                 c['url'] = gh_json(['api', '-X', 'POST', 'repos/%s/issues/%d/comments' % (OPENWIZ, c['pr']), '--input',
@@ -384,6 +391,7 @@ def run(args):
             json.dump(cache, f)
         os.replace(cache_path + '.part', cache_path)
     if args.post and session.plan['comments']:
+        session.plan['login'] = session.run_by()
         save(journal, session.plan)
         Publish(journal, session.plan).run()
     return 1 if session.failed else 0
