@@ -1344,14 +1344,15 @@ class RevokeReview(Helper):
 
 
 PROBE = r"""
-import os
-held = 0
+import os, stat
+held = sockets = 0
 for fd in map(int, os.listdir("/proc/self/fd")):
     try:
+        sockets += fd > 2 and stat.S_ISSOCK(os.fstat(fd).st_mode)
         held += fd > 2 and b'"token"' in os.pread(fd, 1 << 16, 0)
     except OSError:
         pass
-print(held)
+print(held, sockets)
 """
 
 
@@ -1456,7 +1457,8 @@ class FinalRound(Helper):
         nested = (f'"$PY" -I "$PROBE"; OPENWIZ_TOKEN_SERVICE_READBACK=failed "$PY" -I "$H" run {" ".join(REQ)}'
                   ' -- "$PY" -I "$PROBE"')
         done = self.inside_run(nested, self.api(), PROBE=str(self.root / "probe.py"))
-        self.assertEqual((done.returncode, done.stdout), (0, "0\n0\n"), "no fd that reads as a token")
+        self.assertEqual((done.returncode, done.stdout), (0, "0 1\n0 0\n"),
+                         "no fd that reads as a token; only the run's revoke socket, never in a fallback child")
         self.assert_never_exposed(done)
 
 
