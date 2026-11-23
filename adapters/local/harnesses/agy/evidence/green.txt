@@ -1,4 +1,4 @@
-# Green: the finished agy row; agent-CLI stubs first on PATH, OPENWIZ_GITHUB_APP_KEY unset
+# Green at 7aa122e0b0: the finished agy row; agent-CLI stubs first on PATH, OPENWIZ_GITHUB_APP_KEY unset
 
 $ python3 -I adapters/local/test_harnesses.py
 fail claude: row.json harness: claude is built in, and no row may use a built-in name
