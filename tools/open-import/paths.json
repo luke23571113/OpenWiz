@@ -17,6 +17,7 @@
     "adapters/cloudroom/**",
     "adapters/devin/**",
     "adapters/local/**",
+    "adapters/openclaw/**",
     "adapters/template/**",
     "apps/**",
     "changes/**",
