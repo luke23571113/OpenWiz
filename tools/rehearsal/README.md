@@ -16,8 +16,9 @@ env -u OPENWIZ_GITHUB_APP_KEY python3 -I tools/rehearsal/test_rehearse.py   # th
 
 Its six steps, their checks and its exits are in `rehearse.py`'s header. Every command runs with
 `env -i`, a fresh `HOME` and a `PATH` of only `python3`, `git`, `sh`, `uname`, `ldd`, the fakes
-and recording `cargo`, `rustc`, `rustup`, `npm`, `node` and `npx`, with no `room-cli`. It refuses
-to start while a token, App or CloudRoom variable is set.
+and recording `cargo`, `rustc`, `rustup`, `npm`, `node` and `npx`. None of the 32 agent and host
+CLIs in `ABSENT` (`room-cli`, `boat`, `codex` and the rest) may be on it; `claude` and `gh` are the
+recording fakes. It refuses to start while a token, App or CloudRoom variable is set.
 
 ## The fakes
 

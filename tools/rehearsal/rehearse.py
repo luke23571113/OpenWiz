@@ -38,10 +38,10 @@ at the first fail:
 
 Every command runs in a stranger's environment: `env -i`, a fresh HOME, and a PATH holding only
 python3, git, sh, uname, ldd (Linux), the fake gh and claude (fakes/) and recording cargo, rustc,
-rustup, npm, node and npx, which fail the step that calls them. There is no room-cli. It writes
-the receipt (contracts/rehearsal.v1.md) to FILE and exits 0 on pass, 1 on fail, printing the
-failed step's commands and their exact output; 2 is a usage or environment refusal, with no
-receipt. A passed step's commands and output go to stderr. Standard-library Python 3.9 on Linux
+rustup, npm, node and npx, which fail the step that calls them. No other agent or host CLI
+(ABSENT, room-cli included) may be on it. It writes the receipt (contracts/rehearsal.v1.md) to
+FILE and exits 0 on pass, 1 on fail, printing the failed step's commands and their exact output;
+2 is a usage or environment refusal, with no receipt. A passed step's commands and output go to stderr. Standard-library Python 3.9 on Linux
 and macOS. It proves an install of these bytes with fakes for GitHub and the harness; never a
 real account, repository, harness or fleet.
 """
@@ -51,7 +51,10 @@ STEPS = ('preflight', 'install', 'build_identity', 'setup', 'skills', 'first_fle
 TARGETS = ('aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-gnu')
 BUILD_TOOLS = ('cargo', 'rustc', 'rustup', 'npm', 'node', 'npx')
 ALLOWED = ('python3', 'git', 'sh', 'uname', 'ldd')
-ABSENT = ('room-cli', 'cloudroom', 'codex', 'openwiz')
+ABSENT = ('room-cli', 'cloudroom', 'codex', 'openwiz', 'boat', 'hermes', 'acpx', 'openclaw', 'droid', 'runpane',
+          'pane', 'cursor-agent', 'cursor', 'opencode', 'gemini', 'amp', 'aider', 'goose', 'copilot', 'qwen',
+          'kiro', 'crush', 'jules', 'devin', 'oz', 'warp', 'openhands', 'capy', 'tembo', 'conductor', 'factory',
+          'codespaces')
 SECRET = re.compile(r'(GITHUB_TOKEN|GH_TOKEN|GH_ENTERPRISE_TOKEN|GITHUB_ENTERPRISE_TOKEN|OPENWIZ_GITHUB_APP_.*'
                     r'|ACTIONS_.*TOKEN.*|ROOM_.*|CLOUDROOM.*)')
 HERE = Path(__file__).resolve().parent
