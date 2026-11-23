@@ -41,7 +41,9 @@ with th.ThrowawayMachine(ROWS, NAME, mode=MODE) as env:
           code == 1 and th.kit.invalid(out, th.ERROR) is None and out.get('error') == 'harness oz is not installed here'
           and 'install oz' in out.get('next', '') and env.runs() == before)
 
-for how, line in (('client', 'You are not logged in'), ('server', 'Failed to authenticate with server')):
+for how, line in (('client', 'You are not logged in'), ('server', 'Failed to authenticate with server'),
+                  ('invalid', 'Your credentials are invalid'), ('june', 'You are not logged in -'),
+                  ('june-invalid', 'Your credentials are invalid')):
     with th.ThrowawayMachine(ROWS, NAME, 'oz', FAKE, MODE) as env:
         code, out = env.start(FAKE_CLI_SIGNED_OUT='1', OZ_FAKE_SIGNED_OUT=how)
         check('not signed in (%s: "%s ...") is a D3 error that says so, and its next names oz login' % (how, line),
@@ -70,6 +72,8 @@ refused = {
     'a --reasoning flag': ['agent', 'run', '--reasoning', 'high', '--prompt', PROMPT],
     'no --prompt': ['agent', 'run', '--output-format', 'json'],
     'a bare prompt': ['agent', 'run', PROMPT],
+    'an option where --model needs its value': ['agent', 'run', '--model', '--bogus', '--prompt', PROMPT],
+    'an option where --prompt needs its value': ['agent', 'run', '--prompt', '--model'],
     'a repeated --prompt': ['agent', 'run', '--prompt', PROMPT, '--prompt', PROMPT],
     'an --output-format oz does not have': ['agent', 'run', '--output-format', 'stream-json', '--prompt', PROMPT],
     'run-cloud': ['agent', 'run-cloud', '--prompt', PROMPT],
