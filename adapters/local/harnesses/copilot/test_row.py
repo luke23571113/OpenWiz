@@ -16,8 +16,8 @@ def run(argv, record):
     return subprocess.run([sys.executable, FAKE] + argv, env=env, capture_output=True, timeout=60).returncode
 
 
-ALLOWED = [START, START + ['--allow-all-tools'], START + ['--allow-all', '--reasoning-effort', 'xhigh'],
-           START + ['--reasoning-effort', 'low'], WAKE, WAKE + ['--allow-all-tools', '--reasoning-effort', 'max']]
+ALLOWED = [START, START + ['--allow-all-tools'], START + ['--allow-all'], WAKE + ['--allow-all'], WAKE,
+           WAKE + ['--allow-all-tools']]
 REFUSED = {
     'no -p': START[2:],
     'a flag as the prompt': ['-p', '--model'] + START[2:],
@@ -27,7 +27,10 @@ REFUSED = {
     'start without --output-format json': ['-p', FIRST, '--session-id', SID, '--model', 'example-model'],
     'start with text output': START[:3] + ['text'] + START[4:],
     'an undocumented mode': START + ['--yes'],
-    'an undocumented effort level': START + ['--reasoning-effort', 'ultra'],
+    'effort on start': START + ['--allow-all', '--reasoning-effort', 'xhigh'],
+    'effort on start with no mode': START + ['--reasoning-effort', 'low'],
+    'effort on wake': WAKE + ['--allow-all-tools', '--reasoning-effort', 'max'],
+    'the effort alias on start': START + ['--effort', 'high'],
     'effort before the mode': START + ['--reasoning-effort', 'low', '--allow-all'],
     'two modes': START + ['--allow-all-tools', '--allow-all'],
     'wake with --resume': ['-p', WOKEN, '--resume', SID],
@@ -53,8 +56,8 @@ with tempfile.TemporaryDirectory() as tmp:
     if os.path.exists(record):
         with open(record) as f:
             turns = [json.loads(line) for line in f]
-    if [t['turn'] for t in turns] != ['first'] * 4 + ['woken'] * 2 or {t['session'] for t in turns} != {SID}:
-        failed.append('the fake did not record four first turns and two woken turns of one session')
+    if [t['turn'] for t in turns] != ['first'] * 3 + ['woken'] * 3 or {t['session'] for t in turns} != {SID}:
+        failed.append('the fake did not record three first turns and three woken turns of one session')
 for line in failed:
     print('fail copilot test_row.py: ' + line)
 print('pass copilot test_row.py: %d documented lines run, %d undocumented ones exit 2' % (len(ALLOWED), len(REFUSED))
