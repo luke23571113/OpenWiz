@@ -35,9 +35,10 @@ SKIPS = {'fixture-missing': 'not installed: rig-fixture-not-installed',
 EARLIER = '<!-- openwiz:status v1 -->\nagent: builder\nstate: stopped\nharness: Fake\nmodel: m\n' \
           'skills: build-ticket@0.1.2\nstep: an earlier run\ntime: 2030-01-02T03:04:05Z\n'
 # SAFETY: no-op stubs first on PATH for every agent CLI, so a fixture mistake can never start a real one.
-AGENT_CLIS = ['claude', 'codex', 'cursor-agent', 'agent', 'pi', 'opencode', 'copilot', 'goose', 'gemini', 'kimi',
-              'qwen', 'cline', 'kilo', 'crush', 'vibe', 'auggie', 'kiro-cli', 'junie', 'amp', 'agy', 'oz', 'sculpt',
-              'hermes', 'acpx', 'droid']
+AGENT_CLIS = ['claude', 'codex', 'cursor-agent', 'agent', 'cursor', 'pi', 'opencode', 'copilot', 'goose', 'gemini',
+              'kimi', 'qwen', 'cline', 'kilo', 'kilocode', 'crush', 'vibe', 'auggie', 'kiro-cli', 'junie', 'amp', 'agy',
+              'oz', 'sculpt', 'hermes', 'acpx', 'droid', 'boat', 'room-cli', 'runpane', 'pane', 'openhands', 'devin',
+              'warp', 'grok', 'codespaces', 'conductor']
 COPIED = ['kernel/live-rig/rig.py', 'kernel/live-rig/fixtures/hosts', 'kernel/driver-kit/kit.py',
           'kernel/driver-kit/schema.json',
           'kernel/driver-kit/fixtures/planted', 'kernel/records-kit/check.py', 'kernel/records.v1.md',
@@ -314,6 +315,29 @@ class Rig(unittest.TestCase):
         self.assertEqual((p.returncode, p.stdout), (2, ''), p.stderr)
         self.assertIn('rig.py: --hosts', p.stderr)
         self.assertEqual((self.kit_calls(), self.records()), ([], []))
+
+    def test_a_parent_step_hiding_a_symlink_in_hosts_exits_2_and_a_plain_parent_step_still_works(self):
+        marker = os.path.join(self.folder, 'status-ran')
+        with open(os.path.join(self.hosts, 'cost-unknown.json')) as f:
+            config = json.load(f)
+        self.commit_host('linked.json', dict(config, host='fixture-linked', signed_in=[['touch', marker]]))
+        live_rig = os.path.join(self.checkout, 'kernel', 'live-rig')
+        os.symlink('fixtures/hosts', os.path.join(live_rig, 'hosts-link'))
+        git(self.checkout, 'add', '-A')
+        git(self.checkout, 'commit', '-q', '-m', 'a linked hosts folder')
+        command = self.command('--host', 'fixture-linked')
+        at = command.index('--hosts') + 1
+        command[at] = os.path.join(live_rig, 'hosts-link', '..', 'hosts')
+        p = subprocess.run(command, env=self.env, capture_output=True, text=True, timeout=60)
+        self.assertEqual((p.returncode, p.stdout), (2, ''), p.stderr)
+        self.assertIn('rig.py: --hosts goes through a symlink', p.stderr)
+        self.assertFalse(os.path.exists(marker))
+        self.assertEqual((self.kit_calls(), self.records()), ([], []))
+        command[at] = os.path.join(live_rig, 'fixtures', '..', 'fixtures', 'hosts')
+        p = subprocess.run(command, env=self.env, capture_output=True, text=True, timeout=60)
+        self.assertEqual((p.returncode, p.stdout), (0, 'skipped fixture-linked fake-harness: cost\n'), p.stderr)
+        self.assertTrue(os.path.exists(marker))
+        self.assertEqual(len(self.records()), 1)
 
     def test_load_host_and_check_host_are_importable_and_give_the_exact_skip_reasons(self):
         rig = self.module()
