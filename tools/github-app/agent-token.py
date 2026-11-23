@@ -842,13 +842,10 @@ def drop(private, name, cache, retire):
     return token
 
 
-def bound_tokens(private, cache, env=None, kept_only=False):
+def bound_tokens(private, cache, kept_only=False):
     kept = re.compile(f"kept-{cache[len('token-'):-len('.json')]}-[0-9a-f]{{32}}\\.json")
     names = [name for name in listed(private) if kept.fullmatch(name)
              or not kept_only and (name == cache or SNAPSHOT.fullmatch(name))]
-    mark = os.path.basename((env or {}).get(RUN_MARK, ""))
-    if not kept_only and SNAPSHOT.fullmatch(mark) and mark not in names:
-        names.append(mark)
     found = {}
     for name in names:
         held = private.read(name)
@@ -927,7 +924,7 @@ def revoke(args, env):
     try:
         if private:
             with locked(private):
-                found.update(bound_tokens(private, cache, env))
+                found.update(bound_tokens(private, cache))
                 drop(private, cache, cache, retire=True)
                 for token, expires_at in found.items():
                     if not any(name.startswith("kept-") for name in holders(private, token)):

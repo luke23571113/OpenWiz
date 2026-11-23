@@ -1287,7 +1287,7 @@ class RevokeReview(Helper):
     def test_r4_revoke_finds_this_runs_token_after_the_folder_moved_or_went(self):
         # comment-ok: catches: a revoke that skips this run's snapshot because its recorded path is stale,
         # or that needs the folder at all, so a moved or deleted folder leaves a live token.
-        for name, damage in (("moved", 'chmod 000 "$CACHE"; mv "$PRIV" "$MOVED"'),
+        for name, damage in (("moved", 'chmod 000 "$CACHE"; mv "$PRIV" "$MOVED"; OPENWIZ_AGENT_TOKEN_COPY='),
                              ("gone", 'rm -rf "$PRIV"')):
             with self.subTest(name):
                 shutil.rmtree(self.private, True)
