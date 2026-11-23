@@ -847,8 +847,6 @@ def answer(cmd):
             raise Refused('run %s is stopped' % run, 'start a new run')
         if state.get('starting'):
             raise Refused('run %s never finished starting' % run, 'stop it, then start a new run')
-        if state['turns'] and running(state['turns'][-1]):
-            return {'run': run, 'woke': True}
         if state.get('row') and state['session'] is None:
             state['session'] = reported_session(run, state['row']['session'])
             if state['session'] is None:
@@ -858,6 +856,8 @@ def answer(cmd):
             saved(run, state)
         except OSError:
             raise Refused('the driver cannot save run %s; nothing was started' % run, WRITABLE)
+        if state['turns'] and running(state['turns'][-1]):
+            return {'run': run, 'woke': True}
         turn = launch(state, run, True)
         try:
             saved(run, dict(state, turns=state['turns'] + [turn]))
