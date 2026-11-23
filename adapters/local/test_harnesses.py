@@ -30,6 +30,7 @@ GOOD = 'the contract, the folder, the kit\'s five checks, and the session, env, 
 PLANTED = {
     'example': 'pass example: ' + GOOD,
     'example-none': 'pass example-none: ' + GOOD,
+    'effort-crowded': 'pass effort-crowded: ' + GOOD,
     'signed-out-json': 'pass signed-out-json: ' + GOOD,
     'wake-no-session': 'fail wake-no-session: row.json wake: it has no {session}',
     'larger-argument': 'fail larger-argument: row.json start: a placeholder sits inside a larger argument; '
