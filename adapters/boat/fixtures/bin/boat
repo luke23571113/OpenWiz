@@ -212,7 +212,8 @@ def main():
     elif cmd == 'exec':
         run_in_sandbox(rest)
     elif cmd == 'prompt' and rest == ['--help', '--no-update']:
-        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'prompt-help.txt')) as f:
+        name = 'prompt-help-1.0.105.txt' if os.environ.get('FAKE_BOAT_HELP') == 'live' else 'prompt-help.txt'
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', name)) as f:
             text = f.read()
         if os.environ.get('FAKE_BOAT_HELP') == 'bare':
             text = text.split('Reasoning / thinking levels')[0]

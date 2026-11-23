@@ -358,8 +358,9 @@ class Boat(unittest.TestCase):
             self.assertRegex(text, r'status note.* model field .*`<your model> default effort`')
 
     def test_an_effort_boat_cannot_set_is_refused_and_starts_nothing(self):
-        for harness, model, effort in (('claude', 'claude-opus-5-5', 'minimal'), ('claude', 'syn-claude-small', 'xhigh'),
-                                       ('claude', 'syn-claude-plain', 'low'), ('claude', 'syn-unlisted', 'medium'),
+        for harness, model, effort in (('claude', 'claude-opus-5-5', 'minimal'),
+                                       ('claude', 'syn-claude-small', 'xhigh'), ('claude', 'syn-claude-plain', 'low'),
+                                       ('claude', 'syn-unlisted', 'medium'),
                                        ('codex', 'claude-opus-5-5', 'medium'), ('opencode', 'syn-open-one', 'medium'),
                                        ('pi', 'syn-pi', 'medium'), ('kimi', 'syn-kimi', 'low')):
             with self.subTest(harness=harness, model=model, effort=effort):
@@ -373,6 +374,24 @@ class Boat(unittest.TestCase):
                 self.assertLessEqual(len(out['error']), 300)
                 self.assertEqual(self.boat_calls(calls), [['prompt', '--help', '--no-update']])
                 self.assertEqual((self.sandboxes(), self.run_files(), self.logged()), ({}, [], []))
+
+    def test_the_driver_reads_the_level_list_boat_1_0_105_prints(self):
+        for harness, model, effort, passed in (('claude', 'opus-5-5', 'medium', True),
+                                               ('codex', 'gpt-5.6-terra', 'none', True),
+                                               ('pi', 'llmgateway:glm-5.3', 'max', True),
+                                               ('kimi', 'moonshot:kimi-k2.6', 'none', True),
+                                               ('codex', 'gpt-5.4', 'max', False), ('claude', 'haiku', 'low', False),
+                                               ('opencode', 'claude-sonnet-5', 'medium', False),
+                                               ('claude', 'claude-opus-5-5', 'medium', False)):
+            with self.subTest(harness=harness, model=model, effort=effort):
+                calls = os.path.join(self.folder, 'calls-%s-%s-%s' % (harness, effort, passed))
+                code, out = self.driver('start', dict(REQUEST, harness=harness, model=model, effort=effort),
+                                        FAKE_BOAT_ARGS=calls, FAKE_BOAT_HELP='live',
+                                        FAKE_BOAT_PROVIDERS='claude,codex,pi,opencode,kimi')
+                self.assertEqual(code, 0 if passed else 1, out)
+                self.assertEqual(out.get('next'), None if passed else CANT)
+                turns = [c for c in self.boat_calls(calls) if c[:1] == ['prompt'] and '--help' not in c]
+                self.assertEqual([c[c.index('--reasoning-effort') + 1] for c in turns], [effort] if passed else [])
 
     def test_a_start_whose_levels_cannot_be_read_starts_nothing(self):
         marker = 'sk-' + 'Synthetic0Host0Marker' + self.mark
