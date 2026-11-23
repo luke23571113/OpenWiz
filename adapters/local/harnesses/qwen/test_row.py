@@ -1,4 +1,4 @@
-import json, os, re, subprocess, sys
+import importlib.machinery, importlib.util, json, os, re, signal, subprocess, sys
 
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -36,6 +36,25 @@ def run(argv, **env):
                           env=dict(os.environ, FAKE_CLI_LIB=LIB, **env))
 
 
+def supervisor_shape():
+    if not os.path.isdir('/proc/self'):
+        return ['this row holds on Linux only: its detached StopFailure hook supervisor needs the Linux subreaper']
+    os.environ['FAKE_CLI_LIB'] = LIB
+    loader = importlib.machinery.SourceFileLoader('qwen_fake', FAKE)
+    fake = importlib.util.module_from_spec(importlib.util.spec_from_loader('qwen_fake', loader))
+    loader.exec_module(fake)
+    pid, _ = fake.stop_failure_hook_supervisor('stop-failure-hook')
+    try:
+        fds = {fd: os.readlink('/proc/%d/fd/%d' % (pid, fd)) for fd in (0, 1, 2, 3)}
+        shape = (os.getsid(pid), os.getpgid(pid), fds[0], fds[1], fds[2], fds[3].startswith('pipe:'))
+        if shape != (pid, pid, os.devnull, os.devnull, os.devnull, True) or os.getsid(0) == pid:
+            return ["the fake's StopFailure hook supervisor is not qwen's detached shape: %r" % (shape,)]
+        return []
+    finally:
+        os.killpg(pid, signal.SIGKILL)
+        os.waitpid(pid, 0)
+
+
 def main():
     with open(os.path.join(HERE, 'row.json')) as f:
         row = json.load(f)
@@ -50,6 +69,7 @@ def main():
         if p.returncode != 1 or len(lines) != 1 or json.loads(lines[0])['type'] != 'result' or \
                 not any(re.search(s, lines[0], re.I) for s in row['signed_out']):
             failures.append('the fake refused a documented line %r (exit %d)' % (argv[:8], p.returncode))
+    failures += supervisor_shape()
     seen = set()
     for auth in SIGNED_OUT:
         p = run(START, FAKE_CLI_SIGNED_OUT='1', FAKE_QWEN_AUTH=auth)

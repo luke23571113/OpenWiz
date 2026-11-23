@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import json, os, re, sys
+import json, os, re, shutil, sys
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.environ['FAKE_CLI_LIB'])
 import fake_cli
@@ -31,14 +31,43 @@ SIGN_IN_REFUSALS = {
 SIGNED_OUT = json.dumps({'type': 'result', 'subtype': 'error_during_execution', 'is_error': True,
                          'error': {'message': SIGN_IN_REFUSALS[os.environ.get('FAKE_QWEN_AUTH', 'none')]}})
 
-if sys.argv[1:] == ['--help']:
-    print(HELP)
-    sys.exit(0)
-a = sys.argv[1:]
-if len(a) != 9 or a[:2] != ['--output-format', 'stream-json'] or a[2] not in ('--session-id', '--resume') or \
-        not re.fullmatch(UUID, a[3]) or a[4] != '--model' or a[5].startswith('-') or not a[5] or \
-        a[6] != '--approval-mode' or a[7] not in MODES or a[8].startswith('-') or not a[8].strip():
-    fake_cli.refuse()
-if (a[2] == '--resume') != a[8].startswith('You were woken'):
-    fake_cli.refuse()
-fake_cli.turn(a[8], a[5], a[3], signed_out=SIGNED_OUT, signed_out_exit=1)
+def stop_failure_hook_supervisor(how):
+    sh = shutil.which('sh', path=os.environ['PATH'])
+    r, w = os.pipe()
+    pid = os.fork()
+    if pid == 0:
+        os.setsid()
+        null = os.open(os.devnull, os.O_RDWR)
+        for fd in (0, 1, 2):
+            os.dup2(null, fd)
+        if w == 3:
+            os.set_inheritable(3, True)
+        else:
+            os.dup2(w, 3)
+        try:
+            os.execve(sh, ['sh', '-c', 'echo started >&3; sleep 300'], {'PATH': os.environ['PATH']})
+        finally:
+            os._exit(127)
+    os.close(w)
+    if os.read(r, 20) != b'started\n':
+        fake_cli.refuse()
+    return [pid, fake_cli.since(pid)]
+
+
+def main():
+    if sys.argv[1:] == ['--help']:
+        print(HELP)
+        sys.exit(0)
+    a = sys.argv[1:]
+    if len(a) != 9 or a[:2] != ['--output-format', 'stream-json'] or a[2] not in ('--session-id', '--resume') or \
+            not re.fullmatch(UUID, a[3]) or a[4] != '--model' or a[5].startswith('-') or not a[5] or \
+            a[6] != '--approval-mode' or a[7] not in MODES or a[8].startswith('-') or not a[8].strip():
+        fake_cli.refuse()
+    if (a[2] == '--resume') != a[8].startswith('You were woken'):
+        fake_cli.refuse()
+    fake_cli.background_service = stop_failure_hook_supervisor
+    fake_cli.turn(a[8], a[5], a[3], daemon='stop-failure-hook', signed_out=SIGNED_OUT, signed_out_exit=1)
+
+
+if __name__ == '__main__':
+    main()
