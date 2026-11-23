@@ -626,6 +626,11 @@ class Kit:
             if kind == 'refused':
                 self.setting = None
                 if v['next'] != REFUSAL:
+                    plain = self.call('start', request)
+                    if plain[0] != 'ok':
+                        return 'fail', plain[1]['error'] if plain[0] == 'refused' else plain[1]
+                    self.call('stop', {'run': plain[1]['run']})
+                    self.wait(lambda: not any(True for _ in self.started()))
                     return 'fail', 'effort: start refused %s without the refusal text: %s' % (a.effort, v['error'])
                 if not cant and not unlisted:
                     return 'fail', 'effort: start refused %s for %s, but its README says that harness takes %s' % (
