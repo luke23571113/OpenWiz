@@ -3,6 +3,7 @@ import hashlib
 import io
 import json
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -19,7 +20,11 @@ TOOLS = os.path.join(HERE, 'tools.json')
 AGENT_CLIS = ('claude codex cursor-agent agent pi opencode copilot goose gemini kimi qwen cline kilo crush vibe '
               'auggie kiro-cli junie amp agy oz sculpt hermes acpx droid').split()
 PLATFORMS = ['linux-x86_64', 'linux-aarch64', 'darwin-x86_64', 'darwin-arm64']
-SUMMARY = re.compile(r'^bootstrap: (\d+) installed, (\d+) already there, (\d+) left out$')
+PLANTED = {'GH_TOKEN': 'synthetic-planted-value', 'ANTHROPIC_API_KEY': 'synthetic-planted-value',
+           'HERMES_INSTALL_CHANNEL': 'main', 'HERMES_INSTALL_DIR': '/synthetic/elsewhere'}
+DEAD_PROXY = 'http://127.0.0.1:9'
+PASSED_ON = {'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TERM', 'TMPDIR', 'TZ', 'PATH',
+             'DO_NOT_TRACK', 'PWD', 'OLDPWD', 'SHLVL', '_'}
 
 
 def script(path, body):
@@ -28,26 +33,31 @@ def script(path, body):
     os.chmod(path, 0o755)
 
 
-def logged_fake_tool(version):
-    return 'echo "$(basename "$0") $*" >> "$FAKE_CALLS"\necho "fake %s (synthetic)"\n' % version
-
-
 def sha256(path):
     with open(path, 'rb') as f:
         return hashlib.sha256(f.read()).hexdigest()
+
+
+def read(path):
+    if not os.path.exists(path):
+        return ''
+    with open(path) as f:
+        return f.read()
 
 
 class Fixture:
     def __init__(self, root):
         self.root = root
         self.home = os.path.join(root, 'home')
-        self.prefix = os.path.join(root, 'prefix')
+        self.prefix = os.path.join(self.home, '.local')
         self.dl = os.path.join(root, 'downloads')
         self.bin = os.path.join(root, 'bin')
         self.stubs = os.path.join(root, 'stubs')
+        self.tmp = os.path.join(root, 'tmp')
         self.calls = os.path.join(root, 'calls.log')
+        self.envs = os.path.join(root, 'env-names.log')
         self.installer_log = os.path.join(root, 'installer.log')
-        for d in (self.home, self.dl, self.bin, self.stubs):
+        for d in (self.home, self.dl, self.bin, self.stubs, self.tmp):
             os.makedirs(d)
         for name in AGENT_CLIS:
             script(os.path.join(self.stubs, name), 'echo "refused: %s is a stub" >&2\nexit 1\n' % name)
@@ -57,13 +67,17 @@ class Fixture:
         script(os.path.join(self.bin, 'python3'), 'exec %s "$@"\n' % sys.executable)
         self.tools = self.write_tools()
 
+    def logged_fake_tool(self, version):
+        return ('echo "$(basename "$0") $*" >> "{calls}"\nenv | cut -d= -f1 >> "{envs}"\n'
+                'echo "fake {version} (synthetic)"\n').format(calls=self.calls, envs=self.envs, version=version)
+
     def raw(self, name, version):
         path = os.path.join(self.dl, name)
-        script(path, logged_fake_tool(version))
+        script(path, self.logged_fake_tool(version))
         return path
 
     def archive(self, name, member, version, zipped=False):
-        body = ('#!/bin/sh\n' + logged_fake_tool(version)).encode()
+        body = ('#!/bin/sh\n' + self.logged_fake_tool(version)).encode()
         path = os.path.join(self.dl, name)
         if zipped:
             with zipfile.ZipFile(path, 'w') as z:
@@ -81,12 +95,12 @@ class Fixture:
         path = os.path.join(self.dl, name)
         with zipfile.ZipFile(path, 'w') as z:
             z.writestr('fakewheel/__init__.py', '')
-            z.writestr('fakewheel/cli.py', 'import os, sys\n'
+            z.writestr('fakewheel/cli.py', 'import sys\n'
                        'def main():\n'
-                       '    with open(os.environ["FAKE_CALLS"], "a") as f:\n'
+                       '    with open(%r, "a") as f:\n'
                        '        f.write("runpane " + " ".join(sys.argv[1:]) + "\\n")\n'
                        '    print("fake %s (synthetic)")\n'
-                       '    return 0\n' % version)
+                       '    return 0\n' % (self.calls, version))
         return path
 
     def installer_that_tries_sudo(self, name):
@@ -95,16 +109,17 @@ class Fixture:
         with open(path, 'w') as f:
             f.write('#!/usr/bin/env bash\n'
                     'echo "args: $*" >> "{log}"\n'
+                    'env | cut -d= -f1 >> "{envs}"\n'
                     'sudo -n true 2>/dev/null && echo "sudo answered" >> "{log}"\n'
+                    'echo "export PATH=\\"$HOME/.local/bin:\\$PATH\\"" >> "$HOME/.bashrc"\n'
                     'mkdir -p "$HOME/.local/bin" && cp "{payload}" "$HOME/.local/bin/fakeagent"\n'
-                    .format(log=self.installer_log, payload=payload))
+                    .format(log=self.installer_log, envs=self.envs, payload=payload))
         return path
 
     def entry(self, path, **extra):
-        files = {p: dict({'url': 'file://' + path, 'sha256': sha256(path)}, **extra) for p in PLATFORMS}
-        return files
+        return {p: dict({'url': 'file://' + path, 'sha256': sha256(path)}, **extra) for p in PLATFORMS}
 
-    def write_tools(self):
+    def write_tools(self, droid_version='1.17.2', droid_says='1.17.2'):
         tools = [
             {'name': 'python3', 'kind': 'system', 'min_version': '3.9', 'hosts': ['all'],
              'source': 'the system package manager', 'why': 'synthetic'},
@@ -117,8 +132,9 @@ class Fixture:
              'why': 'synthetic',
              'files': self.entry(self.archive('gh.zip', 'gh_x/bin/gh', '2.105.0', zipped=True),
                                  member='gh_x/bin/gh')},
-            {'name': 'fakedroid', 'kind': 'binary', 'version': '1.17.2', 'hosts': ['factory'],
-             'source': 'synthetic', 'why': 'synthetic', 'files': self.entry(self.raw('fakedroid', '1.17.2'))},
+            {'name': 'fakedroid', 'kind': 'binary', 'version': droid_version, 'hosts': ['factory'],
+             'source': 'synthetic', 'why': 'synthetic',
+             'files': self.entry(self.raw('fakedroid-' + droid_says, droid_says))},
             {'name': 'fakeapp', 'kind': 'binary', 'version': '2.4.246', 'run_version': False, 'hosts': ['pane'],
              'source': 'synthetic', 'why': 'synthetic', 'files': self.entry(self.raw('fakeapp', '2.4.246'))},
             {'name': 'runpane', 'kind': 'wheel', 'version': '2.4.246', 'module': 'fakewheel.cli',
@@ -126,10 +142,10 @@ class Fixture:
              'files': {'any': {'url': 'file://' + self.wheel('fake.whl', '2.4.246'),
                                'sha256': sha256(os.path.join(self.dl, 'fake.whl'))}}},
             {'name': 'fakeagent', 'kind': 'installer', 'version': '3.2.1', 'needs': ['git', 'curl'],
-             'args': ['--pin', 'abc123', '--dir', '{prefix}/lib/fakeagent'],
-             'provides': '{home}/.local/bin/fakeagent', 'hosts': ['hermes'], 'source': 'synthetic',
-             'why': 'synthetic', 'files': {'any': {'url': 'file://' + self.installer_that_tries_sudo('install.sh'),
-                                                    'sha256': sha256(os.path.join(self.dl, 'install.sh'))}}},
+             'args': ['--pin', 'abc123', '--dir', '{home}/.fakeagent'], 'home_only': '~/.fakeagent',
+             'hosts': ['hermes'], 'source': 'synthetic', 'why': 'synthetic',
+             'files': {'any': {'url': 'file://' + self.installer_that_tries_sudo('install.sh'),
+                               'sha256': sha256(os.path.join(self.dl, 'install.sh'))}}},
             {'name': 'gatedtool', 'kind': 'binary', 'version': '1.0.0', 'hosts': ['all'], 'source': 'synthetic',
              'why': 'synthetic', 'left_out': 'its only download needs a paid account'},
         ]
@@ -139,10 +155,11 @@ class Fixture:
         return path
 
     def run(self, *args, tools=None):
-        env = {'HOME': self.home, 'FAKE_CALLS': self.calls, 'LANG': 'C',
-               'PATH': os.pathsep.join([self.stubs, self.bin, '/usr/bin', '/bin'])}
-        return subprocess.run(['bash', BOOTSTRAP, '--prefix', self.prefix, '--tools', tools or self.tools] +
-                              list(args), env=env, cwd=self.root, capture_output=True, text=True, timeout=120)
+        env = dict(PLANTED, HOME=self.home, LANG='C', TMPDIR=self.tmp, PATH=os.pathsep.join(
+            [self.stubs, self.bin, '/usr/bin', '/bin']), http_proxy=DEAD_PROXY, https_proxy=DEAD_PROXY,
+            HTTP_PROXY=DEAD_PROXY, HTTPS_PROXY=DEAD_PROXY, ALL_PROXY=DEAD_PROXY, no_proxy='', NO_PROXY='')
+        return subprocess.run(['bash', BOOTSTRAP, '--tools', tools or self.tools] + list(args), env=env,
+                              cwd=self.root, capture_output=True, text=True, timeout=120)
 
     def remove_downloads(self):
         for name in os.listdir(self.dl):
@@ -150,16 +167,9 @@ class Fixture:
 
     def tree(self):
         found = []
-        for top in (self.prefix, self.home):
-            for d, _, files in os.walk(top):
-                found += [os.path.join(d, f) for f in files]
+        for d, _, files in os.walk(self.home):
+            found += [os.path.join(d, f) for f in files]
         return sorted(found)
-
-    def read(self, path):
-        if not os.path.exists(path):
-            return ''
-        with open(path) as f:
-            return f.read()
 
 
 class BootstrapTest(unittest.TestCase):
@@ -174,9 +184,18 @@ class BootstrapTest(unittest.TestCase):
         self.assertEqual(len(index), 1, out)
         return lines[index[0]], lines[index[0] + 1:]
 
-    def test_dry_run_prints_every_step_and_changes_nothing(self):
+    def dry_run_watching_tmp(self, tools=None):
+        os.utime(self.fx.tmp, ns=(10 ** 18, 10 ** 18))
+        return self.fx.run('--dry-run', tools=tools)
+
+    def assert_wrote_nothing(self):
+        self.assertEqual(self.fx.tree(), [])
+        self.assertEqual(os.stat(self.fx.tmp).st_mtime_ns, 10 ** 18, 'something was made or removed in TMPDIR')
+        self.assertEqual(read(self.fx.calls), '')
+
+    def test_dry_run_prints_every_step_and_writes_nothing(self):
         self.fx.remove_downloads()
-        r = self.fx.run('--dry-run')
+        r = self.dry_run_watching_tmp()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         for name in ('curl 8.23.0', 'gh 2.105.0', 'fakedroid 1.17.2', 'fakeapp 2.4.246', 'runpane 2.4.246',
                      'fakeagent 3.2.1'):
@@ -186,43 +205,52 @@ class BootstrapTest(unittest.TestCase):
         line, rest = self.summary(r.stdout)
         self.assertEqual(line, 'bootstrap: dry run, 6 to install, 2 already there, 1 left out')
         self.assertEqual(rest, ['left out gatedtool: its only download needs a paid account'])
-        self.assertFalse(os.path.exists(self.fx.prefix))
-        self.assertEqual(self.fx.tree(), [])
-        self.assertEqual(self.fx.read(self.fx.calls), '')
+        self.assert_wrote_nothing()
 
-    def test_real_tools_dry_run_lists_every_tool_and_touches_nothing(self):
-        r = self.fx.run('--dry-run', tools=TOOLS)
+    def test_real_tools_plan_offline_on_refusing_downloads(self):
+        with open(TOOLS) as f:
+            manifest = json.load(f)
+        for tool in manifest['tools']:
+            for file in tool.get('files', {}).values():
+                file['url'] = 'file://' + os.path.join(self.root, 'refused', tool['name'])
+        offline = os.path.join(self.root, 'offline-tools.json')
+        with open(offline, 'w') as f:
+            json.dump(manifest, f)
+        r = self.dry_run_watching_tmp(tools=offline)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        for name in ('hermes', 'runpane', 'pane', 'droid', 'gh', 'curl', 'git', 'python3'):
-            self.assertRegex(r.stdout, r'(?m)^(would install|already there|left out) %s\b' % name)
-        self.assertRegex(self.summary(r.stdout)[0], r'^bootstrap: dry run, \d+ to install, \d+ already there, '
-                                                   r'\d+ left out$')
-        self.assertFalse(os.path.exists(self.fx.prefix))
-        self.assertEqual(self.fx.read(self.fx.calls), '')
+        self.assert_wrote_nothing()
+        if platform.system() != 'Linux' or platform.machine() not in ('x86_64', 'aarch64'):
+            self.skipTest('the exact plan is pinned for Linux x86_64 and aarch64')
+        planned = re.findall(r'(?m)^would install (\S+) (\S+) from file://', r.stdout)
+        self.assertEqual(planned, [('curl', '8.23.0'), ('gh', '2.105.0'), ('hermes', '0.23.3'),
+                                   ('runpane', '2.4.246'), ('pane', '2.4.246'), ('droid', '1.17.2')])
+        self.assertEqual(self.summary(r.stdout), ('bootstrap: dry run, 6 to install, 2 already there, 0 left out', []))
 
-    def test_fixture_install_into_temp_prefix(self):
+    def test_fixture_install_into_home_prefix(self):
         r = self.fx.run()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         line, rest = self.summary(r.stdout)
         self.assertEqual(line, 'bootstrap: 6 installed, 2 already there, 1 left out')
         self.assertEqual(rest, ['left out gatedtool: its only download needs a paid account'])
-        for name in ('curl', 'gh', 'fakedroid', 'fakeapp', 'runpane', 'fakeagent'):
-            path = os.path.join(self.fx.prefix, 'bin', name)
-            self.assertTrue(os.access(path, os.X_OK), name)
-        log = self.fx.read(self.fx.installer_log)
-        self.assertIn('args: --pin abc123 --dir %s/lib/fakeagent\n' % self.fx.prefix, log)
-        self.assertNotIn('sudo', log)
-        calls = self.fx.read(self.fx.calls).splitlines()
-        self.assertEqual(sorted(calls), sorted('%s --version' % n for n in
-                                               ('curl', 'gh', 'fakedroid', 'runpane', 'fakeagent')))
         for name in ('curl 8.23.0', 'gh 2.105.0', 'fakedroid 1.17.2', 'fakeapp 2.4.246', 'runpane 2.4.246',
                      'fakeagent 3.2.1'):
             self.assertRegex(r.stdout, '(?m)^installed %s$' % name)
+            self.assertTrue(os.access(os.path.join(self.fx.prefix, 'bin', name.split()[0]), os.X_OK), name)
+        log = read(self.fx.installer_log)
+        self.assertIn('args: --pin abc123 --dir %s/.fakeagent\n' % self.fx.home, log)
+        self.assertNotIn('sudo', log)
+        calls = read(self.fx.calls).splitlines()
+        self.assertEqual(sorted(calls), sorted('%s --version' % n for n in
+                                               ('curl', 'gh', 'fakedroid', 'runpane', 'fakeagent')))
+        names = set(read(self.fx.envs).split())
+        self.assertTrue(names, 'no environment was recorded')
+        self.assertEqual(names - PASSED_ON, set())
+        self.assertEqual(os.listdir(self.fx.tmp), [])
 
     def test_checksum_mismatch_is_refused_and_nothing_from_it_runs(self):
         with open(os.path.join(self.fx.dl, 'install.sh'), 'a') as f:
             f.write('echo tampered >> "%s"\n' % self.fx.installer_log)
-        with open(os.path.join(self.fx.dl, 'fakedroid'), 'a') as f:
+        with open(os.path.join(self.fx.dl, 'fakedroid-1.17.2'), 'a') as f:
             f.write('# tampered\n')
         r = self.fx.run()
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
@@ -233,22 +261,55 @@ class BootstrapTest(unittest.TestCase):
             self.assertTrue(any(re.match(r'left out %s: checksum mismatch: expected [0-9a-f]{64}, got [0-9a-f]{64}$'
                                          % name, x) for x in rest), rest)
             self.assertFalse(os.path.lexists(os.path.join(self.fx.prefix, 'bin', name)), name)
-        self.assertEqual(self.fx.read(self.fx.installer_log), '')
-        self.assertNotIn('fakedroid', self.fx.read(self.fx.calls))
-        self.assertFalse(os.path.exists(os.path.join(self.fx.home, '.local', 'bin', 'fakeagent')))
+        self.assertEqual(read(self.fx.installer_log), '')
+        self.assertNotIn('fakedroid', read(self.fx.calls))
 
     def test_second_run_installs_nothing(self):
         first = self.fx.run()
         self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
         before = {p: sha256(p) for p in self.fx.tree()}
-        installer_log = self.fx.read(self.fx.installer_log)
+        installer_log = read(self.fx.installer_log)
         self.fx.remove_downloads()
         r = self.fx.run()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         line, rest = self.summary(r.stdout)
         self.assertEqual(line, 'bootstrap: 0 installed, 8 already there, 1 left out')
         self.assertEqual({p: sha256(p) for p in self.fx.tree()}, before)
-        self.assertEqual(self.fx.read(self.fx.installer_log), installer_log)
+        self.assertEqual(read(self.fx.installer_log), installer_log)
+
+    def test_wrong_version_keeps_the_working_tool(self):
+        self.assertEqual(self.fx.run().returncode, 0)
+        dst = os.path.join(self.fx.prefix, 'bin', 'fakedroid')
+        working = sha256(dst)
+        r = self.fx.run(tools=self.fx.write_tools(droid_version='1.17.3', droid_says='9.9.9'))
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('left out fakedroid: `fakedroid --version` does not name 1.17.3 (the existing one is kept)',
+                      self.summary(r.stdout)[1])
+        self.assertEqual(sha256(dst), working)
+        self.assertFalse(os.path.exists(os.path.join(self.fx.prefix, 'lib', 'openwiz-vps', 'staged')))
+
+    def test_home_only_installer_is_refused_under_another_prefix(self):
+        prefix = os.path.join(self.root, 'elsewhere')
+        r = self.fx.run('--prefix', prefix)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('left out fakeagent: its installer installs into your home (~/.fakeagent) with no option to '
+                      'confine it, so it is never installed under --prefix; run without --prefix to install it',
+                      self.summary(r.stdout)[1])
+        self.assertEqual(read(self.fx.installer_log), '')
+        self.assertEqual(self.fx.tree(), [])
+        self.assertTrue(os.path.isfile(os.path.join(prefix, 'bin', 'gh')))
+
+    def test_existing_launcher_is_never_replaced(self):
+        launcher = os.path.join(self.fx.prefix, 'bin', 'fakeagent')
+        os.makedirs(os.path.dirname(launcher))
+        script(launcher, 'echo "fake 2.0.0 (synthetic)"\n')
+        working = sha256(launcher)
+        r = self.fx.run()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('left out fakeagent: your existing %s is kept (it does not name 3.2.1); move it aside to '
+                      'install the pinned one' % launcher, self.summary(r.stdout)[1])
+        self.assertEqual(sha256(launcher), working)
+        self.assertEqual(read(self.fx.installer_log), '')
 
     def test_too_old_system_tool_is_left_out_with_its_reason(self):
         script(os.path.join(self.fx.bin, 'git'), 'echo "git version 1.8.5 (synthetic)"\n')
@@ -256,8 +317,8 @@ class BootstrapTest(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         line, rest = self.summary(r.stdout)
         self.assertEqual(line, 'bootstrap: dry run, 5 to install, 1 already there, 3 left out')
-        self.assertIn('left out git: git 1.8.5 is older than 2.0; install git 2.0 or later with your system package manager '
-                      '(this bootstrap never runs sudo)', rest)
+        self.assertIn('left out git: git 1.8.5 is older than 2.0; install git 2.0 or later with your system package '
+                      'manager (this bootstrap never runs sudo)', rest)
         self.assertIn('left out fakeagent: needs git', rest)
 
 
@@ -278,12 +339,15 @@ class ToolsJsonTest(unittest.TestCase):
                 continue
             self.assertRegex(t['version'], r'^\d+\.\d+\.\d+$', t['name'])
             self.assertTrue(t['files'], t['name'])
-            for platform, file in t['files'].items():
-                self.assertIn(platform, PLATFORMS + ['any'])
+            for platform_key, file in t['files'].items():
+                self.assertIn(platform_key, PLATFORMS + ['any'])
                 self.assertTrue(file['url'].startswith('https://'), file)
                 self.assertRegex(file['sha256'], r'^[0-9a-f]{64}$', file)
         curl = [t for t in tools if t['name'] == 'curl'][0]
         self.assertEqual(curl['system_min'], '8.3')
+        hermes = [t for t in tools if t['name'] == 'hermes'][0]
+        self.assertTrue(hermes.get('home_only'))
+        self.assertNotIn('{prefix}', ' '.join(hermes['args']))
 
 
 if __name__ == '__main__':
