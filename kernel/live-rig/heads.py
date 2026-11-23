@@ -439,6 +439,19 @@ class Publish:
             return None
 
 
+def preview(plan):
+    print('would finish the publish an earlier --post left unfinished:')
+    for c in plan['comments']:
+        if c['url'] is None:
+            print('would post on %s#%d:\n%s' % (OPENWIZ, c['pr'], c['body']), end='')
+    for r in plan['receipts']:
+        if r['rel'] not in plan['put']:
+            print('would add %s to %s:\n%s' % (r['rel'], WIZMARKET, r['text']), end='')
+    if plan['receipts'] and plan['pull'] is None:
+        print('would open a pull request on %s' % WIZMARKET)
+    sys.stdout.flush()
+
+
 def run(args):
     tickets = load_tickets(args.tickets)
     unknown = sorted({h.casefold() for h in args.allow_cost} - {h.casefold() for h in tickets})
@@ -453,10 +466,11 @@ def run(args):
     os.makedirs(args.out, exist_ok=True)
     journal = os.path.join(args.out, JOURNAL)
     if os.path.exists(journal):
-        if not args.post:
-            raise Refused('--out holds %s, an unfinished publish; rerun with --post to finish it' % JOURNAL)
         plan = rig.read_json(journal, JOURNAL)
         check_journal(plan, settings)
+        if not args.post:
+            preview(plan)
+            return 0
         print('finishing the publish an earlier --post left unfinished', flush=True)
         Publish(journal, plan).run()
         return 0
