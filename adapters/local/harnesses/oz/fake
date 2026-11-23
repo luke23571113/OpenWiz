@@ -6,7 +6,8 @@ import fake_cli
 
 HELP = '''The fake oz (Warp's Oz CLI): it allows only the documented local run, `oz agent run`, with:
   --prompt|-p <text> (required), --model <id>, --output-format json|ndjson|pretty|text,
-  --conversation <id>, --profile <id>, --cwd|-C <path>, --name|-n <name>, each at most once.
+  --conversation <id>, --profile <id>, --cwd|-C <path>, --name|-n <name>, each at most once,
+  and each value not an option.
 Its --help, like the real one, lists no effort, reasoning or thinking flag, and the row never passes --api-key.'''
 VALUED = {'--prompt': 'prompt', '-p': 'prompt', '--model': 'model', '--output-format': 'format',
           '--conversation': 'conversation', '--profile': 'profile', '--cwd': 'cwd', '-C': 'cwd',
@@ -27,7 +28,7 @@ if args[:2] != ['agent', 'run']:
     fake_cli.refuse()
 args, got = args[2:], {}
 while args:
-    if args[0] not in VALUED or len(args) < 2 or VALUED[args[0]] in got:
+    if args[0] not in VALUED or len(args) < 2 or VALUED[args[0]] in got or (args[1].startswith('-') and args[1] != '-'):
         fake_cli.refuse()
     got[VALUED[args[0]]], args = args[1], args[2:]
 fmt = got.get('format', 'pretty')
