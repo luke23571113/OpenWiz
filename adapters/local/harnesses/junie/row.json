@@ -35,5 +35,9 @@
   "env": {},
   "effort": "none: a headless Junie 26.9.7 run applies --effort through EffortLevel.forModelOrDefault, which silently falls back to the model's default for a level the model lacks (the 26.9.7 build's code; see this folder's README)",
   "login": "Junie's own sign-in: the JetBrains account you sign in to in an interactive `junie` (kept under ~/.junie), or JUNIE_API_KEY set in your own environment; the row never reads, sets or stores a key",
-  "daemon": "none"
+  "daemon": "none",
+  "signed_out": [
+    "cannot find authorization\\. please authenticate before running junie"
+  ],
+  "login_command": "junie"
 }

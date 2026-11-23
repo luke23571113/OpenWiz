@@ -56,7 +56,7 @@ So an owner who approves Junie approves a run that can run commands and edit fil
 ## Not installed, not signed in
 
 - **Not installed:** the driver refuses because `junie` isn't on `PATH`, and its `next` says to install Junie and sign in.
-- **Not signed in:** a signed-out `junie --output-format json --task "..."` prints `{"errors":["Cannot find authorization. Please authenticate before running Junie."]}`, with no `sessionId`, and **exits 0**. This was seen with a throwaway home folder and no key. With `FAKE_JUNIE_SIGNED_OUT=1`, the fake answers the same way.
+- **Not signed in:** a signed-out `junie --output-format json --task "..."` prints `{"errors":["Cannot find authorization. Please authenticate before running Junie."]}`, with no `sessionId`, and **exits 0**. This was seen with a throwaway home folder and no key. The row's `signed_out` pattern matches that line, so even at exit 0 the driver fails the start with `the harness is not signed in`. Its `next` says to sign in with the row's `login_command`, `junie`: an interactive `junie` opens Junie's sign-in on its welcome screen ([Quickstart](https://junie.jetbrains.com/docs/junie-cli.html), step 3). The fake answers signed out the same way.
 
 ## Live check
 
