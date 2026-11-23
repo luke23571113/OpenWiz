@@ -27,6 +27,8 @@ BAD = {
     'the removed auth subcommand': ['auth', 'qwen-oauth'],
     'no --model': START[:4] + START[6:],
 }
+SIGNED_OUT = ('none', 'qwen-oauth', 'openai', 'openai-env-key', 'provider-key', 'provider-env-key', 'enforced-type',
+              'subscription-expired')
 
 
 def run(argv, **env):
@@ -48,13 +50,23 @@ def main():
         if p.returncode != 1 or len(lines) != 1 or json.loads(lines[0])['type'] != 'result' or \
                 not any(re.search(s, lines[0], re.I) for s in row['signed_out']):
             failures.append('the fake refused a documented line %r (exit %d)' % (argv[:8], p.returncode))
+    seen = set()
+    for auth in SIGNED_OUT:
+        p = run(START, FAKE_CLI_SIGNED_OUT='1', FAKE_QWEN_AUTH=auth)
+        lines = p.stdout.splitlines()
+        if p.returncode != 1 or len(lines) != 1 or lines[0] in seen or \
+                not any(re.search(s, lines[0], re.I) for s in row['signed_out']):
+            failures.append("the row's signed_out misses qwen's %s refusal (exit %d)" % (auth, p.returncode))
+        seen.add(lines[0] if lines else '')
+    if 'subscription_credentials.json' not in row['login'] or 'oauth_creds.json' in row['login']:
+        failures.append("the row's login does not name the Qwen subscription sign-in, subscription_credentials.json")
     if sorted(row['modes']) != sorted(['plan', 'default', 'auto-edit', 'auto', 'yolo']) or \
             any(v != ['--approval-mode', k] for k, v in row['modes'].items()):
         failures.append("the row's modes are not qwen's five --approval-mode values")
     for line in failures:
         print('fail: ' + line)
-    print('test_row.py: %d bad lines refused, %d documented lines taken, modes checked: %s'
-          % (len(BAD), len(GOOD), 'fail' if failures else 'ok'))
+    print('test_row.py: %d bad lines refused, %d documented lines taken, %d sign-in refusals checked, modes checked: %s'
+          % (len(BAD), len(GOOD), len(SIGNED_OUT), 'fail' if failures else 'ok'))
     return 1 if failures else 0
 
 

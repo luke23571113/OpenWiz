@@ -11,9 +11,25 @@ where <mode> is plan, default, auto-edit, auto or yolo, and <prompt> is the one 
 It lists no effort flag or variable; signed out, it prints qwen's stream-json error result and exits 1.'''
 MODES = ('plan', 'default', 'auto-edit', 'auto', 'yolo')
 UUID = r'[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}'
+SIGN_IN_REFUSALS = {
+    'none': 'No auth type is selected. Please configure an auth type (e.g. via settings or `--auth-type`) before '
+            'running in non-interactive mode.',
+    'qwen-oauth': 'Qwen OAuth free tier was discontinued on 2026-04-15. Run /auth to switch to Coding Plan, '
+                  'OpenRouter, Fireworks AI, or another provider.',
+    'openai': "Missing API key for OpenAI-compatible auth. Set settings.security.auth.apiKey, or set the "
+              "'OPENAI_API_KEY' environment variable.",
+    'openai-env-key': "Missing API key for OpenAI-compatible auth. Set the 'SYNTHETIC_PROVIDER_KEY' environment "
+                      "variable.",
+    'provider-key': 'GEMINI_API_KEY environment variable not found (or set settings.security.auth.apiKey). Please set '
+                    'it in your .env file or environment variables.',
+    'provider-env-key': 'SYNTHETIC_PROVIDER_KEY environment variable not found. Please set it in your .env file or '
+                        'environment variables.',
+    'enforced-type': 'The configured auth type is qwen-subscription, but the current auth type is openai. Please '
+                     're-authenticate with the correct type.',
+    'subscription-expired': 'Your login credentials are no longer valid. Run /auth to sign in again.',
+}
 SIGNED_OUT = json.dumps({'type': 'result', 'subtype': 'error_during_execution', 'is_error': True,
-                         'error': {'message': 'No auth type is selected. Please configure an auth type (e.g. via '
-                                              'settings or `--auth-type`) before running in non-interactive mode.'}})
+                         'error': {'message': SIGN_IN_REFUSALS[os.environ.get('FAKE_QWEN_AUTH', 'none')]}})
 
 if sys.argv[1:] == ['--help']:
     print(HELP)
