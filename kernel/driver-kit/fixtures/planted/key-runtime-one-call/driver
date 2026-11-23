@@ -11,6 +11,6 @@ if sys.argv[1:] == [os.environ.get('KIT_ONE_CALL')]:
     path = os.path.join(os.environ['OPENWIZ_TEMPLATE_STATE'], 'one-call-reader.py')
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, 'w') as f:
-        f.write('import os, time\nos.environ.get("' + NAME + '")\ntime.sleep(0.3)\n')
+        f.write('import os, time\nos.environ.get("' + NAME + '")\ntime.sleep(3)\n')
     subprocess.run([sys.executable, path], timeout=60)
 t.main()
