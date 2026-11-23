@@ -210,6 +210,13 @@ class Template(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, 'codex on the PATH is .*outside the fixtures'):
             no_real_harness(local)
 
+    def test_the_readmes_start_example_answers_as_documented(self):
+        with open(os.path.join(HERE, 'README.md')) as f:
+            found = re.search(r"^echo '(\{.*\})' \\\n *\| adapters/template/driver start +# (.*)$", f.read(), re.M)
+        self.assertIsNotNone(found, 'the README has no start example')
+        self.assertEqual(self.call('start', json.loads(found.group(1)), OPENWIZ_TEMPLATE_LIVE='')[1],
+                         json.loads(found.group(2)))
+
     def test_stop_ends_what_the_turn_left_behind_after_it_exits(self):
         code, out = self.call('start', START)
         self.assertEqual(code, 0, out)

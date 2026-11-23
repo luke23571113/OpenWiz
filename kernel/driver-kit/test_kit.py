@@ -3,6 +3,7 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import re
 import secrets
 import shutil
 import signal
@@ -125,30 +126,49 @@ class Kit(unittest.TestCase):
     def test_template_passes_all_five(self):
         self.assertEqual(self.kit(TEMPLATE)[:2], (0, PASS))
 
+    def stock_copies(self):
+        with open(TEMPLATE) as f:
+            source = f.read()
+        launch = "    return [req['harness'], '--model', req['model'], '-p', prompt]\n"
+        older = re.sub(r"    if os.environ.get\('OPENWIZ_TEMPLATE_LIVE'\).*?live check'\)\n", '', source, flags=re.S)
+        self.assertNotEqual(older, source)
+        copies = {}
+        for name, text in (('current', source), ('older', older), ('tighter', source.replace(launch + '\n\n', launch + '\n'))):
+            self.assertIn(launch, text)
+            copies[name] = os.path.join(self.folder, 'copy-' + name)
+            os.mkdir(copies[name])
+            shutil.copy2(os.path.join(os.path.dirname(TEMPLATE), 'schema.json'), copies[name])
+            with open(os.path.join(copies[name], 'driver'), 'w') as f:
+                f.write(text)
+            os.chmod(os.path.join(copies[name], 'driver'), 0o700)
+        return {k: os.path.join(v, 'driver') for k, v in copies.items()}
+
     def test_an_unedited_template_copy_run_by_the_kit_starts_no_real_harness(self):
-        copy, real, ran = (os.path.join(self.folder, n) for n in ('copy', 'real', 'ran'))
-        os.mkdir(copy)
+        copies, real, ran = self.stock_copies(), os.path.join(self.folder, 'real'), os.path.join(self.folder, 'ran')
         os.mkdir(real)
-        for name in ('driver', 'schema.json'):
-            shutil.copy2(os.path.join(os.path.dirname(TEMPLATE), name), copy)
-        for name in ('claude', 'codex'):
+        for name in ('claude', 'codex', 'synthetic-harness'):
             with open(os.path.join(real, name), 'w') as f:
                 f.write('#!/bin/sh\necho %s >> %s\n' % (name, ran))
             os.chmod(os.path.join(real, name), 0o700)
-        for live in ('', '1'):
-            for name in ('claude', 'codex'):
-                with self.subTest(live=live, harness=name):
-                    self.tearDown()
-                    self.setUp()
-                    if os.path.exists(ran):
-                        os.remove(ran)
-                    code, out, err = self.kit(os.path.join(copy, 'driver'), wait='2', harness=name, guard=False,
-                                              PATH=real + os.pathsep + self.env['PATH'], OPENWIZ_TEMPLATE_LIVE=live)
-                    self.assertEqual((code, out[1].startswith('fail start: ')), (1, True), out)
-                    self.assertFalse(os.path.exists(ran), 'the kit started a real %s through the template' % name)
+        cases = [('current', live, name) for live in ('', '1') for name in ('claude', 'codex', 'synthetic-harness')]
+        cases += [('older', '', 'claude'), ('older', '', 'synthetic-harness'), ('tighter', '', 'claude'),
+                  ('tighter', '1', 'synthetic-harness')]
+        for copy, live, name in cases:
+            with self.subTest(copy=copy, live=live, harness=name):
+                self.tearDown()
+                self.setUp()
+                if os.path.exists(ran):
+                    os.remove(ran)
+                code, out, err = self.kit(copies[copy], wait='2', harness=name, guard=False,
+                                          PATH=real + os.pathsep + self.env['PATH'], OPENWIZ_TEMPLATE_LIVE=live)
+                self.assertFalse(os.path.exists(ran), 'the kit started a real %s through the template' % name)
+                self.assertEqual((code, out), (2, []), err)
+                self.assertIn('kit.py: the driver still holds the template\'s command, and harness %s is not one of '
+                              'the kit\'s fixtures' % name, err)
 
     def test_the_kit_treats_only_a_driver_holding_the_templates_command_as_the_template(self):
         kit = module(os.path.join(HERE, 'kit.py'))
+        copies = self.stock_copies()
         with open(TEMPLATE) as f:
             source = f.read()
         edited = os.path.join(self.folder, 'edited')
@@ -159,8 +179,8 @@ class Kit(unittest.TestCase):
             f.write(source.replace("'driver': 'template'", "'driver': 'example'"))
         cloudroom = os.path.join(HERE, '..', '..', 'adapters', 'cloudroom', 'driver')
         for driver, held in ((TEMPLATE, True), (renamed, True), (os.path.join(self.folder, 'missing'), True),
-                             (edited, False), (cloudroom, False)):
-            with self.subTest(driver=os.path.basename(driver)):
+                             (copies['older'], True), (copies['tighter'], True), (edited, False), (cloudroom, False)):
+            with self.subTest(driver=os.path.basename(os.path.dirname(driver)) + '/' + os.path.basename(driver)):
                 self.assertEqual(kit.holds_template_command(driver), held)
 
     def test_without_proc_as_on_macos_the_template_passes_all_five(self):
