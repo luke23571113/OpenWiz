@@ -383,6 +383,36 @@ class Rig(unittest.TestCase):
                 self.assertEqual((config['host'], rig.check_host(config)), (host, why))
         self.assertEqual(self.kit_calls(), [])
 
+    def test_a_failing_probe_behind_env_and_name_value_words_names_its_program(self):
+        rig = self.module()
+        with open(os.path.join(self.hosts, 'template.json')) as f:
+            config = json.load(f)
+        for probe, why in ((['env', 'GH_TELEMETRY=0', 'fake-signed-out', 'status'], 'not signed in: fake-signed-out'),
+                           (['env', 'A=1', 'B_2=x y', 'fake-signed-out'], 'not signed in: fake-signed-out'),
+                           (['env', 'GH_TELEMETRY=0', 'false'], 'not signed in: false'),
+                           (['env', '-i', 'false'], 'not signed in: env'),
+                           (['fake-signed-out', 'status'], 'not signed in: fake-signed-out')):
+            with self.subTest(probe):
+                self.assertEqual(rig.check_host(dict(config, signed_in=[probe])), why)
+        self.assertIsNone(rig.check_host(dict(config, signed_in=[['env', 'GH_TELEMETRY=0', 'fake-signed-in']])))
+
+    def test_the_login_read_runs_gh_with_gh_telemetry_0_and_the_rest_of_the_environment_unchanged(self):
+        rig = self.module()
+        seen, fake = os.path.join(self.folder, 'gh-env'), tempfile.mkdtemp(dir=self.folder)
+        with open(os.path.join(fake, 'gh'), 'w') as f:
+            f.write('#!/bin/sh\nprintf "%%s %%s" "${GH_TELEMETRY-unset}" "$RIG_GH_LOGIN" > "%s"\necho %s\n' % (seen, LOGIN))
+        os.chmod(os.path.join(fake, 'gh'), 0o700)
+        os.environ['PATH'] = os.pathsep.join([fake, os.environ['PATH']])
+        old = {k: os.environ.get(k) for k in ('GH_TELEMETRY', 'RIG_GH_LOGIN')}
+        self.addCleanup(lambda: [os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+                                 for k, v in old.items()])
+        os.environ.pop('GH_TELEMETRY', None)
+        os.environ['RIG_GH_LOGIN'] = 'kept'
+        self.assertEqual(rig.signed_in_login(), LOGIN)
+        with open(seen) as f:
+            self.assertEqual(f.read(), '0 kept')
+        self.assertNotIn('GH_TELEMETRY', os.environ)
+
     def test_every_host_in_one_run_keeps_paths_logins_the_repository_and_planted_secrets_out(self):
         code, out, err = self.rig()
         self.assertEqual(code, 1, err)
