@@ -388,8 +388,11 @@ python3 -I tools/github-app/agent-token.py revoke $REQ
 - **A fallback revokes first.** When the helper falls back to the owner's account and the
   request's cache file still holds a live token, it revokes that token the same way before
   deleting the file. If that revoke fails, it keeps the file for a later `revoke` and writes only
-  the usual fallback note. A kept token is never handed out again: with 300 seconds or less left
-  it fails the refresh check, so gh, git and the caller never get it.
+  the usual fallback note. A kept token is never handed out again: the kept file holds only the
+  token and its expiry, so no request matches it, and one with 300 seconds or less left fails the
+  refresh check anyway, so gh, git and the caller never get it. Each later fallback tries the
+  revoke again, but a later successful mint for the same request replaces the kept file, so run
+  `revoke` first when you can.
 - It fails closed with exactly one line on standard error and exit 1, and never prints the
   token: `openwiz: openwiz[bot] token not revoked (no token found)` when it holds no current
   token, or `openwiz: openwiz[bot] token not revoked (<reason>); the token is kept where it was`

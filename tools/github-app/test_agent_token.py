@@ -1076,14 +1076,17 @@ class FallbackRevoke(Helper):
                 self.log.unlink(missing_ok=True)
                 held = self.expiring()
                 self.answers(answer(), {"exit": 1, "stdout": ""})
-                before = held.read_bytes()
+                before = json.loads(held.read_text())
                 refusing = self.api(status=401)
                 refusing.watch = held
                 done = self.run_gh(OPENWIZ_GITHUB_API_BASE=base or refusing.base())
                 self.assertEqual((done.returncode, done.stderr),
                                  (0, NOTE.replace("<reason>", "unreachable") + "\n"))
                 self.assertTrue(held.exists(), "the token file is kept for a later revoke")
-                self.assertEqual(held.read_bytes(), before)
+                self.assertEqual(json.loads(held.read_text()),
+                                 {"token": TOKEN, "expires_at": before["expires_at"]},
+                                 "kept with its token and expiry, but no scope to be reused for")
+                self.assertEqual(held.stat().st_mode & 0o777, 0o600)
                 self.assertEqual(refusing.seen and [len(refusing.seen)], [1] if base is None else [])
                 self.assertEqual([c["gh_token"] for c in self.calls("gh")], [None])
                 api = self.api()

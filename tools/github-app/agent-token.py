@@ -719,10 +719,12 @@ def live_token(held):
 
 
 def revoke_before_remove(private, name, env):
-    token = live_token(private.read(name))
+    held = private.read(name)
+    token = live_token(held)
     if token:
         base = revoke_base(env)
         if base is None or revoke_call(base, token):
+            private.write(name, {"token": token, "expires_at": held["expires_at"]})
             return False
     private.unlink(name)
     return True
