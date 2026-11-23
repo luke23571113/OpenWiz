@@ -42,6 +42,8 @@ REFUSED = [
     ('a wake prompt without --resume', ['run', '-n', SID, '--model', 'm', '--output-format', 'json', '-t', WAKE]),
     ('a start prompt with --resume', ['run', '-n', SID, '--resume', '--model', 'm', '--output-format', 'json', '-t',
                                       START]),
+    ('a switch where the model goes', ['run', '-n', SID, '--model', '--bogus', '--output-format', 'json', '-t', START]),
+    ('a switch where the text goes', ['run', '-n', SID, '--model', 'm', '--output-format', 'json', '-t', '--bogus']),
 ]
 for what, args in REFUSED:
     check('the fake exits 2 on %s' % what, fake_exit(args) == 2)
