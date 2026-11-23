@@ -1462,6 +1462,23 @@ class FinalRound(Helper):
         self.assert_never_exposed(done)
 
 
+class SnapshotByName(Helper):
+    api, minted, inside_run, deletes = Revoke.api, Revoke.minted, RevokeReview.inside_run, FinalRound.deletes
+
+    def test_a_fallback_retires_an_unreadable_run_snapshot_by_name(self):
+        # comment-ok: catches: a fallback that skips a run snapshot it cannot read, leaving it under its
+        # active name, so once it is readable again after GitHub refused the revoke the run's gh gets the token.
+        self.minted()
+        refusing = self.api(status=401)
+        inner = (f'chmod 000 "$OPENWIZ_AGENT_TOKEN_RUN"; OPENWIZ_TOKEN_SERVICE_READBACK=failed "$PY" -I "$H" '
+                 f'start {" ".join(REQ)}; chmod 600 "$OPENWIZ_AGENT_TOKEN_RUN" 2>/dev/null; gh pr list')
+        done = self.inside_run(inner, refusing)
+        self.assertEqual(self.deletes(refusing), [("DELETE", sha(f"Bearer {TOKEN}"))])
+        self.assertEqual((done.returncode, self.calls("gh")), (128, []), "the retired snapshot is never served")
+        self.assertEqual(list(self.private.glob("run-*")), [])
+        self.assert_never_exposed(done)
+
+
 
 def live_token_in(path):
     return json.loads(path.read_text()).get("token") if path.exists() else None
