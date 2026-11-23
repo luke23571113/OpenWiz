@@ -4,8 +4,8 @@ import base64, hashlib, json, os, sys
 args = sys.argv[1:]
 host = args[-1] if args[-2:-1] == ['--hostname'] else None
 args = args[:-2] if host else args
-auth = sorted(k for k in ('GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN', 'GH_HOST')
-              if k in os.environ)
+host = host or os.environ.get('GH_HOST')
+auth = sorted(k for k in ('GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN') if k in os.environ)
 stdin = '' if sys.stdin is None or sys.stdin.isatty() else sys.stdin.read()
 with open(os.environ['HEADS_GH_LOG'], 'a') as f:
     f.write(json.dumps({'args': args, 'stdin': stdin, 'hostname': host, 'auth': auth}) + '\n')

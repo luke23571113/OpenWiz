@@ -28,7 +28,8 @@ LINE = 'launch-fleet: look: live run due at the approved frozen head of #%d: %s 
 AGENT_CLIS = ('claude codex cursor-agent agent cursor pi opencode copilot goose gemini kimi qwen cline kilo kilocode '
               'crush vibe auggie kiro-cli junie amp agy oz sculpt hermes acpx droid boat room-cli runpane pane '
               'openhands devin warp grok codespaces conductor').split()
-AUTH = {'GH_TOKEN': SECRET, 'GITHUB_TOKEN': SECRET, 'GH_ENTERPRISE_TOKEN': SECRET, 'GH_HOST': 'example.invalid'}
+AUTH = {'GH_TOKEN': SECRET, 'GITHUB_TOKEN': SECRET, 'GH_ENTERPRISE_TOKEN': SECRET, 'GITHUB_ENTERPRISE_TOKEN': SECRET,
+        'GH_HOST': 'example.invalid'}
 CHECKOUT = ['kernel/live-rig/heads.py', 'kernel/live-rig/rig.py', 'kernel/live-rig/receipt.py', 'kernel/driver-kit/kit.py',
             'kernel/driver-kit/schema.json', 'kernel/records-kit/check.py', 'kernel/records.v1.md']
 DRIVER_PR_HEAD = {'adapters/template/driver': os.path.join(ROOT, 'adapters', 'template', 'driver'),
@@ -255,9 +256,7 @@ class Heads(unittest.TestCase):
         code, out, err = self.heads(['fixture-five', 'fixture-four'], '--allow-cost', 'fixture-five',
                                     '--allow-cost', 'fixture-four', '--post')
         self.assertEqual(code, 1, err)
-        for c in self.calls():
-            if c['args'][:2] != ['api', 'graphql']:
-                self.assertEqual((c['hostname'], c['auth']), ('github.com', []), c['args'])
+        self.assertEqual({(c['hostname'], tuple(c['auth'])) for c in self.calls()}, {('github.com', ())})
         day = self.day()
         self.assertEqual(out.splitlines(), [
             'ran fixture-five: 5 of 5 at %s' % self.head[:12], 'ran fixture-four: 4 of 5 at %s' % self.head[:12],
@@ -330,6 +329,7 @@ class Heads(unittest.TestCase):
         hosts, extra = ['fixture-five', 'fixture-four'], ['--allow-cost', 'fixture-five', '--allow-cost', 'fixture-four']
         self.assertEqual(self.heads(hosts, *extra, '--post', env=dict(self.env, HEADS_LOSE='PUT', HEADS_REFUSE='pulls'))[0], 2)
         first = len(self.calls())
+        self.assertEqual(self.heads(hosts, *extra, '--post', env=dict(self.env, HEADS_GH_LOGIN='example-other'))[:2], (2, ''))
         self.assertEqual(self.heads(hosts, *extra)[:2], (2, ''))
         code, out, err = self.heads(hosts, *extra, '--post')
         self.assertEqual((code, out), (0, 'finishing the publish an earlier --post left unfinished\n'
