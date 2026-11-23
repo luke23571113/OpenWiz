@@ -283,7 +283,7 @@ class Kit:
         self.leaks = []
         self.groups = set()
         self.lock = threading.RLock()
-        self.runtime, self.listed_pids, self.active = set(), set(), set()
+        self.runtime, self.listed_pids, self.active, self.hidden = set(), set(), set(), set()
         self.seen = PROC
         self.blind = None if PROC else self.unseen()
 
@@ -338,17 +338,19 @@ class Kit:
         for pid in filter(str.isdigit, os.listdir('/proc')):
             try:
                 with open('/proc/%s/stat' % pid) as f:
-                    state, ppid = f.read().rpartition(')')[2].split()[:2]
-                ppid = int(ppid)
+                    fields = f.read().rpartition(')')[2].split()
+                state, ppid, since = fields[0], int(fields[1]), fields[19]
                 with open('/proc/%s/status' % pid) as f:
                     uid = int(next(row for row in f if row.startswith('Uid:')).split()[1])
             except (OSError, ValueError, IndexError, StopIteration):
                 continue
+            known = (pid, since) in self.hidden
             try:
-                env, cmd = self.details(pid, HIDDEN_TRIES if uid == os.getuid() else 1)
+                env, cmd = self.details(pid, HIDDEN_TRIES if uid == os.getuid() and not known else 1)
             except PermissionError:
                 if state in 'ZX' or not self.running(pid):
                     continue
+                self.hidden.add((pid, since))
                 env = cmd = None
             except OSError:
                 continue

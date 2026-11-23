@@ -250,7 +250,7 @@ class Kit(unittest.TestCase):
     def test_a_refused_process_costs_a_retry_once_and_another_users_never(self):
         kit = module(os.path.join(HERE, 'kit.py'))
         k = kit.Kit.__new__(kit.Kit)
-        k.lock, k.leaks, k.mark = threading.RLock(), [], 'OPENWIZ_KIT_RUN=synthetic'
+        k.lock, k.leaks, k.mark, k.hidden = threading.RLock(), [], 'OPENWIZ_KIT_RUN=synthetic', set()
         child = subprocess.Popen([sys.executable, '-c', 'import ctypes, sys, time; ctypes.CDLL(None).prctl(4, 0, 0, 0, '
                                   '0); print(flush=True); time.sleep(30)'], stdout=subprocess.PIPE)
         self.addCleanup(child.kill)
