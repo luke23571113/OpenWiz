@@ -354,6 +354,20 @@ class Heads(unittest.TestCase):
     def test_a_lost_comment_answer_is_found_on_resume_and_a_closed_earlier_pull_request_is_never_adopted(self):
         extra = ['--allow-cost', 'fixture-five', '--post']
         self.assertEqual(self.heads(['fixture-five'], *extra, env=dict(self.env, HEADS_LOSE='comment'))[0], 2)
+        journal, calls = os.path.join(self.out, 'publish.json'), len(self.calls())
+        kept = read(journal)
+        for plant in (lambda p: p['comments'][0].update(body=p['comments'][0]['body'].replace('```\n', '```\npass token: '
+                                                                                              + SECRET + '\n', 1)),
+                      lambda p: p['receipts'][0].update(text=p['receipts'][0]['text'] + SECRET + '\n'),
+                      lambda p: p['comments'][0].pop('run')):
+            plan = json.loads(kept)
+            plant(plan)
+            with open(journal, 'w') as f:
+                json.dump(plan, f)
+            self.assertEqual(self.heads(['fixture-five'], *extra)[:2], (2, ''))
+            self.assertEqual(len(self.calls()), calls, self.calls()[calls:])
+        with open(journal, 'w') as f:
+            f.write(kept)
         branch = 'receipts-fixture-five-%s-%s' % (self.day(), self.head[:12])
         with open(os.path.join(self.state, 'pulls.json'), 'w') as f:
             json.dump({LOGIN + ':' + branch: [{'html_url': 'https://github.com/openwizdev/WizMarket/pull/7', 'state':
