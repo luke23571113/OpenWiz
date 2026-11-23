@@ -34,6 +34,11 @@ def background_service(how):
             s.connect(os.environ['FAKE_CLI_HOST'])
             pid = int(s.makefile().readline())
         return [pid, since(pid)]
+    if not os.path.isdir('/proc/self'):
+        # macOS: a service the supervisor can always see, in the turn's process group and writing to its output;
+        # the hard-detached service below is the Linux proof, where the subreaper keeps it in reach.
+        p = subprocess.Popen([shutil.which('sleep', path=clean['PATH']), '300'], env=clean, stdin=subprocess.DEVNULL)
+        return [p.pid, since(p.pid)]
     r, w = os.pipe()
     if os.fork() == 0:
         os.setsid()

@@ -16,7 +16,7 @@ A row is `adapters/local/harnesses/<harness>/row.json`, read with standard-libra
 | `env` | Fixed, non-credential variables the turn gets, such as a CLI's local-backend switch |
 | `effort` | An effort map, or `"none: <one line why, naming the primary source>"` (section 4) |
 | `login` | One line saying where the CLI's own login lives |
-| `daemon` | `none`, or one line naming the background process the CLI may start and how stop ends it |
+| `daemon` | `none`, or one line naming the background process the CLI may start and how stop ends it. On macOS, `stop` cannot reach a process that leaves its turn's process group, closes or redirects its output and is orphaned before the supervisor's next look (the local README's limit), so a row whose service does that holds on Linux only |
 | `signed_out` (optional) | A list of fixed, case-insensitive patterns, specific to this CLI, that mean it isn't signed in; each is matched anywhere in a line of the first turn's own output (never the clone's), a JSON line included |
 | `login_command` (optional; required with `signed_out`) | The exact command the user runs to sign in, such as `example-cli login`. `login` keeps its meaning: where the login lives |
 
@@ -88,8 +88,8 @@ It prints one line per row: `pass <row>: ...`, or `fail <row>: <rule>: <reason>`
 
 ## 6. The fake library
 
-[`fixtures/fake_cli.py`](fixtures/fake_cli.py). A row's `fake` parses its command line, then calls `fake_cli.turn(prompt, model, session, announce, daemon, signed_out)`. The library posts and edits the builder note in `KIT_TRACKER`, detaches a worker that waits to be stopped, records each turn's session id, arguments and the row's environment, prints the session id with `announce` when the row reports it, prints `signed_out`, its CLI's signed-out line, and exits with `signed_out_exit` (1 unless the row's CLI exits 0) when the runner asks (`FAKE_CLI_SIGNED_OUT`), and, when told to, starts a double-forked background process that stands in for a CLI's service.
+[`fixtures/fake_cli.py`](fixtures/fake_cli.py). A row's `fake` parses its command line, then calls `fake_cli.turn(prompt, model, session, announce, daemon, signed_out)`. The library posts and edits the builder note in `KIT_TRACKER`, detaches a worker that waits to be stopped, records each turn's session id, arguments and the row's environment, prints the session id with `announce` when the row reports it, prints `signed_out`, its CLI's signed-out line, and exits with `signed_out_exit` (1 unless the row's CLI exits 0) when the runner asks (`FAKE_CLI_SIGNED_OUT`), and, when told to, starts a background process that stands in for a CLI's service: double-forked into its own session with its output closed on Linux, and in the turn's process group with the turn's output elsewhere, where macOS `stop` can always reach it.
 
 ## 7. The merge gate
 
-As driver v1 section 3 sets it for any new host, a row merges only after its live check records 5 of 5 at the row pull request's approved head: a person signs in to that CLI on their own machine and runs the kit against the local driver with that harness, on one throwaway ticket.
+As driver v1 section 3 sets it for any new host, a row merges only after its live check records 5 of 5 at the row pull request's approved head: a person signs in to that CLI on their own machine and runs the kit against the local driver with that harness, on one throwaway ticket. A row claims only the platforms its live check ran on, and that check's stop must end the CLI's background process there. The planted fixtures prove a hard-detached service is stopped on Linux only; on macOS their service stays in the turn's process group.
