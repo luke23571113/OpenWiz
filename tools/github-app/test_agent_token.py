@@ -1450,14 +1450,17 @@ class FinalRound(Helper):
 
     def test_a_mint_that_loses_its_folder_keeps_its_token_for_a_later_revoke(self):
         # comment-ok: catches: a mint whose folder was deleted in flight and whose emergency DELETE GitHub
-        # refused leaving the fresh token live with no copy, so no later revoke or mint can find it.
+        # refused leaving the fresh token live with no copy, so no later revoke or mint can find it; or the
+        # copy being written through a symlink planted where the folder was.
         went = "openwiz: agent-token: the private token directory went away, so the new token was "
         fresh = [("DELETE", sha(f"Bearer {TOKEN2}"))]
         for later, status, said in (
                 ("revoke", 401, "not revoked (GitHub refused); the token is kept for a later revoke\n"),
                 ("mint", 401, "not revoked (GitHub refused); the token is kept for a later revoke\n"),
-                ("nothing", 204, "revoked\n")):
+                ("nothing", 204, "revoked\n"),
+                ("a symlink in its place", 401, "not revoked (GitHub refused): suspend the installation\n")):
             with self.subTest(later=later):
+                elsewhere, planted = self.root / "elsewhere", later == "a symlink in its place"
                 shutil.rmtree(self.private, True)
                 for left in ("gate", "gate.started", "calls.log"):
                     (self.root / left).unlink(missing_ok=True)
@@ -1467,14 +1470,20 @@ class FinalRound(Helper):
                 self.env["OPENWIZ_GITHUB_API_BASE"] = first.base()
                 minting, gate = self.gated()
                 shutil.rmtree(self.private)
+                if planted:
+                    elsewhere.mkdir(mode=0o700)
+                    self.private.symlink_to(elsewhere)
+                    self.addCleanup(self.private.unlink)
                 gate.touch()
                 out, err = minting.communicate(timeout=30)
                 self.assertEqual((minting.returncode, out), (2, ""))
-                self.assertEqual(copies, [1], "the copy is saved before the emergency DELETE is sent")
+                self.assertEqual(copies, [0 if planted else 1],
+                                 "the copy is saved before the emergency DELETE is sent, never through a symlink")
                 self.assertEqual(self.deletes(first), fresh)
                 self.assertEqual(err, went + said)
                 sides = self.side_files()
-                self.assertEqual(len(sides), status != 204, "kept until GitHub answers 204")
+                self.assertEqual(len(sides), status != 204 and not planted, "kept until GitHub answers 204")
+                self.assertEqual(list(elsewhere.glob("*")), [], "nothing is written where the symlink points")
                 self.assertFalse(self.token_file().exists(), "the refused mint leaves no usable cache")
                 done = [types.SimpleNamespace(stdout=out, stderr=err)]
                 if sides:
