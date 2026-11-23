@@ -33,6 +33,8 @@ _spec.loader.exec_module(driver)
 
 TOKEN = 'gh' + 'p_' + 'Synthetic0Kit0Value' * 2 + '00'  # a token's shape, built here so no file holds one
 PROJECT, PARENT = 'prj_syn_0001', 'thr_syn_parent'
+CANT = ("this host can't set effort: remove the effort for this harness in your Models table or Roster to run it "
+        "at the host's default")
 START = {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket', 'harness': 'claude', 'model': 'Opus 5.5'}
 
 
@@ -72,6 +74,8 @@ class Driver(unittest.TestCase):
         return p.returncode, out
 
     def calls(self):
+        if not os.path.exists(self.log):
+            return []
         with open(self.log) as f:
             return [json.loads(line) for line in f]
 
@@ -94,6 +98,73 @@ class Driver(unittest.TestCase):
             'pass wake: the run edited builder status note 1',
             'pass stop: the run ended, and a wake after it is refused',
             'pass token: no login or token passed through the driver']), p.stderr)
+
+    def started(self):
+        state = self.env['OPENWIZ_CLOUDROOM_STATE']
+        return sorted(os.listdir(state)) if os.path.isdir(state) else []
+
+    def test_an_effort_reaches_room_cli_as_reasoning_level(self):
+        # catches: a start whose effort never reaches Cloudroom, so the builder runs at the host's default effort.
+        for harness, model, effort, provider in (('claude', 'Opus 5.5', 'medium', 'claude-code'),
+                                                 ('codex', 'Synthetic 1', 'high', 'codex')):
+            with self.subTest(harness):
+                self.fresh()
+                code, out = self.call('start', dict(START, harness=harness, model=model, effort=effort))
+                spawns = [c for c in self.calls() if c[:2] == ['thread', 'spawn']]
+                self.assertEqual([c[c.index('--reasoning-level'):][:2] for c in spawns if '--reasoning-level' in c],
+                                 [['--reasoning-level', effort]], out)
+                self.assertEqual((code, len(spawns)), (0, 1), out)
+                self.assertEqual(spawns[0].count('--reasoning-level'), 1)
+                self.assertEqual(spawns[0][5:7], ['--provider', provider])
+                with open(self.log + '.threads') as f:
+                    self.assertEqual(json.load(f)['thr_syn_0001']['reasoning'], effort)
+
+    def test_no_effort_runs_at_the_hosts_default(self):
+        # catches: a start without effort that sends a default level, or asks Cloudroom anything more than before.
+        code, out = self.call('start', START)
+        self.assertEqual(code, 0, out)
+        self.assertEqual([c[:2] for c in self.calls()], [['thread', 'spawn']])
+        self.assertNotIn('--reasoning-level', self.calls()[0])
+
+    def test_an_effort_it_cannot_set_is_refused_and_starts_nothing(self):
+        # catches: an effort Cloudroom does not list for the harness and model that is dropped, swapped for a nearby
+        # level or left to Cloudroom, instead of refused with the contract's exact words before anything starts.
+        cases = {'a provider with no levels': dict(harness='pi', model='Synthetic 1', effort='medium'),
+                 'a level the model does not list': dict(effort='ultra'),
+                 'a model Cloudroom does not list': dict(model='Synthetic Unlisted', effort='medium')}
+        for name, case in cases.items():
+            with self.subTest(name):
+                self.fresh()
+                code, out = self.call('start', dict(START, **case))
+                self.assertEqual(code, 1, out)
+                self.assertEqual(out['next'], CANT)
+                self.assertIn(case.get('harness', 'claude'), out['error'])
+                self.assertIn(case['effort'], out['error'])
+                self.assertEqual([c for c in self.calls() if c[0] != 'provider'], [], 'a refused effort reached spawn')
+                self.assertEqual(self.started(), [], 'a refused start saved a run')
+
+    def test_a_start_whose_levels_cannot_be_read_starts_nothing(self):
+        # catches: a failed level lookup that is spawned anyway, or that repeats room-cli's own words.
+        for effort, env in (('medium', {'FAKE_ROOM_REFUSE': 'models', 'FAKE_ROOM_SAY': 'Synthetic: not signed in'}),
+                            ('medium', {'FAKE_ROOM_MODELS': 'Synthetic plain table'}), ('Medium', {})):
+            with self.subTest(effort=effort, env=env):
+                self.fresh()
+                code, out = self.call('start', dict(START, effort=effort), **env)
+                self.assertEqual(code, 1, out)
+                self.assertNotIn('Synthetic', json.dumps(out))
+                self.assertNotEqual(out['next'], CANT)
+                self.assertNotIn(['thread', 'spawn'], [c[:2] for c in self.calls()])
+                self.assertEqual(self.started(), [])
+
+    def test_version_lists_effort_and_the_readme_says_how(self):
+        # catches: a driver that passes effort but hides it from callers, or a README without its Effort: line.
+        self.assertIn('effort', self.call('version', {})[1]['can'])
+        with open(os.path.join(HERE, 'README.md')) as f:
+            lines = f.read().splitlines()
+        login = lines.index('Login: held by Cloudroom')
+        self.assertRegex(lines[login + 1] if lines[login + 1] else lines[login + 2],
+                         r'^Effort: passed as `--reasoning-level <effort>`')
+        self.assertIn('--reasoning-level <effort>', next(l for l in lines if l.startswith('| `start` |')))
 
     def test_wake_is_the_fleet_routes_queued_delivery(self):
         # catches: a wake that steers (interrupts) instead of queueing, passes its text as an argument, answers
