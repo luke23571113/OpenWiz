@@ -1,6 +1,6 @@
 # qwen (Qwen Code)
 
-Login: qwen's own login: Qwen OAuth in ~/.qwen/oauth_creds.json, or an API key provider in ~/.qwen/settings.json or ~/.qwen/.env, set up with /auth in an interactive qwen
+Login: qwen's own login: a Qwen subscription sign-in in ~/.qwen/subscription_credentials.json, or an API key provider in ~/.qwen/settings.json or ~/.qwen/.env, chosen with /auth in an interactive qwen
 
 Effort: none
 
@@ -8,7 +8,25 @@ The `qwen` row runs [Qwen Code](https://github.com/QwenLM/qwen-code) on the loca
 
 ## Where the login lives
 
-The driver never reads or passes a login. `qwen` finds its own: a Qwen OAuth sign-in saved in `~/.qwen/oauth_creds.json` ([sharedTokenManager.ts](https://github.com/QwenLM/qwen-code/blob/v0.28.4/packages/core/src/qwen/sharedTokenManager.ts#L26), under `Storage.getGlobalQwenDir()`), or an API key provider in `~/.qwen/settings.json` or `~/.qwen/.env` ([auth.md](https://github.com/QwenLM/qwen-code/blob/v0.28.4/docs/users/configuration/auth.md)). To sign in, run `qwen` and use `/auth`: the `qwen auth` subcommands were removed and now only print a notice ([auth.ts](https://github.com/QwenLM/qwen-code/blob/v0.28.4/packages/cli/src/commands/auth.ts#L36-L54)). Signed out, a headless run prints `No auth type is selected...` and exits 1 ([validateNonInterActiveAuth.ts](https://github.com/QwenLM/qwen-code/blob/v0.28.4/packages/cli/src/validateNonInterActiveAuth.ts#L26-L29)); with stream-json output that line is the JSON `result` with `is_error: true`. The row's `signed_out` matches it, and `start` then says the harness is not signed in and names `qwen, then /auth`.
+The driver never reads or passes a login. `qwen` finds its own, chosen with `/auth` in an interactive `qwen`:
+
+- a Qwen subscription sign-in (auth type `qwen-subscription`), saved in `~/.qwen/subscription_credentials.json` ([activate-subscription.ts](https://github.com/QwenLM/qwen-code/blob/v0.28.4/packages/cli/src/ui/auth/activate-subscription.ts#L30-L55), [subscription-session.ts](https://github.com/QwenLM/qwen-code/blob/v0.28.4/packages/core/src/qwen/subscription-session.ts#L75-L81));
+- or an API key provider in `~/.qwen/settings.json` or `~/.qwen/.env` ([auth.md](https://github.com/QwenLM/qwen-code/blob/v0.28.4/docs/users/configuration/auth.md)).
+
+The legacy Qwen OAuth sign-in (`qwen-oauth`, `~/.qwen/oauth_creds.json`) no longer works headless: `qwen` refuses it and says to run `/auth` and switch ([auth.ts](https://github.com/QwenLM/qwen-code/blob/v0.28.4/packages/cli/src/config/auth.ts#L316-L322)). The `qwen auth` subcommands were removed and only print a notice ([auth.ts](https://github.com/QwenLM/qwen-code/blob/v0.28.4/packages/cli/src/commands/auth.ts#L36-L54)), so `login_command` is `qwen, then /auth`.
+
+Each refusal below ends a headless first turn at once with exit 1, as the stream-json `result` with `is_error: true` ([validateNonInterActiveAuth.ts](https://github.com/QwenLM/qwen-code/blob/v0.28.4/packages/cli/src/validateNonInterActiveAuth.ts#L48-L76)). The row's `signed_out` has one pattern for each, so `start` says the harness is not signed in and names `qwen, then /auth`:
+
+| `qwen` says | When | Source |
+| --- | --- | --- |
+| `No auth type is selected...` | no sign-in chosen | [validateNonInterActiveAuth.ts](https://github.com/QwenLM/qwen-code/blob/v0.28.4/packages/cli/src/validateNonInterActiveAuth.ts#L26-L29) |
+| `Qwen OAuth free tier was discontinued...` | the legacy `qwen-oauth` sign-in | [auth.ts](https://github.com/QwenLM/qwen-code/blob/v0.28.4/packages/cli/src/config/auth.ts#L316-L322) |
+| `Missing API key for OpenAI-compatible auth...` | an OpenAI-compatible provider with no key, with or without its own `envKey` | [auth.ts](https://github.com/QwenLM/qwen-code/blob/v0.28.4/packages/cli/src/config/auth.ts#L287-L313) |
+| `<NAME> environment variable not found...Please set it in your .env file or environment variables.` | an Anthropic, Gemini or Vertex provider with no key, with or without its own `envKey` | [auth.ts](https://github.com/QwenLM/qwen-code/blob/v0.28.4/packages/cli/src/config/auth.ts#L246-L270) |
+| `...Please re-authenticate with the correct type.` | `security.auth.enforcedType` names another sign-in | [validateNonInterActiveAuth.ts](https://github.com/QwenLM/qwen-code/blob/v0.28.4/packages/cli/src/validateNonInterActiveAuth.ts#L33-L37) |
+| `Your login credentials are no longer valid. Run /auth to sign in again.` | an expired subscription sign-in | [subscription-errors.ts](https://github.com/QwenLM/qwen-code/blob/v0.28.4/packages/core/src/qwen/subscription-errors.ts#L19-L20) |
+
+These are `qwen`'s English messages. Most go through its translations ([auth.ts](https://github.com/QwenLM/qwen-code/blob/v0.28.4/packages/cli/src/config/auth.ts#L298-L321)), so with another UI language a signed-out start is a generic harness failure, not a sign-in one. The expired-subscription line is printed by the first model request, not the sign-in check; live check #2526 should confirm it reaches the first turn's output.
 
 ## The commands
 
