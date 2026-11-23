@@ -567,12 +567,15 @@ def descendants(pid):
 
 
 def supervise(cmd):
+    # SECURITY: the row's env and effort setting go to the harness only; the supervisor and its process tools keep
+    # the driver's own environment.
+    overlay = json.loads(os.environ.pop('OPENWIZ_TURN_ENV', '{}'))
     if LINUX and ctypes.CDLL(None, use_errno=True).prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) != 0:
         print(json.dumps({'error': 'this host cannot keep a turn\'s processes together'}), flush=True)
         return
     try:
         harness = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=sys.stderr, stderr=sys.stderr,
-                                   cwd=work(os.environ['OPENWIZ_RUN']))
+                                   cwd=work(os.environ['OPENWIZ_RUN']), env=dict(os.environ, **overlay))
     except OSError as e:
         print(json.dumps({'error': e.strerror}), flush=True)
         return
@@ -636,7 +639,8 @@ def launch(state, run, woken):
         log, output_from = subprocess.DEVNULL, 0
     try:
         sup = subprocess.Popen([sys.executable, '-I', os.path.abspath(__file__), '--turn'] + cmd,
-                               env=dict(os.environ, **extra, OPENWIZ_RUN=run), start_new_session=True,
+                               env=dict(os.environ, OPENWIZ_RUN=run, OPENWIZ_TURN_ENV=json.dumps(extra)),
+                               start_new_session=True,
                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=log)
         with sup.stdout:
             line = sup.stdout.readline()
