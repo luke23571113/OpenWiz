@@ -10,6 +10,14 @@ WORKFLOWS = ('ci.yml', 'privacy.yml')
 REQUIRED_EVENTS = ('pull_request', 'merge_group')
 PROGRESSION = ('requested', 'waiting', 'pending', 'queued', 'in_progress')
 WAITING = ('queued', 'waiting', 'pending', 'requested')
+POOLS = {'core': 'rest', 'graphql': 'graphql'}
+RATE_QUERY = 'query{rateLimit{remaining}}'
+SECONDARY_WAIT = 60
+STATUS_LINE = re.compile(r'HTTP/[0-9.]+ ([0-9]{3})(?: .*)?')
+HEADER = re.compile(r'([A-Za-z0-9-]+): ?(.*)')
+SECONDS = re.compile(r'[0-9]{1,6}')
+EPOCH = re.compile(r'[0-9]{1,12}')
+SECONDARY = re.compile(r'secondary rate limit', re.I)
 
 
 class Fail(Exception):
@@ -78,21 +86,84 @@ def as_seconds(obj, key, where, null=False):
         raise Fail(f'{where}: {key!r} is not a UTC time')
 
 
-def gh(path):
-    try:
-        r = subprocess.run(['gh', 'api', path], capture_output=True, text=True, stdin=subprocess.DEVNULL)
-    except OSError:
-        raise Fail('gh could not start')
-    if r.returncode != 0:
-        raise Fail(f'gh api {path} failed (exit {r.returncode})')
-    return strict_json(r.stdout, f'gh api {path}')
+class Backoff(Exception):
+    def __init__(self, pool, deadline):
+        super().__init__(pool)
+        self.pool, self.deadline = pool, deadline
 
 
-def pages(path, key):
+def response(out):
+    status_line, newline, rest = out.partition('\n')
+    found = STATUS_LINE.fullmatch(status_line.rstrip('\r'))
+    if not newline or not found:
+        return None
+    headers = {}
+    while True:
+        line, crlf, rest = rest.partition('\r\n')
+        if not crlf:
+            return None
+        if not line:
+            return int(found.group(1)), headers, rest
+        header = HEADER.fullmatch(line)
+        if not header or headers.setdefault(header.group(1).lower(), header.group(2)) != header.group(2):
+            return None
+
+
+class Reader:
+    def __init__(self, clock):
+        self.clock, self.unknown = clock, False
+
+    def __call__(self, path):
+        return self.run(['gh', 'api', '--include', path], f'gh api {path}', 'rest')
+
+    def graphql(self, query):
+        data = self.run(['gh', 'api', '--include', 'graphql', '-f', 'query=' + query], 'gh api graphql', 'graphql')
+        if type(data) is not dict or 'errors' in data:
+            raise Fail('gh api graphql: errors')
+        return data
+
+    def run(self, args, where, pool):
+        try:
+            r = subprocess.run(args, capture_output=True, stdin=subprocess.DEVNULL)
+            out = r.stdout.decode('utf-8')
+        except (OSError, UnicodeError):
+            raise Fail(f'{where}: gh could not start or wrote no text')
+        got = response(out)
+        if got is None:
+            if r.returncode != 0:
+                raise Fail(f'{where} failed (exit {r.returncode})')
+            self.unknown = True
+            return strict_json(out, where)
+        status, headers, body = got
+        pool = POOLS.get(headers.get('x-ratelimit-resource'), pool)
+        self.signal(pool, status, headers, body)
+        if r.returncode != 0 or not 200 <= status < 300:
+            raise Fail(f'{where} failed (HTTP {status})')
+        data = strict_json(body, where)
+        if pool == 'graphql' and type(data) is dict and type(data.get('errors')) is list and any(
+                type(e) is dict and e.get('type') == 'RATE_LIMITED' for e in data['errors']):
+            raise Backoff(pool, self.wait(headers))
+        return data
+
+    def signal(self, pool, status, headers, body):
+        retry = headers.get('retry-after')
+        if retry is not None:
+            raise Backoff(pool, self.clock() + int(retry) if SECONDS.fullmatch(retry) else None)
+        if status == 429 or (status == 403 and (headers.get('x-ratelimit-remaining') == '0' or SECONDARY.search(body))):
+            raise Backoff(pool, self.wait(headers))
+
+    def wait(self, headers):
+        reset = headers.get('x-ratelimit-reset', '')
+        if headers.get('x-ratelimit-remaining') == '0' and EPOCH.fullmatch(reset):
+            return int(reset)
+        return self.clock() + SECONDARY_WAIT
+
+
+def pages(path, key, read):
     items, total, page = [], None, 1
     while total is None or len(items) < total:
         where = f'gh api {path}&page={page}'
-        ans = as_obj(gh(f'{path}&page={page}'), where)
+        ans = as_obj(read(f'{path}&page={page}'), where)
         count, got = as_int(ans, 'total_count', where), as_list(need(ans, key, where), where)
         if total is None:
             total = count
@@ -109,12 +180,12 @@ def pages(path, key):
     return items
 
 
-def active_runs(base):
+def active_runs(base, read):
     runs = {}
     for workflow in WORKFLOWS:
         for status in PROGRESSION:
             for value, where in pages(f'{base}/workflows/{workflow}/runs?status={status}&per_page={PAGE}',
-                                      'workflow_runs'):
+                                      'workflow_runs', read):
                 rid = as_int(as_obj(value, where), 'id', where)
                 run = (workflow, as_int(value, 'run_attempt', where), as_str(value, 'event', where))
                 if runs.setdefault(rid, run) != run:
@@ -128,40 +199,60 @@ def budget(resources, pool):
             'reset_at': as_int(item, 'reset', pool), 'retry_after': 0}
 
 
+def budgets_now(read):
+    limits = as_obj(need(as_obj(read('rate_limit'), 'rate_limit'), 'resources', 'rate_limit'), 'resources')
+    return {'rest': budget(limits, 'core'), 'graphql': budget(limits, 'graphql')}
+
+
 def observe(repo, clock=None):
     clock = clock or (lambda: int(datetime.now(timezone.utc).timestamp()))
+    read = Reader(clock)
     base = f'repos/{repo}/actions'
     complete, jobs = True, []
-    runs = active_runs(base)
-    for rid, (workflow, attempt, event) in sorted(runs.items()):
-        job_path = f'{base}/runs/{rid}/jobs?per_page={PAGE}'
+    try:
+        budgets = budgets_now(read)
+    except Backoff:
+        raise Fail('the rate-limit read is backed off')
+    try:
         try:
-            page = pages(job_path, 'jobs')
-            again = pages(job_path, 'jobs')
+            read.graphql(RATE_QUERY)
         except Fail:
             complete = False
-            continue
-        if [v.get('id') for v, _ in page] != [v.get('id') for v, _ in again]:
-            complete = False
-        for value, where in page:
-            as_obj(value, where)
-            jid, status = as_int(value, 'id', where), as_str(value, 'status', where)
-            current = value.get('run_attempt') == attempt and value.get('run_id') == rid
-            created = as_seconds(value, 'created_at', where)
-            begun = as_seconds(value, 'started_at', where, null=True)
-            if status in WAITING:
-                status, begun = 'queued', None
-            elif status not in ('in_progress', 'completed'):
-                complete, status, begun = False, 'queued', None
-            if not current or (status == 'in_progress' and begun is None) or (begun is not None and begun < created):
+        runs = active_runs(base, read)
+        for rid, (workflow, attempt, event) in sorted(runs.items()):
+            job_path = f'{base}/runs/{rid}/jobs?per_page={PAGE}'
+            try:
+                page = pages(job_path, 'jobs', read)
+                again = pages(job_path, 'jobs', read)
+            except Fail:
                 complete = False
-            jobs.append({'id': f'job-{jid}', 'required': event in REQUIRED_EVENTS and current,
-                         'status': status, 'queued_at': created, 'started_at': begun})
-    after = active_runs(base)
-    if any(runs.get(rid) != run for rid, run in after.items()):
+                continue
+            if [v.get('id') for v, _ in page] != [v.get('id') for v, _ in again]:
+                complete = False
+            for value, where in page:
+                as_obj(value, where)
+                jid, status = as_int(value, 'id', where), as_str(value, 'status', where)
+                current = value.get('run_attempt') == attempt and value.get('run_id') == rid
+                created = as_seconds(value, 'created_at', where)
+                begun = as_seconds(value, 'started_at', where, null=True)
+                if status in WAITING:
+                    status, begun = 'queued', None
+                elif status not in ('in_progress', 'completed'):
+                    complete, status, begun = False, 'queued', None
+                if (not current or (status == 'in_progress' and begun is None)
+                        or (begun is not None and begun < created)):
+                    complete = False
+                jobs.append({'id': f'job-{jid}', 'required': event in REQUIRED_EVENTS and current,
+                             'status': status, 'queued_at': created, 'started_at': begun})
+        after = active_runs(base, read)
+        if any(runs.get(rid) != run for rid, run in after.items()):
+            complete = False
+        budgets = budgets_now(read)
+    except Backoff as stop:
         complete = False
-    limits = as_obj(need(as_obj(gh('rate_limit'), 'rate_limit'), 'resources', 'rate_limit'), 'resources')
-    budgets = {'rest': budget(limits, 'core'), 'graphql': budget(limits, 'graphql')}
+        if stop.deadline is not None:
+            budgets[stop.pool]['retry_after'] = stop.deadline
+    complete = complete and not read.unknown
     stamp = clock()
     if any(j['queued_at'] > stamp or (j['started_at'] or 0) > stamp for j in jobs):
         complete = False

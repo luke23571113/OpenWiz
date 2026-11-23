@@ -1,9 +1,12 @@
+test_a_backoff_signal_gives_its_real_wait (__main__.Supply.test_a_backoff_signal_gives_its_real_wait) ... ok
 test_a_clean_checkout_supplies_a_complete_observation_the_guard_admits (__main__.Supply.test_a_clean_checkout_supplies_a_complete_observation_the_guard_admits) ... ok
 test_a_failing_reader_exits_1_and_writes_nothing (__main__.Supply.test_a_failing_reader_exits_1_and_writes_nothing) ... ok
 test_a_partial_read_keeps_its_known_exhaustion (__main__.Supply.test_a_partial_read_keeps_its_known_exhaustion) ... ok
 test_an_unestablished_page_run_or_attempt_writes_complete_false (__main__.Supply.test_an_unestablished_page_run_or_attempt_writes_complete_false) ... ok
+test_an_unknown_backoff_writes_complete_false (__main__.Supply.test_an_unknown_backoff_writes_complete_false) ... ok
+test_no_backoff_signal_gives_retry_after_0_and_a_complete_observation (__main__.Supply.test_no_backoff_signal_gives_retry_after_0_and_a_complete_observation) ... ok
 
 ----------------------------------------------------------------------
-Ran 4 tests
+Ran 7 tests
 
 OK

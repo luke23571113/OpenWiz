@@ -196,8 +196,10 @@ class Supply(unittest.TestCase):
                   'rest', 120),
                  ('a secondary 403 with no retry-after', page, {'status': 403, 'body': secondary}, 'rest', 60),
                  ('a 429 on a run listing', listing,
-                  {'status': 429, 'headers': {'Retry-After': '90'}, 'body': {'message': 'Too many requests'}}, 'rest', 90),
-                 ('graphql rate limited', 'graphql', {'headers': {'Retry-After': '45'}, 'body': limited}, 'graphql', 45))
+                  {'status': 429, 'headers': {'Retry-After': '90'}, 'body': {'message': 'Too many requests'}},
+                  'rest', 90),
+                 ('graphql rate limited', 'graphql', {'headers': {'Retry-After': '45'}, 'body': limited},
+                  'graphql', 45))
         for case, path, response, pool, wait in cases:
             with self.subTest(case=case):
                 answered = answers()
@@ -218,8 +220,9 @@ class Supply(unittest.TestCase):
                  ('a retry-after that is not seconds', page,
                   lambda body: {'headers': {'Retry-After': 'Wed, 21 Oct 2026 07:28:00 GMT'}, 'body': body}),
                  ('graphql unreadable', 'graphql', lambda body: {'status': 502, 'body': {'message': 'Server Error'}}),
-                 ('graphql errors', 'graphql', lambda body: {'body': {'errors': [{'type': 'INTERNAL', 'message': 'x'}]}}))
-        for case, path, response, in cases:
+                 ('graphql errors', 'graphql',
+                  lambda body: {'body': {'errors': [{'type': 'INTERNAL', 'message': 'x'}]}}))
+        for case, path, response in cases:
             with self.subTest(case=case):
                 answered = answers()
                 answered[path] = {'gh': response(answered[path])}
