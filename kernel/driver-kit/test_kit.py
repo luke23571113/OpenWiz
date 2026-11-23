@@ -20,6 +20,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURES = os.path.join(HERE, 'fixtures')
 TEMPLATE = os.path.join(HERE, '..', '..', 'adapters', 'template', 'driver')
 NO_PROC = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit', 'fixtures', 'no-proc')
+REPO = os.path.realpath(os.path.join(HERE, '..', '..'))
+HARNESSES = ('claude', 'claude-code', 'codex', 'gemini', 'opencode', 'openclaw', 'cursor-agent', 'amp', 'aider',
+             'goose')
+TOOLS = ('sh', 'ps', 'lsof', 'awk', 'sleep', 'dirname', 'true')
 TOKEN = 'gh' + 'p_' + 'Synthetic0Kit0Value' * 2 + '00'
 PASS = ['pass version: openwiz:records v1, and the schema is driver v1',
         'pass start: the run posted builder status note 2',
@@ -116,6 +120,25 @@ def module(path):
     return module
 
 
+def pinned_path(folder, *fixtures):
+    tools = os.path.join(folder, 'tools')
+    os.makedirs(tools)
+    for name in TOOLS:
+        if shutil.which(name):
+            os.symlink(shutil.which(name), os.path.join(tools, name))
+    os.symlink(sys.executable, os.path.join(tools, 'python3'))
+    return no_real_harness(os.pathsep.join(fixtures + (tools,)))
+
+
+def no_real_harness(path):
+    for name in HARNESSES:
+        found = shutil.which(name, path=path)
+        if found and not os.path.realpath(found).startswith(REPO + os.sep):
+            raise AssertionError('%s on the PATH is %s, outside the fixtures: a test could launch a real harness'
+                                 % (name, found))
+    return path
+
+
 def tracker(folder):
     path = os.path.join(folder, 'tracker.json')
     old = '<!-- openwiz:status v1 -->\nagent: builder\nstate: stopped\nharness: Fake\nmodel: m\n' \
@@ -132,22 +155,33 @@ class Kit(unittest.TestCase):
         self.mark = secrets.token_hex(8)
         self.env = dict(os.environ, KIT_TRACKER=tracker(self.folder), KIT_TEST=self.mark, GH_TOKEN=TOKEN,
                         OPENWIZ_TEMPLATE_STATE=os.path.join(self.folder, 'state'),
-                        PATH=FIXTURES + os.pathsep + os.environ.get('PATH', ''))
+                        PATH=pinned_path(self.folder, FIXTURES))
 
-    def tearDown(self):
+    def left(self):
+        found = []
         for pid in filter(str.isdigit, os.listdir('/proc')):
             try:
                 with open('/proc/%s/environ' % pid, 'rb') as f:
                     if ('KIT_TEST=' + self.mark).encode() in f.read().split(b'\0'):
-                        os.kill(int(pid), signal.SIGKILL)
+                        found.append(int(pid))
+            except OSError:
+                pass
+        return found
+
+    def tearDown(self):
+        for pid in self.left():
+            try:
+                os.kill(pid, signal.SIGKILL)
             except OSError:
                 pass
 
-    def kit(self, driver, python=sys.executable, **env):
+    def kit(self, driver, python=sys.executable, wait='8', **env):
+        env = dict(self.env, **env)
+        no_real_harness(env['PATH'])
         p = subprocess.run([python, '-I', os.path.join(HERE, 'kit.py'), '--driver', driver,
                             '--repo', 'example/site', '--ticket', '7', '--harness', 'fake-harness',
-                            '--model', 'Synthetic 1', '--tracker', self.env['KIT_TRACKER'], '--wait', '8'],
-                           env=dict(self.env, **env), capture_output=True, text=True, timeout=120,
+                            '--model', 'Synthetic 1', '--tracker', self.env['KIT_TRACKER'], '--wait', wait],
+                           env=env, capture_output=True, text=True, timeout=120,
                            cwd=os.path.join(HERE, '..', '..'))
         return p.returncode, p.stdout.splitlines(), p.stderr
 
@@ -438,6 +472,52 @@ class Kit(unittest.TestCase):
                                               PATH=NO_PROC + os.pathsep + self.env['PATH'],
                                               NO_PROC_PYTHON=sys.executable)
                     self.assertEqual((code, out), (1, PASS[:3] + ['fail stop: ' + why, 'fail token: ' + why]), err)
+                    self.assertEqual(bool(self.left()), name == 'stop-leaves-run',
+                                     "the driver's own stop lost its baseline under the kit's hidden view")
+
+    def test_probe_only_hides_environments_from_the_kits_own_listing_only(self):
+        child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'], env=self.env)
+        try:
+            for caller, shown in (({}, False), ({'OPENWIZ_KIT_RUN': self.mark}, True)):
+                with self.subTest(caller=caller):
+                    p = subprocess.run([os.path.join(NO_PROC, 'ps'), '-A', '-ww', '-o', 'pid=', '-o', 'command=', '-E'],
+                                       env=dict(self.env, NO_PROC_PROBE_ONLY='1', **caller), capture_output=True,
+                                       text=True, timeout=30)
+                    rows = [r for r in p.stdout.splitlines() if r.split()[:1] == [str(child.pid)]]
+                    self.assertEqual((bool(rows), any('KIT_TEST=' + self.mark in r for r in rows)), (True, shown))
+        finally:
+            child.kill()
+            child.wait()
+
+    def test_a_failed_start_check_still_stops_its_run(self):
+        sleepy = os.path.join(self.folder, 'sleepy')
+        os.mkdir(sleepy)
+        with open(os.path.join(sleepy, 'fake-harness'), 'w') as f:
+            f.write('#!%s\nimport time\ntime.sleep(120)\n' % sys.executable)
+        os.chmod(os.path.join(sleepy, 'fake-harness'), 0o700)
+        code, out, err = self.kit(TEMPLATE, wait='2', PATH=sleepy + os.pathsep + self.env['PATH'])
+        self.assertEqual((code, out), (1, [PASS[0], 'fail start: no builder status note appeared within 2 seconds',
+                                           'fail wake: not run: start failed', 'fail stop: not run: start failed',
+                                           PASS[4]]), err)
+        self.assertEqual(self.left(), [], 'the run whose start check failed still runs after the kit')
+
+    def test_no_harness_outside_the_fixtures_is_on_the_tests_path(self):
+        outside = os.path.join(self.folder, 'outside')
+        os.mkdir(outside)
+        with open(os.path.join(outside, 'claude'), 'w') as f:
+            f.write('#!/bin/sh\nexit 0\n')
+        os.chmod(os.path.join(outside, 'claude'), 0o700)
+        old = os.environ['PATH']
+        os.environ['PATH'] = outside + os.pathsep + old
+        try:
+            self.tearDown()
+            self.setUp()
+        finally:
+            os.environ['PATH'] = old
+        self.assertIsNone(shutil.which('claude', path=self.env['PATH']), 'the PATH reaches a real claude')
+        self.assertEqual(shutil.which('fake-harness', path=self.env['PATH']), os.path.join(FIXTURES, 'fake-harness'))
+        with self.assertRaisesRegex(AssertionError, 'could launch a real harness'):
+            self.kit(TEMPLATE, PATH=outside + os.pathsep + self.env['PATH'])
 
     def test_each_planted_driver_fails_its_check(self):
         for name, lines in PLANTED.items():

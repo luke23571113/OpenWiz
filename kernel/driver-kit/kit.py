@@ -286,6 +286,7 @@ class Kit:
         self.mark = 'OPENWIZ_KIT_RUN=' + secrets.token_hex(8)
         self.env = dict(os.environ, OPENWIZ_KIT_RUN=self.mark.partition('=')[2])
         self.leaks = []
+        self.run, self.stopped = None, False
         self.groups = set()
         self.lock = threading.RLock()
         self.runtime, self.listed_pids, self.active, self.hidden = set(), set(), set(), set()
@@ -612,6 +613,7 @@ class Kit:
         return 'pass', 'the run edited builder status note %d' % self.note
 
     def stop(self):
+        self.stopped = True
         kind, v = self.call('stop', {'run': self.run})
         if self.unverified():
             return 'fail', self.unverified()
@@ -908,12 +910,22 @@ class Kit:
                 if not count:
                     self.leak("%s sent the kit's fake host no request through the key helper" % op)
 
+    def stop_the_started_run_unchecked(self):
+        if self.run and not self.stopped:
+            self.stopped = True
+            self.call('stop', {'run': self.run})
+
     def checks(self):
         yield 'version', self.version()
-        result = self.start()
-        yield 'start', result
-        for name in ('wake', 'stop'):
-            yield name, getattr(self, name)() if result[0] == 'pass' else ('fail', 'not run: start failed')
+        try:
+            result = self.start()
+            if result[0] != 'pass':
+                self.stop_the_started_run_unchecked()
+            yield 'start', result
+            for name in ('wake', 'stop'):
+                yield name, getattr(self, name)() if result[0] == 'pass' else ('fail', 'not run: start failed')
+        finally:
+            self.stop_the_started_run_unchecked()
         yield 'token', self.token()
 
 
