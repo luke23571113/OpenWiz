@@ -201,10 +201,11 @@ class Heads(unittest.TestCase):
         self.assertFalse(self.kit_ran())
 
     def test_a_paid_host_without_its_allow_cost_is_skipped_and_starts_no_kit(self):
-        for extra in ([], ['--allow-cost', 'fixture-five']):
+        for extra in ([], ['--allow-cost', 'fixture-nohead']):
             with self.subTest(extra=extra):
-                code, out, err = self.heads(['fixture-paid'], *extra)
-                self.assertEqual((code, out), (0, 'skipped fixture-paid: cost\n'), err)
+                code, out, err = self.heads(['fixture-paid', 'fixture-nohead'], *extra)
+                self.assertEqual((code, out), (0, 'skipped fixture-paid: cost\nskipped fixture-nohead: no frozen head\n'),
+                                 err)
         self.assertFalse(self.kit_ran())
 
     def test_five_of_five_gives_the_exact_pr_comment_receipt_and_record_and_writes_nothing_to_github(self):
