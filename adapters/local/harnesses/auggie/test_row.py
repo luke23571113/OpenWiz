@@ -44,7 +44,7 @@ def first_json_line_names_the_session():
                 json.dumps({'type': 'turn_end', 'id': 'turn-synthetic-3'})]) + '\n')
         with open(os.path.join(HERE, 'row.json')) as f:
             session = json.load(f)['session']
-        return th.local.reported_session('run-synthetic', session) == ID
+        return th.local.reported_session('run-synthetic', session, {'output_from': 0}) == ID
 
 
 def main():
