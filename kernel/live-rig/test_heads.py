@@ -30,8 +30,7 @@ AGENT_CLIS = ['claude', 'codex', 'cursor-agent', 'agent', 'pi', 'opencode', 'cop
               'hermes', 'acpx', 'droid']
 CHECKOUT = ['kernel/live-rig/heads.py', 'kernel/live-rig/rig.py', 'kernel/live-rig/receipt.py', 'kernel/driver-kit/kit.py',
             'kernel/driver-kit/schema.json', 'kernel/records-kit/check.py', 'kernel/records.v1.md']
-# The driver PR head the fake remote holds: the template, and a planted driver whose wake does nothing.
-PR_HEAD = {'adapters/template/driver': os.path.join(ROOT, 'adapters', 'template', 'driver'),
+DRIVER_PR_HEAD = {'adapters/template/driver': os.path.join(ROOT, 'adapters', 'template', 'driver'),
            'adapters/template/schema.json': os.path.join(ROOT, 'adapters', 'template', 'schema.json'),
            'adapters/four/driver': os.path.join(FIX, 'four-driver'),
            'adapters/quoting/driver': os.path.join(FIX, 'quoting-driver')}
@@ -62,21 +61,19 @@ class Heads(unittest.TestCase):
                 copy(os.path.join(ROOT, path), os.path.join(self.checkout, path))
         copy(os.path.join(FIX, 'listings.json'), os.path.join(self.checkout, 'kernel', 'live-rig', 'listings.json'))
         copy(os.path.join(FIX, 'fleet.md'), os.path.join(self.checkout, 'docs', 'agents', 'fleet.md'))
-        # Host configs are tracked files of the clean checkout (R9), as kernel/live-rig/vps/hosts is.
         self.hosts = os.path.join(self.checkout, 'kernel', 'live-rig', 'vps', 'hosts')
         shutil.copytree(os.path.join(FIX, 'hosts'), self.hosts)
         git(self.checkout, 'init', '-q', '-b', 'main')
         git(self.checkout, 'add', '-A')
         git(self.checkout, 'commit', '-q', '-m', 'fixture checkout')
         self.kit_head = git(self.checkout, 'rev-parse', 'HEAD')
-        # The fake remote: a bare repository whose driver PR head is only under refs/pull, as on GitHub.
-        remote = os.path.join(self.folder, 'remote.git')
+        remote = os.path.join(self.folder, 'fake-remote.git')
         git(self.folder, 'init', '-q', '--bare', remote)
         git(remote, 'config', 'uploadpack.allowAnySHA1InWant', 'true')
         git(self.checkout, 'push', '-q', remote, 'main')
         work = os.path.join(self.folder, 'work')
         git(self.folder, 'clone', '-q', remote, work)
-        for dst, src in PR_HEAD.items():
+        for dst, src in DRIVER_PR_HEAD.items():
             copy(src, os.path.join(work, dst))
         git(work, 'add', '-A')
         git(work, 'commit', '-q', '-m', 'driver PR head')

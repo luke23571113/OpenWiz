@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-# The fake gh for test_heads.py: it answers the kit's GraphQL reads of the settings ticket, heads.py's REST reads
-# and writes, and logs every call. It never reaches GitHub.
 import hashlib, json, os, sys
 
 args = sys.argv[1:]

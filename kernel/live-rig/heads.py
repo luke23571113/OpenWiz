@@ -40,14 +40,13 @@ TICKET_KEYS = {'id', 'ticket', 'pr', 'listing'}
 FROZEN = re.compile(r'launch-fleet: look: live run due at the approved frozen head of #([0-9]+): ([0-9a-f]{40})'
                     r'(?![0-9a-f])')
 ETAGS = 'heads-etags.json'
+FORK_READY_TRIES = 6
 CHECK_LINE = re.compile(r'(pass|fail) (version|start|wake|stop|token): ')
 PATH = re.compile(r'/[\w.~-]')
 CHECK_PREFIX = re.compile(r'^(?:pass|fail) (?:version|start|wake|stop|token): ', re.M)
 
 
-def holds_credential(text):
-    # The kit's own `pass token: ...` prefix matches its `token: <value>` shape; only what follows a check's name
-    # is the kit's message, so the shapes and the environment's secrets are checked over that.
+def holds_credential_after_check_names(text):
     return kit.holds_credential(CHECK_PREFIX.sub('', text))
 
 
@@ -76,7 +75,7 @@ def git(*args, cwd=None):
 
 
 def reviewed_hosts(folder):
-    """--hosts is a folder of tracked files in the clean checkout, so every status command is reviewed code (R9)."""
+    # SECURITY: only tracked host configs of the clean checkout run, so every status command is reviewed code.
     real, root = os.path.realpath(folder), os.path.realpath(ROOT)
     if os.path.commonpath([real, root]) != root:
         raise Refused('--hosts is not a folder inside this checkout')
@@ -119,7 +118,6 @@ def gh_json(args, send=None):
 
 
 def read_comments(number, cache):
-    """One REST read of a ticket's comments, sending the saved ETag so an unchanged ticket costs nothing."""
     found, path = [], 'repos/%s/issues/%d/comments?per_page=100' % (OPENWIZ, number)
     while path:
         saved = cache.get(path)
@@ -157,7 +155,6 @@ def frozen_head(comments, authors):
 
 
 def public_stdout(stdout, private):
-    """Only the kit's five check lines, each withheld unless it is public (spec #2474's lead, ruling R2 on #2477)."""
     kept = []
     for line in stdout.splitlines():
         m = CHECK_LINE.match(line)
@@ -165,7 +162,7 @@ def public_stdout(stdout, private):
             continue
         # PRIVACY: a credential shape, a path (`/` then a name, so the worktree and checkout too), the settings'
         # repository or owner, or the signed-in login withholds the whole line.
-        if holds_credential(line) or PATH.search(line) or any(p.lower() in line.lower() for p in private if p):
+        if holds_credential_after_check_names(line) or PATH.search(line) or any(p.lower() in line.lower() for p in private if p):
             line = '%s %s: withheld' % m.groups()
         kept.append(line + '\n')
     return ''.join(kept)
@@ -176,7 +173,6 @@ def run_kit(driver, entry, wait, settings, private):
                '--ticket', str(settings['ticket']), '--harness', entry['harness'], '--model', entry['model'],
                '--wait', str(wait)]
     p = subprocess.run(command, cwd=ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, text=True)
-    # The full kit output is the person's, on stderr; only the public check lines go into the record and comment.
     sys.stderr.write(p.stdout)
     sys.stderr.flush()
     return p.returncode, public_stdout(p.stdout, private)
@@ -206,7 +202,7 @@ class Session:
         return self.login
 
     def post_comment(self, host, pr, text):
-        if holds_credential(text):
+        if holds_credential_after_check_names(text):
             self.refuse(host, 'the comment holds a credential, so it is not %s' % (
                 'posted' if self.args.post else 'printed'))
             return None
@@ -233,7 +229,7 @@ class Session:
         with open(path) as f:
             text = f.read()
         rel = os.path.relpath(path, self.folder)
-        if holds_credential(text):
+        if holds_credential_after_check_names(text):
             self.refuse(host, 'the receipt holds a credential, so it is not %s' % (
                 'posted' if self.args.post else 'printed'))
             return
@@ -300,25 +296,23 @@ class Session:
             self.receipt(name, ticket, record_path, url)
 
     def wizmarket(self):
-        """One WizMarket pull request with this run's receipts, from a fork, through the person's own gh."""
         if not (self.args.post and self.receipts):
             return
         title = 'Kit receipts: 5 of 5 for %s' % ', '.join(sorted({r[3]['listing'] for r in self.receipts}))
         body = 'Kit receipts written by `kernel/live-rig/heads.py`, each a 5-of-5 run at a driver PR\'s frozen head:' \
                '\n\n' + ''.join('- `%s`: build PR %s#%d, run posted at %s\n' % (rel, OPENWIZ, t['pr'], url)
                                 for rel, _, _, t, url in self.receipts)
-        if holds_credential(title + '\n' + body):
+        if holds_credential_after_check_names(title + '\n' + body):
             return self.refuse('wizmarket', 'the pull request text holds a credential, so it is not posted')
         fork = gh_json(['api', '-X', 'POST', 'repos/%s/forks' % WIZMARKET, '--input', '-'], {})['full_name']
         base = gh_json(['api', 'repos/%s/git/ref/heads/main' % WIZMARKET])['object']['sha']
         branch = os.path.splitext(self.receipts[0][0])[0].replace('/', '-')
-        for attempt in range(6):
-            # A new fork takes a few seconds before it accepts a branch.
+        for attempt in range(FORK_READY_TRIES):
             p = gh(['api', '-X', 'POST', 'repos/%s/git/refs' % fork, '--input', '-'],
                    {'ref': 'refs/heads/' + branch, 'sha': base})
             if p.returncode == 0:
                 break
-            if attempt == 5:
+            if attempt == FORK_READY_TRIES - 1:
                 raise Refused('gh could not make the branch on the fork (exit %d)' % p.returncode)
             time.sleep(5)
         for rel, text, _, _, _ in self.receipts:

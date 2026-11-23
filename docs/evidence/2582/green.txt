@@ -14,6 +14,6 @@ test_post_reaches_only_the_fake_gh_with_one_comment_per_run_and_one_wizmarket_pu
 test_the_vps_live_tickets_file_names_the_five_live_checks_their_build_prs_and_listing_ids (__main__.Heads.test_the_vps_live_tickets_file_names_the_five_live_checks_their_build_prs_and_listing_ids) ... ok
 
 ----------------------------------------------------------------------
-Ran 13 tests in 107.648s
+Ran 13 tests in 107.268s
 
 OK

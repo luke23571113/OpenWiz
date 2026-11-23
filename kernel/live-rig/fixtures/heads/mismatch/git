@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-# A fake git for one test: it runs the real git, then after a fetch makes FETCH_HEAD name another commit, as a
-# remote that answered with the wrong commit would.
 import os, subprocess, sys
 p = subprocess.run([os.environ['HEADS_REAL_GIT']] + sys.argv[1:])
 if p.returncode == 0 and 'fetch' in sys.argv[1:]:
