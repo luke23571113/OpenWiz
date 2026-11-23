@@ -8,7 +8,7 @@ HELP = '''The fake auggie (its forms follow `auggie --help` 1.2.2, in evidence/)
   auggie -p --mode json --model <m> <prompt>
   auggie --session <id> -p --mode json --model <m> <prompt>
 where <id> is a session id, never a path (no "/" or "\\", not ending in .jsonl). It has no --thinking:
-the row declares effort none. With FAKE_AUGGIE_SIGNED_OUT=1 it answers as 1.2.2 does when signed out.'''
+the row declares effort none. With FAKE_CLI_SIGNED_OUT=1 it answers as 1.2.2 does when signed out.'''
 
 
 def header(sid):
@@ -29,7 +29,7 @@ if len(a) != 6 or a[:3] != ['-p', '--mode', 'json'] or a[3] != '--model' or a[5]
 model, prompt = a[4], a[5]
 if (session is not None) != prompt.startswith('You were woken'):
     fake_cli.refuse()
-if os.environ.get('FAKE_AUGGIE_SIGNED_OUT'):
+if os.environ.get('FAKE_CLI_SIGNED_OUT'):
     print(header(session or '00000000-0000-4000-8000-0000000000b2'), flush=True)
     print('No API key found for unknown.', file=sys.stderr, flush=True)
     sys.exit(1)

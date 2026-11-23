@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""The auggie row's own checks, beyond the runner's: not installed, not signed in, and the session header."""
 import json, os, sys, tempfile
 
 sys.dont_write_bytecode = True
@@ -12,8 +11,7 @@ FAKE = os.path.join(HERE, 'fake')
 ID = '00000000-0000-4000-8000-0000000000a1'
 
 
-def only_python_and_stubs(env):
-    """A PATH with python3, gh and every stub except auggie's: auggie is not installed here."""
+def path_without_auggie(env):
     lone = os.path.join(env.folder, 'python-only')
     os.mkdir(lone)
     os.symlink(sys.executable, os.path.join(lone, 'python3'))
@@ -25,18 +23,17 @@ def not_installed():
     with th.ThrowawayMachine(ROWS, 'auggie', mode='full-access') as env:
         return env.start_refused_starting_nothing(
             lambda out: 'auggie is not installed' in out['error'] and 'install auggie' in out['next'],
-            PATH=only_python_and_stubs(env))
+            PATH=path_without_auggie(env))
 
 
 def not_signed_in():
     with th.ThrowawayMachine(ROWS, 'auggie', 'auggie', FAKE, 'full-access') as env:
-        code, out = env.start(FAKE_AUGGIE_SIGNED_OUT='1')
+        code, out = env.start(FAKE_CLI_SIGNED_OUT='1')
         return code == 1 and th.kit.invalid(out, th.ERROR) is None and 'not signed in' in out.get('error', '') \
-            and out.get('next', '') != ''
+            and 'auggie auth login' in out.get('next', '')
 
 
-def header_names_the_session():
-    """1.2.2's first JSON line is the session header; later event lines carry other ids."""
+def first_json_line_names_the_session():
     with tempfile.TemporaryDirectory() as state:
         th.local.STATE = state
         with open(os.path.join(state, 'run-synthetic.log'), 'w') as f:
@@ -52,8 +49,8 @@ def header_names_the_session():
 
 def main():
     checks = [('not installed: a D3 error whose next says to install auggie, starting nothing', not_installed),
-              ('not signed in: a D3 error that says the harness is not signed in, with a next', not_signed_in),
-              ('the session header: the driver reads the id from 1.2.2\'s first JSON line', header_names_the_session)]
+              ('not signed in: a D3 error that says so, whose next names auggie auth login', not_signed_in),
+              ('the session header: the driver reads the id from 1.2.2\'s first JSON line', first_json_line_names_the_session)]
     ok = True
     for what, check in checks:
         passed = check()
