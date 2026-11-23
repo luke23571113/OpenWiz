@@ -5,6 +5,7 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import re
 import secrets
 import shutil
 import signal
@@ -272,7 +273,7 @@ class Heads(unittest.TestCase):
             ['PUT', 'repos/%s/WizMarket/contents/receipts/fixture-five/%s-%s.txt' % (LOGIN, day, self.head[:12])],
             ['POST', 'repos/openwizdev/WizMarket/pulls']])
         sent = [json.loads(c['stdin']) for c in writes]
-        self.assertEqual(sent[0], {'body': self.expected_comment()})
+        self.assertRegex(sent[0]['body'], '^%s<!-- openwiz:heads-run [0-9a-f]{32} -->\n$' % re.escape(self.expected_comment()))
         self.assertTrue(sent[1]['body'].startswith('**FX2L live kit run: 4 of 5 pass**, at head `%s`\n' % self.head))
         branch = 'receipts-fixture-five-%s-%s' % (day, self.head[:12])
         self.assertEqual(sent[3], {'ref': 'refs/heads/' + branch, 'sha': 'c' * 40})
@@ -359,10 +360,10 @@ class Heads(unittest.TestCase):
                        'closed', 'head': {'label': LOGIN + ':' + branch}, 'base': {'ref': 'main'}}]}, f)
         code, out, err = self.heads(['fixture-five'], *extra, env=dict(self.env, HEADS_REFUSE='pulls'))
         self.assertEqual(len([c for c in self.writes() if c['args'][3].endswith('/comments')]), 1, out)
-        self.assertEqual(code, 2, out + err)
+        self.assertEqual((code, out), (2, 'finishing the publish an earlier --post left unfinished\n'
+                                          'posted https://github.com/openwizdev/OpenWiz/pull/201#issuecomment-901\n'), err)
         code, out, err = self.heads(['fixture-five'], *extra)
         self.assertEqual((code, out), (0, 'finishing the publish an earlier --post left unfinished\n'
-                                          'posted https://github.com/openwizdev/OpenWiz/pull/201#issuecomment-901\n'
                                           'posted https://github.com/openwizdev/WizMarket/pull/41\n'), err)
         self.assertEqual([c['args'][2:4] for c in self.writes()][-1:], [['POST', 'repos/openwizdev/WizMarket/pulls']])
         self.assertEqual(len([c for c in self.writes() if c['args'][3].endswith('/comments')]), 1)

@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -36,6 +37,8 @@ ETAGS = 'heads-etags.json'
 JOURNAL = 'publish.json'
 FORK_READY_TRIES = 6
 PAGE = 100
+RUN_LINE = '<!-- openwiz:heads-run %s -->\n'
+TRIED_MARGIN = datetime.timedelta(hours=1)
 CHECK_PREFIX = re.compile(r'^(?:pass|fail) (?:version|start|wake|stop|token): ', re.M)
 GH_OVERRIDES = ('GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN', 'GH_HOST')
 SHAPES = []
@@ -195,7 +198,7 @@ class Session:
         if not self.args.post:
             self.say('would post on %s#%d:' % (OPENWIZ, pr))
             print(text, end='', flush=True)
-        self.plan['comments'].append({'pr': pr, 'body': text, 'url': None})
+        self.plan['comments'].append({'pr': pr, 'body': text, 'run': secrets.token_hex(16), 'tried': None, 'url': None})
         return len(self.plan['comments']) - 1
 
     def receipt(self, host, ticket, record_path, comment):
@@ -300,14 +303,40 @@ class Publish:
         if gh_json(['api', 'user']).get('login') != self.plan['login']:
             raise Refused('gh is signed in as another login than this publish was planned under, so nothing is posted')
         for c in self.plan['comments']:
+            if c['url'] is not None:
+                continue
+            body = c['body'] + RUN_LINE % c['run']
+            if c['tried']:
+                c['url'] = self.posted(c, body)
             if c['url'] is None:
-                c['url'] = gh_json(['api', '-X', 'POST', 'repos/%s/issues/%d/comments' % (OPENWIZ, c['pr']), '--input',
-                                    '-'], {'body': c['body']})['html_url']
+                c['tried'] = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
                 save(self.path, self.plan)
-                print('posted ' + c['url'], flush=True)
+                c['url'] = gh_json(['api', '-X', 'POST', 'repos/%s/issues/%d/comments' % (OPENWIZ, c['pr']), '--input',
+                                    '-'], {'body': body})['html_url']
+            save(self.path, self.plan)
+            print('posted ' + c['url'], flush=True)
         if self.plan['receipts']:
             self.wizmarket(self.plan['receipts'])
         os.remove(self.path)
+
+    def posted(self, c, body):
+        tried = datetime.datetime.strptime(c['tried'], '%Y-%m-%dT%H:%M:%SZ') - TRIED_MARGIN
+        found = gh_json(['api', 'repos/%s/issues/%d/comments?since=%s&per_page=%d' % (
+            OPENWIZ, c['pr'], tried.strftime('%Y-%m-%dT%H:%M:%SZ'), PAGE)])
+        if not isinstance(found, list) or len(found) >= PAGE:
+            raise Refused('cannot tell whether the earlier comment on #%d was posted, so nothing is posted' % c['pr'])
+        mine = [f['html_url'] for f in found if isinstance(f, dict) and f.get('body') == body and
+                isinstance(f.get('user'), dict) and f['user'].get('login') == self.plan['login']]
+        if len(mine) > 1:
+            raise Refused('#%d holds this run\'s comment more than once' % c['pr'])
+        return mine[0] if mine else None
+
+    @staticmethod
+    def intended(found, head, title, body):
+        return [p['html_url'] for p in found if isinstance(p, dict) and p.get('state') == 'open' and
+                p.get('title') == title and p.get('body') == body and isinstance(p.get('head'), dict) and
+                p['head'].get('label') == head and isinstance(p.get('base'), dict) and p['base'].get('ref') == 'main'
+                ] if isinstance(found, list) else []
 
     def wizmarket(self, receipts):
         title = 'Kit receipts: 5 of 5 for %s' % ', '.join(sorted({r['listing'] for r in receipts}))
@@ -347,10 +376,11 @@ class Publish:
             except (ValueError, KeyError, TypeError):
                 url = None
             if url is None:
-                found = gh_json(['api', 'repos/%s/pulls?head=%s&state=all' % (WIZMARKET, urllib.parse.quote(head, safe=':'))])
-                if not (isinstance(found, list) and len(found) == 1):
+                found = self.intended(gh_json(['api', 'repos/%s/pulls?head=%s&state=open' % (
+                    WIZMARKET, urllib.parse.quote(head, safe=':'))]), head, title, body)
+                if len(found) != 1:
                     raise Refused('gh could not open the WizMarket pull request (exit %d)' % p.returncode)
-                url = found[0]['html_url']
+                url = found[0]
             self.step('pull', url)
         print('posted ' + self.plan['pull'], flush=True)
 
