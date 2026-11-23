@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-import os, subprocess, sys
+import importlib.util, json, os, subprocess, sys
 
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
+RUNNER = os.path.join(HERE, '..', '..', 'test_harnesses.py')
 FAKE = os.path.join(HERE, 'fake')
 ENV = {'PATH': os.environ.get('PATH', ''), 'FAKE_CLI_LIB': os.path.join(HERE, '..', '..', 'fixtures'),
        'PYTHONDONTWRITEBYTECODE': '1'}
@@ -28,6 +29,24 @@ REFUSED = {
     'interactive -i': ['-i'] + START[1:],
     'nothing': [],
 }
+SIGNED_OUT = ('no-auth-type', 'api-key-missing', 'vertex-missing', 'manual-authorization')
+
+
+def signed_out_starts(bad):
+    spec = importlib.util.spec_from_file_location('openwiz_test_harnesses', RUNNER)
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+    with open(os.path.join(HERE, 'row.json')) as f:
+        row = json.load(f)
+    rows = os.path.dirname(HERE)
+    with runner.ThrowawayMachine(rows, 'gemini', row['program'], os.path.join(HERE, 'fake'),
+                                 next(iter(row['modes']))) as env:
+        for auth in SIGNED_OUT:
+            code, out = env.start(FAKE_CLI_SIGNED_OUT='1', FAKE_GEMINI_AUTH=auth)
+            if not (code == 1 and 'the harness is not signed in (exit 41)' in out.get('error', '') and
+                    '`gemini`' in out.get('next', '')):
+                bad.append('a first turn signed out with %s gave %r, not the harness is not signed in naming gemini'
+                           % (auth, out.get('error', code)))
 
 
 def main():
@@ -39,9 +58,11 @@ def main():
     helped = subprocess.run([sys.executable, '-I', FAKE, '--help'], env=ENV, capture_output=True, text=True, timeout=30)
     if helped.returncode or 'v0.70.0' not in helped.stdout:
         bad.append('--help did not name the version it follows')
+    signed_out_starts(bad)
     for line in bad:
         print('fail: ' + line)
-    print('test_row.py: %d refusals checked, %d failed' % (len(REFUSED), len(bad)))
+    print('test_row.py: %d refusals and %d signed-out first turns checked, %d failed'
+          % (len(REFUSED), len(SIGNED_OUT), len(bad)))
     return 1 if bad else 0
 
 
