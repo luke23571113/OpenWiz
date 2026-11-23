@@ -885,7 +885,7 @@ class SystemGh(Helper):
         seals = types.SimpleNamespace(**{k: getattr(fcntl, k) for k in dir(fcntl) if k.isupper()})
 
         def seal_call(fd, command, *args):
-            if at_seal and command == fcntl.F_ADD_SEALS:
+            if at_seal and command == getattr(fcntl, "F_ADD_SEALS", 1033):
                 at_seal(fd)
             return fcntl.fcntl(fd, command, *args)
 
@@ -907,7 +907,7 @@ class SystemGh(Helper):
             token = child.get("GH_TOKEN")
             ran.append((path, Path(path).read_text(), list(args), token == TOKEN))
             try:
-                self.seals = fcntl.fcntl(int(path.rsplit("/", 1)[1]), fcntl.F_GET_SEALS)
+                self.seals = fcntl.fcntl(int(path.rsplit("/", 1)[1]), getattr(fcntl, "F_GET_SEALS", 1034))
             except (OSError, ValueError):
                 self.seals = None
             raise OSError("synthetic exec boundary")
@@ -953,7 +953,7 @@ class SystemGh(Helper):
         path, content, args, token = ran[0]
         self.assertTrue(path.startswith("/proc/self/fd/"), "gh runs through a pinned fd")
         self.assertEqual((content, args, token), (self.checked, [str(self.real), "pr", "list"], True))
-        every = fcntl.F_SEAL_SEAL | fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_GROW | fcntl.F_SEAL_WRITE
+        every = 1 | 2 | 4 | 8
         self.assertEqual((self.seals or 0) & every, every, "what runs is a copy no one can change")
 
     def test_a_system_gh_owned_by_another_user_gets_the_token_through_its_pinned_fd(self):
