@@ -72,6 +72,25 @@ with runner.ThrowawayMachine(ROWS, 'goose', 'goose', FAKE, 'auto', ['GOOSE_MODE'
                                                                           row['modes']])))
 
 
+SETUP = [
+    ('Configuration value not found: ANTHROPIC_API_KEY', True),
+    ('Configuration value not found: OPENROUTER_API_KEY', True),
+    ('Configuration value not found: DATABRICKS_TOKEN', True),
+    ('Configuration value not found: DATABRICKS_HOST', False),
+    ('Failed to access keyring: synthetic keyring failure', False),
+]
+with runner.ThrowawayMachine(ROWS, 'goose', 'goose', FAKE, 'auto', ['GOOSE_MODE']) as env:
+    for error, signed_out in SETUP:
+        code, out = env.start(FAKE_GOOSE_SETUP_ERROR=error)
+        if signed_out:
+            check('a first turn that says "%s" fails start as not signed in, naming goose configure' % error,
+                  code == 1 and 'the harness is not signed in' in out.get('error', '') and
+                  'goose configure' in out.get('next', ''))
+        else:
+            check('a first turn that says "%s" stays a generic failure, not a sign-in one' % error,
+                  code == 1 and 'not signed in' not in out.get('error', '') and 'the harness failed' in
+                  out.get('error', ''))
+
 
 def stat(pid):
     try:

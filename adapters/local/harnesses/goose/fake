@@ -35,4 +35,10 @@ if len(a) != 9 or a[:2] != ['run', '-n'] or not re.fullmatch(UUID, a[2]) or a[3]
     fake_cli.refuse()
 if resume != a[8].startswith('You were woken'):
     fake_cli.refuse()
+if os.environ.get('FAKE_GOOSE_SETUP_ERROR'):
+    print('\n  error: Error %s.\nPlease check your system keychain and run \'goose configure\' again.\n'
+          'If your system is unable to use the keyring, please try setting secret key(s) via environment variables.\n'
+          'For more info, see: https://goose-docs.ai/docs/troubleshooting/#keychainkeyring-errors\n'
+          % os.environ['FAKE_GOOSE_SETUP_ERROR'], flush=True)
+    sys.exit(1)
 fake_cli.turn(a[8], a[4], a[2], daemon='goose-developer-shell', signed_out="  error: No provider configured. Run 'goose configure' first.")
