@@ -157,9 +157,9 @@ def check_row(row, name):
     if not set(ROW_FIELDS) <= set(row) <= set(ROW_FIELDS + OPTIONAL_ROW_FIELDS):
         raise Broken('fields', 'it needs exactly %s, and may have %s' % (', '.join(ROW_FIELDS),
                                                                          ' and '.join(OPTIONAL_ROW_FIELDS)))
-    if row['harness'] in HARNESSES:
+    if isinstance(row['harness'], str) and row['harness'] in HARNESSES:
         raise Broken('harness', '%s is built in, and no row may use a built-in name' % row['harness'])
-    if row['harness'] != name or not re.fullmatch(START['harness'], name):
+    if not isinstance(row['harness'], str) or row['harness'] != name or not re.fullmatch(START['harness'], name):
         raise Broken('harness', "it is not its folder's name, or not a valid harness name")
     if not isinstance(row['program'], str) or not re.fullmatch(PROGRAM, row['program']):
         raise Broken('program', 'it is not one plain command name')
@@ -215,7 +215,7 @@ def read_row(path, name):
             row = json.loads(f.read(), object_pairs_hook=unique)
     except FileNotFoundError:
         return None
-    except (OSError, ValueError, Refused):
+    except (OSError, ValueError, RecursionError, Refused):
         raise Broken('file', 'it is not one readable JSON object with each key once')
     return check_row(row, name)
 
@@ -238,9 +238,12 @@ def program(harness):
         try:
             row = read_row(os.path.join(ROWS, harness, 'row.json'), harness)
         except Broken as e:
-            raise Refused('harness %s has a row that breaks the harness-row contract, %s (%s: %s); nothing was '
-                          'started' % (harness, row_file(harness), e.args[0], e.args[1]),
+            raise Refused('%s breaks the harness-row contract (%s: %s); nothing was started'
+                          % (row_file(harness), e.args[0], e.args[1]),
                           'fix %s as adapters/local/harness-row.md says, then start again' % row_file(harness))
+        if row is None and os.path.isdir(os.path.join(ROWS, harness)):
+            raise Refused('%s is missing, so harness %s has no row; nothing was started' % (row_file(harness), harness),
+                          'add %s as adapters/local/harness-row.md says, then start again' % row_file(harness))
         if row is None:
             names, choices = list(HARNESSES) + row_folders(), 'use one of: '
             for n in names:
