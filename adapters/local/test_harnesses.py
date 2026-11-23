@@ -119,6 +119,8 @@ if control and args[:1] != ['run']:
     print('synthetic %%s output 7d3a' %% control, flush=True)
     if control == 'effort':
         print('effort %%s for %%s' %% (args[-1], args[1]), flush=True)
+    if control == 'signed-out-elsewhere':
+        print('warning: not logged in to another provider\\nmodel %%s ready' %% args[1], flush=True)
     if control == 'hang':
         time.sleep(300)
     sys.exit(1 if control == 'exit' else 0)
@@ -262,8 +264,11 @@ class ThrowawayMachine:
         return path
 
     def raw(self, cmd, request, program=None, **env):
-        p = subprocess.run([program or self.driver_path, cmd], input=json.dumps(request), env=dict(self.env, **env),
-                           capture_output=True, text=True, timeout=120)
+        try:
+            p = subprocess.run([program or self.driver_path, cmd], input=json.dumps(request),
+                               env=dict(self.env, **env), capture_output=True, text=True, timeout=120)
+        except subprocess.TimeoutExpired:
+            return None, {}, ''
         try:
             return p.returncode, json.loads(p.stdout), p.stdout + p.stderr
         except ValueError:
@@ -608,6 +613,16 @@ def precheck_refusals_start_nothing(planted):
     return ok
 
 
+def precheck_output_is_not_the_turns(planted):
+    with commands_machine(planted) as env:
+        env.control('signed-out-elsewhere')
+        code, out = env.start(FAKE_CLI_RECORD_ONLY='1')
+        if code == 0:
+            env.driver('stop', out)
+        calls = env.calls()
+    return code == 0 and [c['argv'][:1] for c in calls] == [['models'], ['run'], ['stop']]
+
+
 def precheck_effort_skipped_and_escaped(planted):
     check = {'run': ['row-commands-cli', 'models', '{model}', '--effort', '{effort}'],
              'match': '^effort {effort} for {model}$'}
@@ -709,6 +724,8 @@ def check_driver(rows):
              ("a precheck that exits non-zero, does not match or runs past its timeout is a D3 refusal that starts "
               "no turn, runs outside the clone with the row's env, and keeps its output in the run's log only",
               precheck_refusals_start_nothing(rows)),
+             ("a precheck's output is left out of the first turn's sign-in check, so a first turn that ends at once "
+              "with exit 0 still starts", precheck_output_is_not_the_turns(rows)),
              ("a precheck that names {effort} is skipped for a start without an effort, and its model and effort "
               "fill whole arguments and match as literal text", precheck_effort_skipped_and_escaped(rows)),
              ("a row's stop runs with the run's session while the turns still run, and a failing or hanging stop "
