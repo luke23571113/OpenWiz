@@ -60,3 +60,14 @@ The boat, cloudroom and devin failures are their own expected kit lines: each no
 EF9 (#2855 at e5c8ac9) on a scratch merge, with its fake acpx giving the queue owner no --session-options and its kit test expecting '; effort: medium reached a process the run started':
 adapters/openclaw/test_driver.py OpenClaw.test_kit_passes_all_five: OK, OK, OK; the whole suite: Ran 21 tests, OK.
 The same with the kit's effort start a plain call (in-flight sampling off): fail start: effort: medium never reached a process the run started.
+
+Lead ruling and grant round, at aa51107f, stubs first on PATH:
+kernel/driver-kit/test_kit.py: Ran 41 tests in 295.659s OK 
+kernel/driver-kit/test_hostkey.py: Ran 25 tests in 29.631s OK 
+adapters/boat/test_driver.py: Ran 39 tests in 73.981s OK 
+adapters/cloudroom/test_driver.py: Ran 28 tests in 24.514s OK 
+adapters/devin/test_driver.py: Ran 6 tests in 2.639s OK 
+adapters/local/test_driver.py: Ran 23 tests in 65.691s OK 
+adapters/openclaw/test_driver.py: Ran 14 tests in 6.589s OK 
+adapters/template/test_driver.py: Ran 21 tests in 23.391s OK 
+The non-effort refusal: Kit.test_a_refusal_that_is_not_about_effort_is_reported_plainly passes (red in red-2562-plain-refusal.txt); boat's test_the_kits_start_check_names_the_push_fix passes with its line unchanged.
