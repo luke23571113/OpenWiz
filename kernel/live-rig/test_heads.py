@@ -33,7 +33,8 @@ CHECKOUT = ['kernel/live-rig/heads.py', 'kernel/live-rig/rig.py', 'kernel/live-r
 # The driver PR head the fake remote holds: the template, and a planted driver whose wake does nothing.
 PR_HEAD = {'adapters/template/driver': os.path.join(ROOT, 'adapters', 'template', 'driver'),
            'adapters/template/schema.json': os.path.join(ROOT, 'adapters', 'template', 'schema.json'),
-           'adapters/four/driver': os.path.join(FIX, 'four-driver')}
+           'adapters/four/driver': os.path.join(FIX, 'four-driver'),
+           'adapters/quoting/driver': os.path.join(FIX, 'quoting-driver')}
 
 
 def git(cwd, *args):
@@ -61,6 +62,9 @@ class Heads(unittest.TestCase):
                 copy(os.path.join(ROOT, path), os.path.join(self.checkout, path))
         copy(os.path.join(FIX, 'listings.json'), os.path.join(self.checkout, 'kernel', 'live-rig', 'listings.json'))
         copy(os.path.join(FIX, 'fleet.md'), os.path.join(self.checkout, 'docs', 'agents', 'fleet.md'))
+        # Host configs are tracked files of the clean checkout (R9), as kernel/live-rig/vps/hosts is.
+        self.hosts = os.path.join(self.checkout, 'kernel', 'live-rig', 'vps', 'hosts')
+        shutil.copytree(os.path.join(FIX, 'hosts'), self.hosts)
         git(self.checkout, 'init', '-q', '-b', 'main')
         git(self.checkout, 'add', '-A')
         git(self.checkout, 'commit', '-q', '-m', 'fixture checkout')
@@ -103,7 +107,8 @@ class Heads(unittest.TestCase):
                 '103': [lead(31, 'launch-fleet: started'),
                         {'id': 32, 'user': {'login': 'someone-else'}, 'body': LINE % (203, self.head)}],
                 '104': [lead(41, LINE % (204, self.head))],
-                '105': [lead(51, LINE % (205, self.head))]}, f)
+                '105': [lead(51, LINE % (205, self.head))],
+                '106': [lead(61, LINE % (206, self.head))]}, f)
         stubs = tempfile.mkdtemp(dir=self.folder)
         for name in AGENT_CLIS:
             with open(os.path.join(stubs, name), 'w') as f:
@@ -131,14 +136,14 @@ class Heads(unittest.TestCase):
                 pass
         shutil.rmtree(self.folder, ignore_errors=True)
 
-    def heads(self, hosts, *extra, env=None):
+    def heads(self, hosts, *extra, env=None, folder=None):
         with open(os.path.join(FIX, 'live-tickets.json')) as f:
             every = json.load(f)
         tickets = os.path.join(self.folder, 'live-tickets.json')
         with open(tickets, 'w') as f:
             json.dump({h: every[h] for h in hosts}, f)
         command = [sys.executable, '-I', os.path.join(self.checkout, 'kernel', 'live-rig', 'heads.py'),
-                   '--tickets', tickets, '--hosts', os.path.join(FIX, 'hosts'), '--settings', self.settings,
+                   '--tickets', tickets, '--hosts', folder or self.hosts, '--settings', self.settings,
                    '--out', self.out] + list(extra)
         p = subprocess.run(command, env=env or self.env, capture_output=True, text=True, timeout=300)
         return p.returncode, p.stdout, p.stderr
@@ -303,11 +308,41 @@ class Heads(unittest.TestCase):
                 with open(tickets, 'w') as f:
                     json.dump({'fixture-paid': bad}, f)
                 p = subprocess.run([sys.executable, '-I', os.path.join(self.checkout, 'kernel', 'live-rig', 'heads.py'),
-                                    '--tickets', tickets, '--hosts', os.path.join(FIX, 'hosts'), '--settings',
+                                    '--tickets', tickets, '--hosts', self.hosts, '--settings',
                                     self.settings, '--out', self.out], env=self.env, capture_output=True, text=True,
                                    timeout=60)
                 self.assertEqual((p.returncode, p.stdout), (2, ''), p.stderr)
         self.assertEqual(self.calls(), [])
+
+    def test_a_kit_line_quoting_a_path_the_repository_or_the_login_is_withheld_from_the_record_and_comment(self):
+        code, out, err = self.heads(['fixture-quoting'], '--allow-cost', 'fixture-quoting')
+        self.assertEqual(code, 1, err)
+        day = self.day()
+        record = json.loads(read(os.path.join(self.out, day, 'fixture-quoting-fake-harness-Synthetic 1.json')))
+        self.assertEqual(record['stdout'].splitlines()[:2], [
+            'pass version: openwiz:records v1, and the schema is driver v1', 'fail start: withheld'])
+        self.assertEqual(len(record['stdout'].splitlines()), 5, record['stdout'])
+        self.assertIn('```\npass version: openwiz:records v1, and the schema is driver v1\nfail start: withheld\n', out)
+        self.assertIn('cannot start %s in ' % REPO, err)
+        comment = out.split('```\n', 1)[1]
+        self.assertEqual(comment, record['stdout'] + '```\n')
+        for private in (self.folder, os.path.realpath(self.folder), REPO, 'heads-throwaway', '/'):
+            self.assertNotIn(private, record['stdout'])
+
+    def test_hosts_outside_the_checkout_or_untracked_in_it_exit_2_and_run_nothing(self):
+        self.assertEqual(self.heads(['fixture-paid'], folder=os.path.join(FIX, 'hosts'))[:2], (2, ''))
+        with open(os.path.join(self.hosts, 'extra.json'), 'w') as f:
+            f.write(read(os.path.join(FIX, 'hosts', 'fixture-paid.json')).replace('fixture-paid', 'fixture-extra'))
+        git(self.checkout, 'add', '-A')
+        git(self.checkout, 'commit', '-q', '-m', 'a tracked extra host')
+        ignored = os.path.join(self.checkout, 'ignored')
+        os.makedirs(ignored)
+        copy(os.path.join(FIX, 'hosts', 'fixture-paid.json'), os.path.join(ignored, 'fixture-paid.json'))
+        with open(os.path.join(self.checkout, '.git', 'info', 'exclude'), 'a') as f:
+            f.write('ignored/\n')
+        self.assertEqual(self.heads(['fixture-paid'], folder=ignored)[:2], (2, ''))
+        self.assertEqual(self.calls(), [])
+        self.assertEqual(self.heads(['fixture-paid'])[:2], (0, 'skipped fixture-paid: cost\n'))
 
     def test_the_vps_live_tickets_file_names_the_five_live_checks_their_build_prs_and_listing_ids(self):
         spec = importlib.util.spec_from_loader('heads', importlib.machinery.SourceFileLoader(
