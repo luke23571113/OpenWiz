@@ -21,11 +21,11 @@ For Jake, once, on the VPS. Spec #2474 ("VPS session files"). Everything below i
 
 A host whose probe fails is skipped, `skipped <host>: <why>`; the rest still run.
 
-**What the probes can't prove.** Each status probe is read-only and decides by its exit code. For **Hermes**, only GitHub is probed: Hermes has no status command whose exit code shows a sign-in, and the inner `claude` isn't probed. For **Pane**, `runpane repos list --json` passes whenever Pane's daemon is up, even when `claude` is signed out. For both, sign in to Claude in step 3. For Pane, also run the daemon check in its row below.
+**What the probes can't prove.** Each status probe is read-only and decides by its exit code. For **Hermes**, only GitHub is probed: Hermes has no status command whose exit code shows a sign-in, and the inner `claude` is covered by spec #2474's Claude Code exception for unattended probes. For **Pane**, `runpane repos list --json` passes whenever Pane's daemon is up, even when `claude` is signed out. For both, sign in to Claude in step 3. For Pane, also run the daemon check in its row below.
 
 ## One row per host
 
-Each row starts with the host name its config gives (`hosts/<file>.json`, cited in Sources). "Status check" is what the rig runs before a run: read-only, output discarded, never a sign-in. The GitHub probe is `gh auth status --hostname github.com --active --no-refresh`: with `--no-refresh`, gh only reads the stored credential and never refreshes, replaces or removes it ([gh v2.105.0 `status.go`](https://github.com/cli/cli/blob/v2.105.0/pkg/cmd/auth/status/status.go#L540-L546)). "Bills" is whether one live turn bills beyond a plan you already have.
+Each row starts with the host name its config gives (`hosts/<file>.json`, cited in Sources). "Status check" is what the rig runs before a run: read-only, output discarded, never a sign-in. The GitHub probe is `env GH_TELEMETRY=0 gh config get -h github.com user`. It reads the saved account name from `hosts.yml` with telemetry disabled. A failed GitHub probe reads `not signed in: env`. "Bills" is whether one live turn bills beyond a plan you already have.
 
 | Host | Sign in (yours) | Names you export | Status check | Bills | Sources |
 | --- | --- | --- | --- | --- | --- |

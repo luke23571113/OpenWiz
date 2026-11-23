@@ -19,9 +19,10 @@ RIG = os.path.join(ROOT, 'kernel', 'live-rig', 'rig.py')
 KIT = os.path.join(ROOT, 'kernel', 'driver-kit', 'kit.py')
 # SAFETY: refusing stubs first on PATH for every agent CLI, except a fake a test wires on purpose, so a config or
 # fixture mistake can never start a real one. No real status or sign-in command is ever on a test's PATH.
-AGENT_CLIS = ['claude', 'codex', 'cursor-agent', 'agent', 'pi', 'opencode', 'copilot', 'goose', 'gemini', 'kimi',
-              'qwen', 'cline', 'kilo', 'crush', 'vibe', 'auggie', 'kiro-cli', 'junie', 'amp', 'agy', 'oz', 'sculpt',
-              'hermes', 'acpx', 'droid']
+AGENT_CLIS = ['claude', 'codex', 'cursor-agent', 'agent', 'cursor', 'pi', 'opencode', 'copilot', 'goose', 'gemini',
+              'kimi', 'qwen', 'cline', 'kilo', 'kilocode', 'crush', 'vibe', 'auggie', 'kiro-cli', 'junie', 'amp',
+              'agy', 'oz', 'sculpt', 'hermes', 'acpx', 'droid', 'boat', 'room-cli', 'runpane', 'pane', 'openhands',
+              'devin', 'warp', 'grok', 'codespaces', 'conductor']
 SECRET = 'fk-' + 'Synthetic0Vps0Value' * 2
 CONFIGS = {
     'hermes': {'host': 'Hermes', 'driver': 'adapters/hermes/driver', 'tool': 'hermes', 'key': None, 'harness': 'claude'},
@@ -35,16 +36,16 @@ GH_PROBE = ['env', 'GH_TELEMETRY=0', 'gh', 'config', 'get', '-h', 'github.com', 
 BILLS = {'hermes': 'unknown', 'pane': 'unknown', 'factory': 'unknown', 'conductor': 'unknown', 'cursor': 'unknown'}
 SKIPS = {
     'hermes': {'tool missing': 'not installed: hermes', 'gh missing': 'not installed: gh', 'tool signed out': 'cost',
-               'key name unset': 'cost', 'gh signed out': 'not signed in: gh', 'signed in': 'cost'},
+               'key name unset': 'cost', 'gh signed out': 'not signed in: env', 'signed in': 'cost'},
     'pane': {'tool missing': 'not installed: runpane', 'gh missing': 'not installed: gh',
-             'tool signed out': 'not signed in: runpane', 'key name unset': 'cost', 'gh signed out': 'not signed in: gh',
+             'tool signed out': 'not signed in: runpane', 'key name unset': 'cost', 'gh signed out': 'not signed in: env',
              'signed in': 'cost'},
     'factory': {'tool missing': 'not installed: droid', 'gh missing': 'not installed: gh', 'tool signed out': 'cost',
-                'key name unset': 'not signed in: python3', 'gh signed out': 'not signed in: gh', 'signed in': 'cost'},
+                'key name unset': 'not signed in: python3', 'gh signed out': 'not signed in: env', 'signed in': 'cost'},
     'conductor': {'tool missing': 'not installed: curl', 'gh missing': 'not installed: gh', 'tool signed out': 'cost',
-                  'key name unset': 'not signed in: python3', 'gh signed out': 'not signed in: gh', 'signed in': 'cost'},
+                  'key name unset': 'not signed in: python3', 'gh signed out': 'not signed in: env', 'signed in': 'cost'},
     'cursor': {'tool missing': 'not installed: curl', 'gh missing': 'not installed: gh', 'tool signed out': 'cost',
-               'key name unset': 'not signed in: python3', 'gh signed out': 'not signed in: gh', 'signed in': 'cost'},
+               'key name unset': 'not signed in: python3', 'gh signed out': 'not signed in: env', 'signed in': 'cost'},
 }
 
 
@@ -117,14 +118,16 @@ class Skips(unittest.TestCase):
                 os.chmod(os.path.join(stubs, name), 0o755)
         for name in wired:
             out = name == 'gh' and situation == 'gh signed out' or name == tool and situation == 'tool signed out'
-            only = ' '.join(GH_PROBE[1:]) if name == 'gh' else ''
+            only = ' '.join(GH_PROBE[3:]) if name == 'gh' else ''
             with open(os.path.join(fakes, name), 'w') as f:
                 f.write('#!/bin/sh\necho "%s $*" >> "%s"\n' % (name, self.log))
                 if only:
-                    f.write('[ "$*" = "%s" ] || { echo "%s refused" >> "%s"; exit 2; }\n' % (only, name, self.log))
+                    f.write('[ "$GH_TELEMETRY" = 0 ] && [ "$*" = "%s" ] || '
+                            '{ echo "%s refused" >> "%s"; exit 2; }\n' % (only, name, self.log))
                 f.write('exit %d\n' % (1 if out else 0))
             os.chmod(os.path.join(fakes, name), 0o755)
-        for name, real in (('git', shutil.which('git')), ('python3', sys.executable)):
+        for name, real in (('env', shutil.which('env')), ('git', shutil.which('git')),
+                           ('python3', sys.executable)):
             os.symlink(real, os.path.join(fakes, name))
         return stubs + os.pathsep + fakes
 
@@ -167,7 +170,7 @@ class Skips(unittest.TestCase):
         if os.path.isfile(self.log):
             with open(self.log) as f:
                 calls = f.read().splitlines()
-        self.assertEqual(sorted(calls), sorted([' '.join(GH_PROBE)] * 5 + ['runpane repos list --json']))
+        self.assertEqual(sorted(calls), sorted([' '.join(GH_PROBE[2:])] * 5 + ['runpane repos list --json']))
 
 
 class Page(unittest.TestCase):
