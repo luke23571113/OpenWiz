@@ -289,9 +289,21 @@ def token_for(private, wanted, env, snapshot=None):
         kept = list(kept_tokens(private, name))
     base = revoke_base(env)
     if not stored:
-        failed = revoke_held(None, base, token)
+        target = private if os.fstat(private.fd).st_nlink else recovery(env)
+        saved = findable(target, name, token, expires_at)
+        try:
+            failed = revoke_held(target if saved else None, base, token)
+        finally:
+            if target and target is not private:
+                os.close(target.fd)
+        if failed:
+            again = recovery(env)
+            saved = findable(again, name, token, expires_at)
+            if again:
+                os.close(again.fd)
+        left = "; the token is kept for a later revoke" if saved else ": suspend the installation"
         raise Refused("the private token directory went away, so the new token "
-                      + (f"was not revoked ({failed}): suspend the installation" if failed else "was revoked"))
+                      + (f"was not revoked ({failed}){left}" if failed else "was revoked"))
     for held in kept:
         revoke_held(private, base, held)
     if reason:
@@ -877,6 +889,17 @@ def keep(private, cache, token, expires_at):
         return False
     private.write(kept_name(cache), {"token": token, "expires_at": expires_at})
     return True
+
+
+def findable(private, cache, token, expires_at):
+    if not private:
+        return False
+    try:
+        with locked(private):
+            keep(private, cache, token, expires_at)
+            return token in kept_tokens(private, cache)
+    except OSError:
+        return False
 
 
 def revoke_held(private, base, token):
