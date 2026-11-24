@@ -8,7 +8,7 @@
       "commit": "abcd",
       "asset_url": "https://github.com/example-publisher/example-driver/releases/download/v1.2.3/driver.tar.gz",
       "kit_commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-      "sha256": "dd79379886c40bd46344be722ee37c381e642134c5aa309072d745859b781abd"
+      "sha256": "a8705d3afdacc8ba582a072e80e166adebb32db5d2e9671181af919c8bf57bf5"
     },
     "error": [
       "commit",
@@ -24,7 +24,7 @@
       "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "asset_url": "http://github.com/example-publisher/example-driver/releases/download/v1.2.3/driver.tar.gz",
       "kit_commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-      "sha256": "dd79379886c40bd46344be722ee37c381e642134c5aa309072d745859b781abd"
+      "sha256": "a8705d3afdacc8ba582a072e80e166adebb32db5d2e9671181af919c8bf57bf5"
     },
     "error": [
       "asset_url",
@@ -40,7 +40,7 @@
       "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "asset_url": "https://github.com/example-publisher/example-driver/releases/download/v1.2.3/driver.tar.gz",
       "kit_commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-      "sha256": "dd79379886c40bd46344be722ee37c381e642134c5aa309072d745859b781abd",
+      "sha256": "a8705d3afdacc8ba582a072e80e166adebb32db5d2e9671181af919c8bf57bf5",
       "unexpected": true
     },
     "error": [
@@ -93,7 +93,7 @@
         {
           "path": "README.md",
           "mode": "0600",
-          "sha256": "aacccf0847b7ad305651369770a080ff843710d9bc30d100c8eb25d98001211d"
+          "sha256": "8436c0d6f2bcc6c20dbf747545ed68caf6b4b47fa793fae0c536187380f62487"
         }
       ]
     },

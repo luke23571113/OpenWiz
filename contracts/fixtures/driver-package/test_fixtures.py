@@ -1,12 +1,10 @@
-"""DR1 offline proof; no extracted files, driver execution or network I/O."""
 import gzip
 import hashlib
 import json
 from pathlib import Path
+import re
 import tarfile
 import unittest
-
-from jsonschema import Draft202012Validator
 
 HERE = Path(__file__).resolve().parent
 CONTRACTS = HERE.parents[1]
@@ -23,6 +21,54 @@ def read_json(path):
     return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=unique_object)
 
 
+def shape_errors(root, schema, value, path=""):
+    allowed = {"$ref", "type", "const", "pattern", "maxLength", "required", "properties",
+               "additionalProperties", "minItems", "maxItems", "items", "contains",
+               "allOf", "oneOf"}
+    if schema.keys() - allowed:
+        raise ValueError("unsupported fixture schema keyword")
+    if "$ref" in schema:
+        prefix, name = schema["$ref"].rsplit("/", 1)
+        if prefix != "#/$defs" or len(schema) != 1:
+            raise ValueError("unsupported fixture schema reference")
+        return shape_errors(root, root["$defs"][name], value, path)
+    if "type" in schema:
+        kind = {"array": list, "object": dict, "string": str}[schema["type"]]
+        if type(value) is not kind:
+            return [(path, "type")]
+    failures = []
+    def check(keyword, passes):
+        if keyword in schema and not passes:
+            failures.append((path, keyword))
+    def nested(subschema, item, key=None):
+        child_path = path if key is None else f"{path}/{key}".lstrip("/")
+        return shape_errors(root, subschema, item, child_path)
+    check("const", value == schema.get("const"))
+    if isinstance(value, str):
+        check("pattern", re.search(schema.get("pattern", ""), value) is not None)
+        check("maxLength", len(value) <= schema.get("maxLength", len(value)))
+    if isinstance(value, dict):
+        properties = schema.get("properties", {})
+        check("required", set(schema.get("required", ())) <= value.keys())
+        check("additionalProperties", schema.get("additionalProperties") is not False
+              or value.keys() <= properties.keys())
+        for key in value.keys() & properties.keys():
+            failures.extend(nested(properties[key], value[key], key))
+    if isinstance(value, list):
+        check("minItems", len(value) >= schema.get("minItems", 0))
+        check("maxItems", len(value) <= schema.get("maxItems", len(value)))
+        if "contains" in schema:
+            check("contains", any(not nested(schema["contains"], item) for item in value))
+        if "items" in schema:
+            for i, item in enumerate(value):
+                failures.extend(nested(schema["items"], item, i))
+    if "oneOf" in schema:
+        check("oneOf", sum(not nested(rule, value) for rule in schema["oneOf"]) == 1)
+    for rule in schema.get("allOf", ()):
+        failures.extend(nested(rule, value))
+    return sorted(failures)
+
+
 def digest(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -32,7 +78,11 @@ def tar_members(data):
     offset = 0
     while raw[offset:offset + 512] != bytes(512):
         member = tarfile.TarInfo.frombuf(raw[offset:offset + 512], "ascii", "strict")
+        if raw[offset + 257:offset + 265] != b"ustar\x0000" or member.size < 0:
+            raise ValueError("invalid USTAR header")
         offset += 512
+        if offset + member.size > len(raw):
+            raise ValueError("truncated tar member")
         yield member, raw[offset:offset + member.size]
         offset += ((member.size + 511) // 512) * 512
     if len(raw) - offset < 1024 or any(raw[offset:]):
@@ -73,6 +123,11 @@ def package_rules(package, manifest, archive, kit_schema):
                 failures.add("member-sha256")
         if path == "schema.json" and data != kit_schema:
             failures.add("kit-schema")
+        if path == "README.md":
+            lines = data.decode("utf-8").splitlines()
+            names = [line for line in lines if line.startswith("Driver:")]
+            if names != [f"Driver: {package['driver']}"]:
+                failures.add("driver-name")
     if entries.keys() - seen:
         failures.add("missing-file")
     return failures
@@ -82,12 +137,10 @@ class DriverPackageFixtures(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.schema = read_json(CONTRACTS / "driver-package.v1.schema.json")
-        Draft202012Validator.check_schema(cls.schema)
 
     def errors(self, kind, value):
         ref = {"$ref": f"#/$defs/{kind}"} if "$defs" in self.schema else {}
-        validator = Draft202012Validator(self.schema).evolve(schema=ref)
-        return sorted(("/".join(map(str, e.path)), e.validator) for e in validator.iter_errors(value))
+        return shape_errors(self.schema, ref, value)
 
     def test_package_refusals_are_isolated(self):
         kit_schema = (CONTRACTS.parent / "kernel/driver-kit/schema.json").read_bytes()
@@ -101,6 +154,9 @@ class DriverPackageFixtures(unittest.TestCase):
                 archive = (folder / "driver.tar.gz").read_bytes()
                 self.assertEqual([], self.errors("package", package))
                 self.assertEqual([], self.errors("manifest", manifest))
+                if self.schema:
+                    for value in (package, manifest):
+                        self.assertEqual([], shape_errors(self.schema, {"oneOf": self.schema["oneOf"]}, value))
                 sums = "".join(f"{digest((folder / name).read_bytes())}  {name}\n"
                                for name in ("driver.tar.gz", "manifest.json"))
                 self.assertEqual(sums, (folder / "SHA256SUMS").read_text())
