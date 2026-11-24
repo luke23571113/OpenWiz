@@ -3,6 +3,7 @@ import base64
 import datetime
 import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -85,14 +86,26 @@ def iso(seconds):
 REHEARSAL_STEPS = ('preflight', 'install', 'build_identity', 'setup', 'skills', 'first_fleet_dry_run')
 
 
-def io_zip(data):
-    path = tempfile.mktemp(suffix='.zip')
-    try:
-        with zipfile.ZipFile(path, 'w') as archive:
-            archive.writestr(zipfile.ZipInfo('rehearsal.json', (2026, 11, 20, 0, 0, 0)), data)
-        return Path(path).read_bytes()
-    finally:
-        os.unlink(path)
+class Zipped(bytes):
+    pass
+
+
+def io_zip(data, method=zipfile.ZIP_STORED):
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, 'w') as archive:
+        archive.writestr(zipfile.ZipInfo('rehearsal.json', (2026, 11, 20, 0, 0, 0)), data, compress_type=method)
+    return buffer.getvalue()
+
+
+def bent_zip(flag=0, method=None, deflate=None):
+    data = bytearray(io_zip(b'{"schema": "openwiz.rehearsal.v1"}', zipfile.ZIP_DEFLATED))
+    central = data.index(b'PK\x01\x02')
+    data[6], data[central + 8] = data[6] | flag, data[central + 8] | flag
+    if method is not None:
+        data[8], data[central + 10] = method, method
+    if deflate is not None:
+        data[30 + len('rehearsal.json')] = deflate
+    return Zipped(data)
 
 
 def section_sha(text, version):
@@ -521,7 +534,8 @@ class World(unittest.TestCase):
                                      'run_attempt': 1, 'created_at': '2026-11-20T00:00:00Z'}, **(run or {}))]}]
         listed = []
         for number, (target, receipt) in enumerate(receipts.items(), 701):
-            data = io_zip(receipt if isinstance(receipt, bytes) else json.dumps(receipt).encode())
+            data = receipt if isinstance(receipt, Zipped) else io_zip(
+                receipt if isinstance(receipt, bytes) else json.dumps(receipt).encode())
             self.world[f'repos/{PUBLIC}/actions/artifacts/{number}/zip'] = base64.b64encode(data).decode()
             listed.append({'id': number, 'name': f'openwiz-rehearsal-{version}-{target}', 'expired': False,
                            'digest': 'sha256:' + sha(data), 'size_in_bytes': len(data),
@@ -2386,6 +2400,23 @@ class Rehearsal(World):
         listing = f'repos/{PUBLIC}/actions/runs/605/artifacts?per_page=100'
         good = json.loads(json.dumps(self.world))
         runs = good[checks][0]['check_runs']
+        frozen = self.root / 'frozen'
+
+        def copy(source, target):
+            if target.is_dir():
+                shutil.rmtree(target)
+            target.unlink(missing_ok=True)
+            if source.is_dir():
+                shutil.copytree(source, target, symlinks=True)
+            elif source.exists():
+                shutil.copy2(source, target)
+        for name in ('state', 'clone', 'public.git', 'releases', 'calls.jsonl'):
+            frozen.mkdir(exist_ok=True)
+            copy(self.root / name, frozen / name)
+
+        def thaw():
+            for name in ('state', 'clone', 'public.git', 'releases', 'calls.jsonl'):
+                copy(frozen / name, self.root / name)
 
         def only(*kept):
             self.world[checks] = [{'check_runs': runs[:2] + list(kept)}]
@@ -2400,16 +2431,17 @@ class Rehearsal(World):
                       steps=[{'name': s, 'status': 'pass'} for s in REHEARSAL_STEPS[:-1]]
                       + [{'name': REHEARSAL_STEPS[-1], 'status': 'fail'}])
         for name, plant, reason in (
-                ('no Packages run at the commit', lambda: (only(), self.world.update(
+                ('no Packages run at the commit, its rehearsal check green', lambda: self.world.update(
                     {f'repos/{PUBLIC}/actions/workflows/packages.yml/runs?head_sha={self.head}&per_page=100':
-                     [{'workflow_runs': []}]})), 'rehearsal_missing'),
+                     [{'workflow_runs': []}]}), 'rehearsal_untrusted'),
                 ('a run from another workflow path',
                  lambda: self.rehearse(run={'path': '.github/workflows/other.yml'}), 'rehearsal_untrusted'),
                 ('a rehearsal check run from another app',
                  lambda: only(dict(runs[2], app={'slug': 'synthetic-app'})), 'rehearsal_untrusted'),
-                ('a red rehearsal check run', lambda: (only(dict(runs[2], conclusion='failure')),
-                                                       self.rehearse(run={'conclusion': 'failure'})),
+                ('a red rehearsal check run, its Packages run green', lambda: only(dict(runs[2], conclusion='failure')),
                  'rehearsal_failed'),
+                ('a green rehearsal check run from another check suite',
+                 lambda: only(dict(runs[2], check_suite={'id': 509})), 'rehearsal_failed'),
                 ('a missing rehearsal check run', lambda: only(), 'rehearsal_missing'),
                 ('a missing target receipt', lambda: self.rehearse(receipts(**{LINUX: None})), 'rehearsal_missing'),
                 ('an expired target receipt', lambda: relist(expired=True), 'rehearsal_missing'),
@@ -2423,6 +2455,12 @@ class Rehearsal(World):
                 ('a receipt for another version',
                  lambda: self.rehearse(receipts(**{LINUX: self.rehearsal(LINUX, version='0.0.98')})),
                  'rehearsal_stale'),
+                ('a receipt whose version is not 0.minor.patch',
+                 lambda: self.rehearse(receipts(**{LINUX: self.rehearsal(LINUX, version='broken')})),
+                 'rehearsal_unreadable'),
+                ('a receipt whose version is 1.0.0',
+                 lambda: self.rehearse(receipts(**{LINUX: self.rehearsal(LINUX, version='1.0.0')})),
+                 'rehearsal_unreadable'),
                 ('a receipt for another target',
                  lambda: self.rehearse(receipts(**{LINUX: self.rehearsal('x86_64-apple-darwin')})),
                  'rehearsal_unreadable'),
@@ -2433,15 +2471,30 @@ class Rehearsal(World):
                  lambda: self.rehearse(receipts(**{LINUX: self.rehearsal(LINUX, steps=[])})), 'rehearsal_unreadable'),
                 ('a receipt that is not JSON', lambda: self.rehearse(receipts(**{LINUX: b'synthetic'})),
                  'rehearsal_unreadable'),
+                ('a receipt of small, deeply nested JSON',
+                 lambda: self.rehearse(receipts(**{LINUX: b'[' * 30000 + b']' * 30000})), 'rehearsal_unreadable'),
+                ('an encrypted receipt member', lambda: self.rehearse(receipts(**{LINUX: bent_zip(flag=1)})),
+                 'rehearsal_unreadable'),
+                ('a receipt member in an unknown compression',
+                 lambda: self.rehearse(receipts(**{LINUX: bent_zip(method=99)})), 'rehearsal_unreadable'),
+                ('a receipt member of broken deflate data',
+                 lambda: self.rehearse(receipts(**{LINUX: bent_zip(deflate=0xff)})), 'rehearsal_unreadable'),
                 ('an unreadable artifact listing', lambda: self.world.update(_fail=[listing]),
                  'rehearsal_unreadable')):
             with self.subTest(case=name):
-                self.world = json.loads(json.dumps(good))
-                plant()
-                self.save()
-                out, refused = self.blocked(self.evaluate(), reason), self.blocked(self.publish(), reason)
-                self.assertEqual((out['reasons'], refused['reasons']), ([reason], [reason]))
-                self.assertEqual(self.writes(), [])
+                seen = []
+                for run in (self.evaluate, self.publish):
+                    thaw()
+                    self.world = json.loads(json.dumps(good))
+                    plant()
+                    self.save()
+                    try:
+                        code, out = run()
+                    except self.failureException as error:
+                        code, out = None, {'reasons': str(error).strip().splitlines()[-1:]}
+                    seen.append((code, out.get('reasons'), self.writes()))
+                self.assertEqual(seen, [(1, [reason], [])] * 2)
+        thaw()
         self.world = good
         self.save()
         self.assertEqual(self.evaluate()[0], 0)
