@@ -45,13 +45,19 @@ The driver chooses the session id (`{"chosen": "uuid"}`): `qwen` takes a new ses
 
 `--approval-mode` takes exactly `plan`, `default`, `auto-edit`, `auto` and `yolo` ([top-level-options.ts](https://github.com/QwenLM/qwen-code/blob/v0.28.4/packages/cli/src/config/top-level-options.ts#L28-L34), [approval-mode.md](https://github.com/QwenLM/qwen-code/blob/v0.28.4/docs/users/features/approval-mode.md)). Each is a mode here, adding `--approval-mode <mode>`. `--yolo` is not used: `qwen` refuses it with `--approval-mode` ([config.ts](https://github.com/QwenLM/qwen-code/blob/v0.28.4/packages/cli/src/config/config.ts#L802-L804)).
 
-| Mode | Edits | Shell commands |
-| --- | --- | --- |
-| `yolo` | auto-approved | auto-approved, with no sandbox |
-| `auto-edit` | auto-approved | need approval |
-| `auto` | a model classifier decides | a model classifier decides |
-| `default` | need approval | need approval |
-| `plan` | read-only | not run |
+The table says what each mode allows interactively, and what it does in this row's turns. The row runs `qwen` headless with text input (the default `--input-format`, [top-level-options.ts](https://github.com/QwenLM/qwen-code/blob/v0.28.4/packages/cli/src/config/top-level-options.ts#L353-L358)) and stream-json output, so no one can answer an approval request: nothing answers it on stdin, and only stream-json input lets a host answer through the protocol ([approval-mode.md](https://github.com/QwenLM/qwen-code/blob/v0.28.4/docs/users/features/approval-mode.md#L133-L145)). So `qwen` removes, unless an explicit allow rule keeps it, the tools a headless turn could only ask about ([config.ts](https://github.com/QwenLM/qwen-code/blob/v0.28.4/packages/cli/src/config/config.ts#L2188-L2233)):
+
+| Mode | Edits | Shell commands | Headless here: removed unless allowed |
+| --- | --- | --- | --- |
+| `yolo` | auto-approved | auto-approved, with no sandbox | none: every tool stays and runs |
+| `auto-edit` | auto-approved | need approval | `run_shell_command`, `monitor` |
+| `auto` | a model classifier decides | a model classifier decides | `run_shell_command`, `monitor`, `edit`, `write_file` |
+| `default` | need approval | need approval | `run_shell_command`, `monitor`, `edit`, `write_file` |
+| `plan` | read-only | not run | `run_shell_command`, `monitor`, `edit`, `write_file` |
+
+An explicit allow rule (`permissions.allow` in the user's or the project's `settings.json`) keeps a tool, and then the mode and the permission rules decide each call: in `auto`, the classifier can still approve ordinary edits in the clone ([approval-mode.md](https://github.com/QwenLM/qwen-code/blob/v0.28.4/docs/users/features/approval-mode.md#L133-L145)). A builder must edit files and run shell commands (its status note is a `gh` call), so in `auto-edit`, `auto`, `default` or `plan` it needs the owner's own allow rules for those tools, or it can't do the ticket. The row adds none: it passes no `--allowed-tools` and widens no approval. The owner picks the mode and writes any allow rule.
+
+**Trust.** With `security.folderTrust.enabled` on and the clone's folder not trusted, `qwen` downgrades `yolo`, `auto-edit` and `auto` to `default` and prints `Approval mode overridden to "default" because the current folder is not trusted.` ([config.ts](https://github.com/QwenLM/qwen-code/blob/v0.28.4/packages/cli/src/config/config.ts#L1999-L2024)). Folder trust is off by default, which treats every folder as trusted. With it on, the owner trusts the folder the driver clones into (or a parent of it) before approving one of those three modes; otherwise every turn runs as `default`.
 
 ## The census check, resolved
 
