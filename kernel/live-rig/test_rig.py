@@ -40,9 +40,9 @@ AGENT_CLIS = ['claude', 'codex', 'cursor-agent', 'agent', 'pi', 'opencode', 'cop
               'hermes', 'acpx', 'droid']
 COPIED = ['kernel/live-rig/rig.py', 'kernel/live-rig/fixtures/hosts', 'kernel/driver-kit/kit.py',
           'kernel/driver-kit/hostkey.py', 'kernel/driver-kit/hosts.json', 'kernel/driver-kit/schema.json',
-          'kernel/driver-kit/fixtures/base', 'kernel/driver-kit/fixtures/planted', 'kernel/records-kit/check.py',
-          'kernel/records.v1.md', 'adapters/template/driver', 'adapters/template/README.md',
-          'adapters/template/schema.json']
+          'kernel/driver-kit/fixtures/base', 'kernel/driver-kit/fixtures/fake-harness',
+          'kernel/driver-kit/fixtures/planted', 'kernel/records-kit/check.py', 'kernel/records.v1.md',
+          'adapters/template/driver', 'adapters/template/README.md', 'adapters/template/schema.json']
 
 
 def git(cwd, *args):
@@ -90,7 +90,7 @@ class Rig(unittest.TestCase):
             with open(os.path.join(stubs, name), 'w') as f:
                 f.write('#!/bin/sh\necho "%s: refused, the rig tests never start an agent CLI" >&2\nexit 1\n' % name)
             os.chmod(os.path.join(stubs, name), 0o700)
-        path = os.pathsep.join([stubs, FAKES, os.path.join(ROOT, 'kernel', 'driver-kit', 'fixtures'),
+        path = os.pathsep.join([stubs, FAKES, os.path.join(self.checkout, 'kernel', 'driver-kit', 'fixtures'),
                                 os.environ['PATH']])
         self.assertEqual({shutil.which(name, path=path) for name in AGENT_CLIS},
                          {os.path.join(stubs, name) for name in AGENT_CLIS})
