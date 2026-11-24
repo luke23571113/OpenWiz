@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import base64
+import collections.abc
 import datetime
 import importlib.machinery
 import importlib.util
@@ -13,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -48,6 +50,14 @@ def git(cwd, *args):
 def copy(src, dst):
     os.makedirs(os.path.dirname(dst), exist_ok=True)
     shutil.copy2(src, dst)
+
+
+def load_heads():
+    spec = importlib.util.spec_from_loader('heads', importlib.machinery.SourceFileLoader(
+        'heads', os.path.join(HERE, 'heads.py')))
+    heads = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(heads)
+    return heads
 
 
 def read(path):
@@ -380,6 +390,27 @@ class Heads(unittest.TestCase):
         self.assertEqual([c['args'][2:4] for c in self.writes()][-1:], [['POST', 'repos/openwizdev/WizMarket/pulls']])
         self.assertEqual(len([c for c in self.writes() if c['args'][3].endswith('/comments')]), 1)
 
+    def test_a_blocked_override_value_is_never_fetched_from_the_environment(self):
+        heads, fetched, given = load_heads(), [], []
+        class Recording(collections.abc.Mapping):
+            def __init__(self, values):
+                self.held = values
+            def __getitem__(self, name):
+                fetched.append(name)
+                return self.held[name]
+            __iter__, __len__ = lambda self: iter(self.held), lambda self: len(self.held)
+            __contains__ = lambda self, name: name in self.held
+        ran = lambda *a, **k: given.append(k.get('env')) or subprocess.CompletedProcess(a, 1, '', 'refused')
+        session = heads.Session(type('Args', (), {'out': self.folder, 'post': False}))
+        session.login = LOGIN
+        with mock.patch.object(os, 'environ', Recording(dict(AUTH, PATH='/fake', HOME='/fake'))), \
+                mock.patch.object(subprocess, 'run', ran):
+            given.append(heads.stored_login_env())
+            heads.git('status'), heads.gh(['api', 'user']), session.receipt('h', {'listing': 'x'}, 'record', 0)
+        self.assertEqual(sorted(set(fetched) & set(AUTH)), [])
+        self.assertEqual([{k: e.get(k) for k in AUTH} for e in given], [dict(dict.fromkeys(AUTH),
+                         GH_HOST='github.com')] * 4)
+
     def test_help_and_a_skip_never_load_the_kit_module_or_its_credential_reads(self):
         marker = os.path.join(self.folder, 'kit-loaded')
         with open(os.path.join(self.checkout, 'kernel', 'driver-kit', 'kit.py'), 'w') as f:
@@ -422,11 +453,7 @@ class Heads(unittest.TestCase):
         self.assertEqual(self.heads(['fixture-paid'])[:2], (0, 'skipped fixture-paid: cost\n'))
 
     def test_the_vps_live_tickets_file_names_the_five_live_checks_their_build_prs_and_listing_ids(self):
-        spec = importlib.util.spec_from_loader('heads', importlib.machinery.SourceFileLoader(
-            'heads', os.path.join(HERE, 'heads.py')))
-        heads = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(heads)
-        self.assertEqual(heads.load_tickets(os.path.join(HERE, 'vps', 'live-tickets.json')), {
+        self.assertEqual(load_heads().load_tickets(os.path.join(HERE, 'vps', 'live-tickets.json')), {
             'Hermes': {'id': 'DW1L', 'ticket': 1990, 'pr': 2017, 'listing': 'hermes'},
             'Conductor': {'id': 'DW3L', 'ticket': 1993, 'pr': 2020, 'listing': 'conductor'},
             'Cursor': {'id': 'DW4L', 'ticket': 1995, 'pr': 2021, 'listing': 'cursor-cloud-agents'},
