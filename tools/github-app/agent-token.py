@@ -624,7 +624,7 @@ def snapshot_token(snapshot, env, check=only_git_transport):
         return "no private directory", None
     name = os.path.basename(snapshot)
     if (snapshot != env.get(RUN_MARK) or os.path.dirname(snapshot) != private.path
-            or not re.fullmatch(r"run-[0-9a-f]{32}\.json", name)):
+            or not SNAPSHOT.fullmatch(name)):
         return "not this run's helper", None
     reason = check(snapshot, env)
     if reason:
@@ -663,7 +663,7 @@ def bound_gh(real, refuse, env):
         private = Private(env, create=False)
     except Refused:
         return "no private directory", None
-    if os.path.dirname(snapshot) != private.path or not re.fullmatch(r"run-[0-9a-f]{32}\.json", name):
+    if os.path.dirname(snapshot) != private.path or not SNAPSHOT.fullmatch(name):
         return "not this run's gh", None
     bound = private.read(gh_binding(name))
     if not (isinstance(bound, dict) and bound.get("gh") == real and bound.get("refuse") == refuse):
@@ -791,7 +791,10 @@ def gh_checked(fd, path, refuse, args, env):
 API_BASE = "https://api.github.com"
 NOT_REVOKED = "openwiz: openwiz[bot] token not revoked ({}); the token is kept for a later revoke\n"
 NO_TOKEN = "openwiz: openwiz[bot] token not revoked (no token found)\n"
-SNAPSHOT = re.compile(r"run-[0-9a-f]{32}\.json")
+# A run started before the upgrade has run-<32 hex>.json; an upgraded run has
+# run-<16 hex>-<16 hex>.json, a shape no pre-upgrade name has, so a later run never
+# takes the path a still-running older run saved.
+SNAPSHOT = re.compile(r"run-(?:[0-9a-f]{32}|[0-9a-f]{16}-[0-9a-f]{16})\.json")
 REVOKE_REASONS = ("GitHub refused", "GitHub unreachable", "not the GitHub API", "no token found")
 
 
@@ -880,7 +883,7 @@ def kept_tokens(private, cache):
 
 
 def snapshot_prefix(cache):
-    return "run-" + cache[len("token-"):][:16]
+    return "run-" + cache[len("token-"):][:16] + "-"
 
 
 def slot_name(snapshot):
