@@ -803,7 +803,7 @@ def gh_checked(fd, path, refuse, args, env):
 API_BASE = "https://api.github.com"
 NOT_REVOKED = "openwiz: openwiz[bot] token not revoked ({}); the token is kept for a later revoke\n"
 NO_TOKEN = "openwiz: openwiz[bot] token not revoked (no token found)\n"
-SNAPSHOT = re.compile(r"run-[0-9a-f]{32}\.json")
+SNAPSHOT = re.compile(r"run-(?:[0-9a-f]{32}|[0-9a-f]{16}-[0-9a-f]{16})\.json")
 REVOKE_REASONS = ("GitHub refused", "GitHub unreachable", "not the GitHub API", "no token found")
 
 
@@ -892,39 +892,22 @@ def kept_tokens(private, cache):
 
 
 def snapshot_prefix(cache):
-    return "run-" + cache[len("token-"):][:16]
+    return "run-" + cache[len("token-"):][:16] + "-"
 
 
 def slot_name(snapshot):
     return "slot-" + snapshot[len("run-"):-len(".json")]
 
 
-def claim_slot(private, snapshot):
-    try:
-        os.close(os.open(slot_name(snapshot), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600,
-                         dir_fd=private.fd))
-        return True
-    except FileExistsError:
-        return False
-
-
-def has_entry(private, name):
-    try:
-        os.stat(name, dir_fd=private.fd, follow_symlinks=False)
-        return True
-    except FileNotFoundError:
-        return False
-
-
 def reserve(private, cache):
     for _ in range(8):
         name = f"{snapshot_prefix(cache)}{secrets.token_hex(8)}.json"
         try:
-            if not claim_slot(private, name):
-                continue
-            if has_entry(private, name) or has_entry(private, gh_binding(name)):
-                continue
+            os.close(os.open(slot_name(name), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600,
+                             dir_fd=private.fd))
             return name
+        except FileExistsError:
+            continue
         except OSError:
             break
     raise Refused("cannot reserve a name for this run's token copy, so no openwiz[bot] token is handed over")
@@ -944,11 +927,6 @@ def retire(private, cache):
 
     def set_aside(name):
         nonlocal failed
-        if SNAPSHOT.fullmatch(name):
-            try:
-                claim_slot(private, name)
-            except OSError as error:
-                failed = failed or error
         kept = kept_name(cache)
         try:
             os.rename(name, kept, src_dir_fd=private.fd, dst_dir_fd=private.fd)
@@ -1000,11 +978,6 @@ def revoke_held(private, base, token):
     if not reason and private:
         with locked(private):
             for name in holders(private, token):
-                if SNAPSHOT.fullmatch(name):
-                    try:
-                        claim_slot(private, name)
-                    except OSError:
-                        pass
                 private.unlink(name)
     return reason
 
