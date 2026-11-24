@@ -23,3 +23,7 @@ A `model` is one to 100 characters made of `/`-separated segments. Each segment 
 
 - Can: every real id cited from the five CLIs' docs and sources passes the kit's schema check and `adapters/local/driver start`'s validation (the start then fails later, for the synthetic harness, not for the model); every listed bad shape is refused by both with D3 `model is not valid`; the schema and the local driver agree on every case; every `adapters/*/schema.json` is a byte copy; no real id is flagged as a credential.
 - Can't: that any real CLI accepts these ids, or that a run with them works. No real agent CLI is started (refusing stubs sit first on every test's `PATH`). The other drivers (`template`, `boat`, `cloudroom`, `devin`, `openclaw`) keep their own `START` patterns; this ticket copies only their `schema.json`, so their own validation of `/` is unchanged and is each driver's own ticket.
+
+## Update: the other drivers
+
+By the planner's ruling (a), this ticket also changes the `START` model pattern of `adapters/{template,boat,cloudroom,devin,openclaw}/driver` and `KIT_MODEL` in `kernel/live-rig/rig.py` to the same grammar, with one test per driver. So every driver here accepts and refuses the same ids as the schema. `contracts/roster.v1.md` stays unchanged (ruling (2)); its follow-up is the lead's.
