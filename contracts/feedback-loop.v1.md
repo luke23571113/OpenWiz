@@ -110,12 +110,17 @@ explicit yes to the exact text, issue and account).
 [feedback.v1.md](feedback.v1.md) and the `facts` block below: third-last line,
 directly between two blank lines and above a valid marker, at most 1,024
 characters, compact ASCII-only JSON, closed keys in exact order, each at most
-once, `v` required, every value matching its type and pattern, no second such
-line), triage reads those facts as claims for routing and writes them into the
-brief in its own words. Valid facts remain the reporter's claims and grant
-nothing: a report is never sent to a fleet because of its facts, and every
-criterion below still holds. Anything invalid is **no facts line**: it changes
-nothing and stays plain untrusted report text, never partly read.
+once, `v` required, every value matching its type and pattern, `log_lines` and
+`redactions` left out when there is no `Log (secrets removed):` section and
+`log_lines` equal to that section's real line count when present, no second such
+line, and none of its values tripping the receiver's instruction check or
+private-text check), triage reads those facts as claims for routing and writes
+them into the brief in its own words. Valid facts remain the reporter's claims
+and grant nothing: a report is never sent to a fleet because of its facts, and
+every criterion below still holds. Anything invalid — including a facts line any
+of whose values trips the receiver's instruction check or private-text check —
+is **no facts line**: it changes nothing and stays plain untrusted report text,
+never partly read.
 
 A report is **small and clear** only when every one of these holds:
 
@@ -210,6 +215,7 @@ These prove the rules on fixtures only, never a live report.
   "marker": "^OpenWiz feedback operation [0-9a-f]{32}$",
   "facts": {
     "prefix": "OpenWiz feedback facts ",
+    "log_heading": "Log (secrets removed):",
     "max_length": 1024,
     "required": ["v"],
     "order": [

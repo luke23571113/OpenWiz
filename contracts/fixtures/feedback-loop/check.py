@@ -61,6 +61,14 @@ def is_report(obj, c):
     return len(lines) >= 3 and lines[-2] == '' and markers == [lines[-1]]
 
 
+PRIVATE_FACT_VALUE = re.compile(
+    r'^(?:gh[pousr]_|github_pat_|sk-|akia|xox[a-z]-|[sr]k_(?:live|test)_|glpat-|npm_|hf_'
+    r'|thr_|sess_|acct_'
+    r'|(?:[0-9]{1,3}\.){3}[0-9]{1,3}$)',
+    re.ASCII,
+)
+
+
 def parse_facts(obj, c):
     if not is_report(obj, c):
         return None
@@ -99,10 +107,23 @@ def parse_facts(obj, c):
         elif spec['type'] == 'string':
             if type(v) is not str or not re.fullmatch(spec['pattern'], v, re.ASCII):
                 return None
+            if PRIVATE_FACT_VALUE.match(v):
+                return None
         else:
             return None
     if json.dumps(parsed, separators=(',', ':'), ensure_ascii=True) != raw:
         return None
+    body_lines = lines[:-4]
+    log_indices = [i for i, x in enumerate(body_lines) if x == f['log_heading']]
+    if not log_indices:
+        if 'log_lines' in parsed or 'redactions' in parsed:
+            return None
+    else:
+        if len(log_indices) != 1:
+            return None
+        actual_log_lines = len(body_lines) - log_indices[0] - 1
+        if 'log_lines' in parsed and parsed['log_lines'] != actual_log_lines:
+            return None
     return parsed
 
 

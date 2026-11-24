@@ -123,23 +123,31 @@ every other key may be left out:
 | `driver` | slug | The OpenWiz driver in use |
 | `harness` | slug | The agent program (for example `claude-code`, `codex`) |
 | `model` | `^[a-z0-9][a-z0-9._-]{0,63}$` | The agent's model |
-| `log_lines` | integer, 0 to 40 | Log lines in the body's log section |
-| `redactions` | integer, 0 to 9999 | Replacements the sender's scrub made in that log |
+| `log_lines` | integer, 0 to 40 | Log lines in the body's log section (left out when there is no log section; must equal the section's real line count) |
+| `redactions` | integer, 0 to 9999 | Replacements the sender's scrub made in that log (left out when there is no log section) |
 
 A slug is `^[a-z0-9][a-z0-9-]{0,31}$`; a version is
 `^[0-9]+\.[0-9]+\.[0-9]+$`. No other key, type or value exists: no hostname,
-user name, path, address, identifier, free text or nested value.
+user name, path, address, identifier, free text or nested value. `log_lines` and
+`redactions` are left out when the body has no `Log (secrets removed):` section;
+when that section is present, `log_lines` equals the section's real line count.
 
 - **Sender.** Each fact is shown in the preview in plain words and as the exact
   line, and the user can drop any fact, or all of them, before the yes. A fact
   the sender cannot read for certain is left out, never guessed. The facts line
   is bound and sent byte for byte like the rest of the body.
 - **Receiver.** A facts line counts only when it is the body's third-last line,
-  directly between two blank lines and above a valid marker, and parses under
-  every rule above. Anything else (another place, an unknown or repeated key, a
-  wrong order, type or value, a second such line) is **no facts line**: plain
-  untrusted text, never partly read. Valid facts are still the reporter's
-  claims: they route and help reproduce, and grant nothing.
+  directly between two blank lines and above a valid marker, parses under every
+  rule above (including that `log_lines` and `redactions` are left out when
+  there is no `Log (secrets removed):` section and `log_lines` equals that
+  section's real line count when present), and none of its values trips the
+  receiver's instruction check or private-text check. Anything else (another
+  place, an unknown or repeated key, a wrong order, type or value, a second such
+  line, `log_lines` or `redactions` without a log section, a mismatched
+  `log_lines` count, or any value that trips the receiver's instruction check or
+  private-text check) is **no facts line**: plain untrusted text, never partly
+  read. Valid facts are still the reporter's claims: they route and help
+  reproduce, and grant nothing.
 
 ### The four sections
 
@@ -160,20 +168,44 @@ are.
 
 ### The log section and the scrub
 
+A **token-shaped secret** is any of:
+
+- a provider key form: GitHub (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`,
+  `github_pat_`), OpenAI and Anthropic (`sk-`), AWS (`AKIA`), Slack (`xox?-`),
+  Stripe (`sk_live_`, `rk_live_`, `sk_test_`, `rk_test_`), GitLab (`glpat-`),
+  npm (`npm_`), or Hugging Face (`hf_`);
+- a private key block;
+- credentials in a URL;
+- a value assigned to `password`, `passwd`, `secret`, `token`, `api key` or
+  `auth token`.
+
+A **leading shell prompt** is a line start of optional spaces followed by `$ `,
+`> ` or `# `.
+
 A log excerpt is added only when the user chooses one. The sender then: keeps at
-most the last 40 lines, 200 characters a line; replaces every token-shaped
-secret, private key block, credential in a URL, link, e-mail address, IP
-address, home or absolute path, and thread, session or account identifier with a
-fixed bracketed word such as `[secret removed]`, `[path removed]`,
-`[link removed]`; drops a leading shell prompt; indents each line by four
-spaces; and counts the replacements. The preview shows the scrubbed bytes, and
-those are what is sent. A log is never collected, proposed or attached by
-default, and nothing but this section is ever scrubbed or altered.
+most the last 40 lines, 200 characters a line; replaces every match with the
+exact bracketed word for its category, one per category:
+
+| Category | Replacement |
+| --- | --- |
+| Token-shaped secret (provider key form, private key block, credentials in a URL, or assigned secret/password/token value) | `[secret removed]` |
+| Home or absolute path | `[path removed]` |
+| Link | `[link removed]` |
+| E-mail address | `[email removed]` |
+| IP address | `[ip removed]` |
+| Thread, session or account identifier | `[id removed]` |
+
+The sender also drops a leading shell prompt, indents each line by four spaces,
+and counts the replacements. The preview shows the scrubbed bytes, and those are
+what is sent. A log is never collected, proposed or attached by default, and
+nothing but this section is ever scrubbed or altered.
 
 In the title and the other sections the sender changes nothing: it **refuses**,
-before preview and naming the line, a token-shaped secret or a private key
-block, and it **warns** in the preview about a private-looking path, address or
-identifier, which the user may keep or remove.
+before preview and naming the line, any token-shaped secret (as defined above,
+including a private key block), and it **warns** in the preview about
+private-looking text — specifically a home or absolute path, an e-mail address,
+an IP address, or a thread, session or account identifier — which the user may
+keep or remove.
 
 ## Destination and identity
 
