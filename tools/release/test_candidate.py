@@ -2691,7 +2691,6 @@ class EarlyPublish(World):
         self.assertIn('under the 72h', lead['note'])
         readback = json.loads((self.state / 'evidence/readback.json').read_text())
         self.assertEqual(readback['early_lead_time'], lead)
-        # Re-run on a fresh candidate with >= 72h lead time
         self.setUp()
         self.ready()
         self.assertEqual(self.eval_early(AT=str(self.now + 100))[0], 0)
@@ -2712,7 +2711,6 @@ class EarlyPublish(World):
         code, pub = self.publish()
         self.assertEqual((code, set(pub)), (0, {'status', 'tag', 'tag_object'}))
         self.assertEqual(set(json.loads((self.state / 'evidence/readback.json').read_text())), {'release', 'problems'})
-        # Failed gate writes nothing to early repo
         self.setUp()
         self.ready()
         self.world[f'repos/{PUBLIC}/immutable-releases'] = {'enabled': False}
