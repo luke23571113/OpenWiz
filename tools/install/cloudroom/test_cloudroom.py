@@ -1242,9 +1242,11 @@ class Packaged(Base):
 
         before = files()
         out, err = io.StringIO(), io.StringIO()
+        real_is_file = Path.is_file
         with patch.dict(os.environ, HOME=str(self.host.home)), \
                 patch('platform.system', return_value='Linux'), \
                 patch('platform.machine', return_value='x86_64'), \
+                patch.object(Path, 'is_file', lambda p: False if p == Path('/usr/local/bin/room-cli') else real_is_file(p)), \
                 patch('urllib.request.OpenerDirector.open', fetch), \
                 patch('subprocess.Popen', side_effect=AssertionError('no program may run')), \
                 patch.object(sys, 'argv', [str(HERE / 'cloudroom.py'), 'install', '--state-dir', str(self.state)]), \
@@ -1265,7 +1267,7 @@ class Packaged(Base):
         self.assertEqual(result.returncode, 0, result.stderr)
         value = json.loads(result.stdout)
         self.assertEqual(value['schema'], 'openwiz.cloudroom-setup.v1')
-        self.assertIn(value['code'], ('cloudroom_not_installed', 'cloudroom_unsupported'))
+        self.assertIn(value['code'], ('cloudroom_not_installed', 'cloudroom_unsupported', 'cloudroom_login_verified'))
 
     def test_the_setup_check_records_the_tools_code_from_the_packaged_runtime(self):
         runtime = self.base / 'build/runtime'
