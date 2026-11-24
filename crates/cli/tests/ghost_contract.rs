@@ -36,7 +36,10 @@ fn validate_def(root: &Value, def_name: &str, value: &Value) -> Vec<String> {
     wrapped
         .as_object_mut()
         .expect("schema is an object")
-        .insert("$ref".to_owned(), Value::String(format!("#/$defs/{def_name}")));
+        .insert(
+            "$ref".to_owned(),
+            Value::String(format!("#/$defs/{def_name}")),
+        );
     schema::validate(&wrapped, value)
 }
 
@@ -44,7 +47,11 @@ fn validate_def(root: &Value, def_name: &str, value: &Value) -> Vec<String> {
 fn schema_lints_cleanly() {
     let s = load_ghost_schema();
     let errors = schema::lint(&s);
-    assert!(errors.is_empty(), "schema lint errors:\n{}", errors.join("\n"));
+    assert!(
+        errors.is_empty(),
+        "schema lint errors:\n{}",
+        errors.join("\n")
+    );
 }
 
 #[test]
@@ -71,7 +78,10 @@ fn contract_doc_names_required_sections_and_rules() {
         "openwiz ghost bench",
         "openwiz ghost forget",
     ] {
-        assert!(doc.contains(needle), "contracts/ghost.v1.md missing {needle:?}");
+        assert!(
+            doc.contains(needle),
+            "contracts/ghost.v1.md missing {needle:?}"
+        );
     }
 }
 
@@ -81,18 +91,32 @@ fn golden_fixtures_validate_against_schema() {
 
     let context_pack = read_json("contracts/fixtures/ghost/context-pack.json");
     let errs = validate_def(&s, "context_pack", &context_pack);
-    assert!(errs.is_empty(), "context-pack.json invalid:\n{}", errs.join("\n"));
+    assert!(
+        errs.is_empty(),
+        "context-pack.json invalid:\n{}",
+        errs.join("\n")
+    );
 
     let recall = read_json("contracts/fixtures/ghost/recall-cases.json");
     let errs = validate_def(&s, "recall_fixture_set", &recall);
-    assert!(errs.is_empty(), "recall-cases.json invalid:\n{}", errs.join("\n"));
+    assert!(
+        errs.is_empty(),
+        "recall-cases.json invalid:\n{}",
+        errs.join("\n")
+    );
 
     let replay = read_json("contracts/fixtures/ghost/replay-set.json");
     let errs = validate_def(&s, "replay_fixture_set", &replay);
-    assert!(errs.is_empty(), "replay-set.json invalid:\n{}", errs.join("\n"));
+    assert!(
+        errs.is_empty(),
+        "replay-set.json invalid:\n{}",
+        errs.join("\n")
+    );
 
     let samples = read_json("contracts/fixtures/ghost/messages.json");
-    let map = samples.as_object().expect("messages.json must be an object");
+    let map = samples
+        .as_object()
+        .expect("messages.json must be an object");
     for def in [
         "pair_request",
         "pair_response",
@@ -120,7 +144,11 @@ fn golden_fixtures_validate_against_schema() {
             .get(def)
             .unwrap_or_else(|| panic!("messages.json missing sample for {def}"));
         let errs = validate_def(&s, def, sample);
-        assert!(errs.is_empty(), "sample {def} invalid:\n{}", errs.join("\n"));
+        assert!(
+            errs.is_empty(),
+            "sample {def} invalid:\n{}",
+            errs.join("\n")
+        );
     }
 }
 
@@ -256,5 +284,9 @@ fn cli_ghost_stubs_refuse_with_stable_exit_and_message() {
         .args(["ghost", "nope"])
         .output()
         .expect("run openwiz ghost nope");
-    assert_eq!(bad.status.code(), Some(2), "unknown ghost subcommand should exit 2");
+    assert_eq!(
+        bad.status.code(),
+        Some(2),
+        "unknown ghost subcommand should exit 2"
+    );
 }

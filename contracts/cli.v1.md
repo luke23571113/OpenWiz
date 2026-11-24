@@ -171,6 +171,7 @@ Accepted/sent never means work completed; created never means started.
 | `loop export` | OpenWiz's loop-cli.v1 contract (not carried here): `loop-cli.v1.schema.json#/$defs/export_report` (LC3, #791) |
 | `loop plan` | OpenWiz's loop-cli.v1 contract (not carried here): `loop-cli.v1.schema.json#/$defs/plan_report` (LC4, #792) |
 | `loop apply` | OpenWiz's loop-cli.v1 contract (not carried here): `loop-cli.v1.schema.json#/$defs/apply_report` (LC5, #793) |
+| `ghost serve`, `ghost --stdio`, `ghost pair`, `ghost bench`, `ghost forget` | `ghost.v1.schema.json` (GS1 #3149 stubs; exit 5 until built) |
 
 Tick (`--dry-run`) exits 0 after reporting its plan, 1 for a required global
 read, setup, planning or output failure, and 2 for invalid options, including
