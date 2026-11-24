@@ -1,0 +1,536 @@
+$ python3 -I tools/release/test_package.py -k driver -k release_json   (before the fix)
+FFFFFFFFFFFFFFFFFFFFFFFFFFFF.EF
+======================================================================
+ERROR: test_installed_boat_driver_finds_the_wizskills_pin (__main__.Package.test_installed_boat_driver_finds_the_wizskills_pin)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 373, in test_installed_boat_driver_finds_the_wizskills_pin
+    shutil.copyfile(ROOT / path, root / path)
+  File "/usr/lib/python3.12/shutil.py", line 260, in copyfile
+    with open(src, 'rb') as fsrc:
+         ^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '<checkout>/adapters/boat/release.json'
+
+======================================================================
+FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [not JSON]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 286, in test_a_malformed_release_json_stops_the_build_and_is_named
+    self.assertEqual((result.returncode, result.stderr), (1,
+AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
+
+First differing element 0:
+0
+1
+
+- (0, '')
++ (1,
++  'build-products: refused adapters/made-up/release.json: not {"extra_files": '
++  '[...]} naming tracked regular files in its folder\n')
+
+======================================================================
+FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [not UTF-8]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 286, in test_a_malformed_release_json_stops_the_build_and_is_named
+    self.assertEqual((result.returncode, result.stderr), (1,
+AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
+
+First differing element 0:
+0
+1
+
+- (0, '')
++ (1,
++  'build-products: refused adapters/made-up/release.json: not {"extra_files": '
++  '[...]} naming tracked regular files in its folder\n')
+
+======================================================================
+FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [an array]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 286, in test_a_malformed_release_json_stops_the_build_and_is_named
+    self.assertEqual((result.returncode, result.stderr), (1,
+AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
+
+First differing element 0:
+0
+1
+
+- (0, '')
++ (1,
++  'build-products: refused adapters/made-up/release.json: not {"extra_files": '
++  '[...]} naming tracked regular files in its folder\n')
+
+======================================================================
+FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [empty]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 286, in test_a_malformed_release_json_stops_the_build_and_is_named
+    self.assertEqual((result.returncode, result.stderr), (1,
+AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
+
+First differing element 0:
+0
+1
+
+- (0, '')
++ (1,
++  'build-products: refused adapters/made-up/release.json: not {"extra_files": '
++  '[...]} naming tracked regular files in its folder\n')
+
+======================================================================
+FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [no key]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 286, in test_a_malformed_release_json_stops_the_build_and_is_named
+    self.assertEqual((result.returncode, result.stderr), (1,
+AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
+
+First differing element 0:
+0
+1
+
+- (0, '')
++ (1,
++  'build-products: refused adapters/made-up/release.json: not {"extra_files": '
++  '[...]} naming tracked regular files in its folder\n')
+
+======================================================================
+FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [another key]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 286, in test_a_malformed_release_json_stops_the_build_and_is_named
+    self.assertEqual((result.returncode, result.stderr), (1,
+AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
+
+First differing element 0:
+0
+1
+
+- (0, '')
++ (1,
++  'build-products: refused adapters/made-up/release.json: not {"extra_files": '
++  '[...]} naming tracked regular files in its folder\n')
+
+======================================================================
+FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [a repeated key]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 286, in test_a_malformed_release_json_stops_the_build_and_is_named
+    self.assertEqual((result.returncode, result.stderr), (1,
+AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
+
+First differing element 0:
+0
+1
+
+- (0, '')
++ (1,
++  'build-products: refused adapters/made-up/release.json: not {"extra_files": '
++  '[...]} naming tracked regular files in its folder\n')
+
+======================================================================
+FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [not a list]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 286, in test_a_malformed_release_json_stops_the_build_and_is_named
+    self.assertEqual((result.returncode, result.stderr), (1,
+AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
+
+First differing element 0:
+0
+1
+
+- (0, '')
++ (1,
++  'build-products: refused adapters/made-up/release.json: not {"extra_files": '
++  '[...]} naming tracked regular files in its folder\n')
+
+======================================================================
+FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [null]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 286, in test_a_malformed_release_json_stops_the_build_and_is_named
+    self.assertEqual((result.returncode, result.stderr), (1,
+AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
+
+First differing element 0:
+0
+1
+
+- (0, '')
++ (1,
++  'build-products: refused adapters/made-up/release.json: not {"extra_files": '
++  '[...]} naming tracked regular files in its folder\n')
+
+======================================================================
+FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [a number]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 286, in test_a_malformed_release_json_stops_the_build_and_is_named
+    self.assertEqual((result.returncode, result.stderr), (1,
+AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
+
+First differing element 0:
+0
+1
+
+- (0, '')
++ (1,
++  'build-products: refused adapters/made-up/release.json: not {"extra_files": '
++  '[...]} naming tracked regular files in its folder\n')
+
+======================================================================
+FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [deep nesting]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 286, in test_a_malformed_release_json_stops_the_build_and_is_named
+    self.assertEqual((result.returncode, result.stderr), (1,
+AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
+
+First differing element 0:
+0
+1
+
+- (0, '')
++ (1,
++  'build-products: refused adapters/made-up/release.json: not {"extra_files": '
++  '[...]} naming tracked regular files in its folder\n')
+
+======================================================================
+FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [a repeated file]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 286, in test_a_malformed_release_json_stops_the_build_and_is_named
+    self.assertEqual((result.returncode, result.stderr), (1,
+AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
+
+First differing element 0:
+0
+1
+
+- (0, '')
++ (1,
++  'build-products: refused adapters/made-up/release.json: not {"extra_files": '
++  '[...]} naming tracked regular files in its folder\n')
+
+======================================================================
+FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [the driver]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 286, in test_a_malformed_release_json_stops_the_build_and_is_named
+    self.assertEqual((result.returncode, result.stderr), (1,
+AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
+
+First differing element 0:
+0
+1
+
+- (0, '')
++ (1,
++  'build-products: refused adapters/made-up/release.json: not {"extra_files": '
++  '[...]} naming tracked regular files in its folder\n')
+
+======================================================================
+FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [the schema]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 286, in test_a_malformed_release_json_stops_the_build_and_is_named
+    self.assertEqual((result.returncode, result.stderr), (1,
+AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
+
+First differing element 0:
+0
+1
+
+- (0, '')
++ (1,
++  'build-products: refused adapters/made-up/release.json: not {"extra_files": '
++  '[...]} naming tracked regular files in its folder\n')
+
+======================================================================
+FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [absolute]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 286, in test_a_malformed_release_json_stops_the_build_and_is_named
+    self.assertEqual((result.returncode, result.stderr), (1,
+AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
+
+First differing element 0:
+0
+1
+
+- (0, '')
++ (1,
++  'build-products: refused adapters/made-up/release.json: not {"extra_files": '
++  '[...]} naming tracked regular files in its folder\n')
+
+======================================================================
+FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [outside]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 286, in test_a_malformed_release_json_stops_the_build_and_is_named
+    self.assertEqual((result.returncode, result.stderr), (1,
+AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
+
+First differing element 0:
+0
+1
+
+- (0, '')
++ (1,
++  'build-products: refused adapters/made-up/release.json: not {"extra_files": '
++  '[...]} naming tracked regular files in its folder\n')
+
+======================================================================
+FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [a dot]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 286, in test_a_malformed_release_json_stops_the_build_and_is_named
+    self.assertEqual((result.returncode, result.stderr), (1,
+AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
+
+First differing element 0:
+0
+1
+
+- (0, '')
++ (1,
++  'build-products: refused adapters/made-up/release.json: not {"extra_files": '
++  '[...]} naming tracked regular files in its folder\n')
+
+======================================================================
+FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [a doubled slash]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 286, in test_a_malformed_release_json_stops_the_build_and_is_named
+    self.assertEqual((result.returncode, result.stderr), (1,
+AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
+
+First differing element 0:
+0
+1
+
+- (0, '')
++ (1,
++  'build-products: refused adapters/made-up/release.json: not {"extra_files": '
++  '[...]} naming tracked regular files in its folder\n')
+
+======================================================================
+FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [an empty name]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 286, in test_a_malformed_release_json_stops_the_build_and_is_named
+    self.assertEqual((result.returncode, result.stderr), (1,
+AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
+
+First differing element 0:
+0
+1
+
+- (0, '')
++ (1,
++  'build-products: refused adapters/made-up/release.json: not {"extra_files": '
++  '[...]} naming tracked regular files in its folder\n')
+
+======================================================================
+FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [a folder]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 286, in test_a_malformed_release_json_stops_the_build_and_is_named
+    self.assertEqual((result.returncode, result.stderr), (1,
+AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
+
+First differing element 0:
+0
+1
+
+- (0, '')
++ (1,
++  'build-products: refused adapters/made-up/release.json: not {"extra_files": '
++  '[...]} naming tracked regular files in its folder\n')
+
+======================================================================
+FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [missing]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 286, in test_a_malformed_release_json_stops_the_build_and_is_named
+    self.assertEqual((result.returncode, result.stderr), (1,
+AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
+
+First differing element 0:
+0
+1
+
+- (0, '')
++ (1,
++  'build-products: refused adapters/made-up/release.json: not {"extra_files": '
++  '[...]} naming tracked regular files in its folder\n')
+
+======================================================================
+FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [untracked]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 286, in test_a_malformed_release_json_stops_the_build_and_is_named
+    self.assertEqual((result.returncode, result.stderr), (1,
+AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
+
+First differing element 0:
+0
+1
+
+- (0, '')
++ (1,
++  'build-products: refused adapters/made-up/release.json: not {"extra_files": '
++  '[...]} naming tracked regular files in its folder\n')
+
+======================================================================
+FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [a link]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 286, in test_a_malformed_release_json_stops_the_build_and_is_named
+    self.assertEqual((result.returncode, result.stderr), (1,
+AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
+
+First differing element 0:
+0
+1
+
+- (0, '')
++ (1,
++  'build-products: refused adapters/made-up/release.json: not {"extra_files": '
++  '[...]} naming tracked regular files in its folder\n')
+
+======================================================================
+FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [a surrogate]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 286, in test_a_malformed_release_json_stops_the_build_and_is_named
+    self.assertEqual((result.returncode, result.stderr), (1,
+AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
+
+First differing element 0:
+0
+1
+
+- (0, '')
++ (1,
++  'build-products: refused adapters/made-up/release.json: not {"extra_files": '
++  '[...]} naming tracked regular files in its folder\n')
+
+======================================================================
+FAIL: test_a_release_json_that_can_not_ship_a_driver_is_named (__main__.Package.test_a_release_json_that_can_not_ship_a_driver_is_named) (folder='made-up', names=('schema.json',), kind='file')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 310, in test_a_release_json_that_can_not_ship_a_driver_is_named
+    self.assertEqual(result.returncode, 1, result.stderr)
+AssertionError: 0 != 1 : 
+
+======================================================================
+FAIL: test_a_release_json_that_can_not_ship_a_driver_is_named (__main__.Package.test_a_release_json_that_can_not_ship_a_driver_is_named) (folder='made-up', names=('driver',), kind='file')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 310, in test_a_release_json_that_can_not_ship_a_driver_is_named
+    self.assertEqual(result.returncode, 1, result.stderr)
+AssertionError: 0 != 1 : 
+
+======================================================================
+FAIL: test_a_release_json_that_can_not_ship_a_driver_is_named (__main__.Package.test_a_release_json_that_can_not_ship_a_driver_is_named) (folder='Made_Up', names=('driver', 'schema.json'), kind='file')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 310, in test_a_release_json_that_can_not_ship_a_driver_is_named
+    self.assertEqual(result.returncode, 1, result.stderr)
+AssertionError: 0 != 1 : 
+
+======================================================================
+FAIL: test_a_release_json_that_can_not_ship_a_driver_is_named (__main__.Package.test_a_release_json_that_can_not_ship_a_driver_is_named) (folder='made-up', names=('driver', 'schema.json'), kind='link')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 310, in test_a_release_json_that_can_not_ship_a_driver_is_named
+    self.assertEqual(result.returncode, 1, result.stderr)
+AssertionError: 0 != 1 : 
+
+======================================================================
+FAIL: test_runtime_carries_exactly_the_selected_drivers_and_kit_where_the_caller_finds_them (__main__.Package.test_runtime_carries_exactly_the_selected_drivers_and_kit_where_the_caller_finds_them)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/tools/release/test_package.py", line 190, in test_runtime_carries_exactly_the_selected_drivers_and_kit_where_the_caller_finds_them
+    self.assertEqual(sorted(p for p in assets if p.startswith(('runtime/adapters/', 'runtime/kernel/'))),
+AssertionError: Lists differ: ['run[296 chars]time/kernel/driver-kit/hostkey.py', 'runtime/k[172 chars].md'] != ['run[296 chars]time/adapters/made-up/driver', 'runtime/adapte[299 chars].md']
+
+First differing element 8:
+'runtime/kernel/driver-kit/hostkey.py'
+'runtime/adapters/made-up/driver'
+
+Second list contains 3 additional elements.
+First extra element 14:
+'runtime/kernel/driver-kit/schema.json'
+
+Diff is 702 characters long. Set self.maxDiff to None to see it.
+
+----------------------------------------------------------------------
+Ran 5 tests in 1.756s
+
+FAILED (failures=29, errors=1)
+exit 1
+
+$ python3 -I ci/test_ci_driver_tests.py   (a runner that runs nothing)
+FFFF
+======================================================================
+FAIL: test_a_driver_folder_without_test_driver_fails_and_is_named (__main__.DriverTests.test_a_driver_folder_without_test_driver_fails_and_is_named)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/ci/test_ci_driver_tests.py", line 56, in test_a_driver_folder_without_test_driver_fails_and_is_named
+    self.assertEqual(result.returncode, 1)
+AssertionError: 0 != 1
+
+======================================================================
+FAIL: test_a_failing_test_fails_the_run_and_the_rest_still_run (__main__.DriverTests.test_a_failing_test_fails_the_run_and_the_rest_still_run)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/ci/test_ci_driver_tests.py", line 46, in test_a_failing_test_fails_the_run_and_the_rest_still_run
+    self.assertEqual(result.returncode, 1)
+AssertionError: 0 != 1
+
+======================================================================
+FAIL: test_every_folders_tests_run_once_in_name_order (__main__.DriverTests.test_every_folders_tests_run_once_in_name_order)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/ci/test_ci_driver_tests.py", line 35, in test_every_folders_tests_run_once_in_name_order
+    self.assertEqual(result.stdout.splitlines(), [
+AssertionError: Lists differ: [] != ['== adapters/abc/test_driver.py', 'ran te[158 chars]es)']
+
+Second list contains 7 additional elements.
+First extra element 0:
+'== adapters/abc/test_driver.py'
+
+- []
++ ['== adapters/abc/test_driver.py',
++  'ran test_driver.py 1',
++  '== adapters/abc/test_rows.py',
++  'ran test_rows.py 1',
++  '== adapters/zed/test_driver.py',
++  'ran test_driver.py 1',
++  'driver-tests: ok (3 test files)']
+
+======================================================================
+FAIL: test_nothing_to_run_fails (__main__.DriverTests.test_nothing_to_run_fails)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<checkout>/ci/test_ci_driver_tests.py", line 64, in test_nothing_to_run_fails
+    self.assertEqual((result.returncode, result.stderr), (1, 'driver-tests: failed: no driver test found\n'))
+AssertionError: Tuples differ: (0, '') != (1, 'driver-tests: failed: no driver test found\n')
+
+First differing element 0:
+0
+1
+
+- (0, '')
++ (1, 'driver-tests: failed: no driver test found\n')
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.044s
+
+FAILED (failures=4)
+exit 1
