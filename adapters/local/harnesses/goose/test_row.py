@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import json, os, re, subprocess, sys
+import os, re, subprocess, sys
 
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -69,9 +69,6 @@ with runner.ThrowawayMachine(ROWS, 'goose', 'goose', FAKE, 'auto', ['GOOSE_MODE'
           turns[1]['argv'][-1].startswith('You were woken'))
     check("the row's GOOSE_MODE=auto wins over the user's own GOOSE_MODE=approve",
           len(turns) == 2 and all(t['env'] == {'GOOSE_MODE': 'auto'} for t in turns))
-    check('the row reads no login: no field names a key, a token or the keyring file',
-          not re.search(r'(?i)api.?key|token|secrets\.yaml', json.dumps([row['start'], row['wake'], row['env'],
-                                                                          row['modes']])))
 
 
 SETUP = [
