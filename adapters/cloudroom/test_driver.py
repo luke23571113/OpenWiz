@@ -733,5 +733,12 @@ class Driver(unittest.TestCase):
         self.assertIn('stop %s' % run, e.exception.args[1])
 
 
+    def test_a_provider_qualified_model_reaches_spawn(self):
+        code, out = self.call('start', dict(START, model='openrouter/anthropic/claude-sonnet-4.6'))
+        self.assertEqual(code, 0, out)
+        spawn = self.calls()[0]
+        self.assertEqual(spawn[spawn.index('--model') + 1], 'openrouter/anthropic/claude-sonnet-4.6')
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
