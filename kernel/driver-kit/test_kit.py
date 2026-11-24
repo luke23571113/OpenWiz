@@ -525,6 +525,90 @@ class Kit(unittest.TestCase):
                 self.assertEqual((code, out), (1, [PASS[0], line] + NOT_RUN + [PASS[4]]), err)
                 self.assertEqual(self.left(), [], 'a run the kit started to tell the refusals apart still runs')
 
+    def cloudroom(self, **wrap):
+        room = os.path.join(REPO, 'adapters', 'cloudroom')
+        wrapper = os.path.join(self.folder, 'room')
+        os.mkdir(wrapper)
+        with open(os.path.join(wrapper, 'room-cli'), 'w') as f:
+            f.write('#!%s -I\nimport os, sys\nargs, env = sys.argv[1:], dict(os.environ)\n'
+                    'if env.get("WRAP_RECEIPT") and args[:2] == ["thread", "spawn"] and "--reasoning-level" in args:\n'
+                    '    env["FAKE_ROOM_RECEIPT"] = "Synthetic lost receipt"\n'
+                    'if len(args) > 1 and args[1] in env.get("WRAP_REFUSE", "").split(","):\n'
+                    '    env["FAKE_ROOM_REFUSE"] = args[1]\n'
+                    'os.execve(sys.executable, [sys.executable, %r] + args, env)\n'
+                    % (sys.executable, os.path.join(room, 'fixtures', 'room-cli')))
+        os.chmod(os.path.join(wrapper, 'room-cli'), 0o700)
+        log = os.path.join(self.folder, 'room.log')
+        code, out, err = self.kit(os.path.join(room, 'driver'), PATH=wrapper + os.pathsep + self.env['PATH'],
+                                  ROOM_PROJECT_ID='prj_syn_0001', ROOM_THREAD_ID='thr_syn_parent', FAKE_ROOM_LOG=log,
+                                  FAKE_ROOM_HOST='cloud', OPENWIZ_CLOUDROOM_STATE=os.path.join(self.folder, 'room'),
+                                  **wrap)
+        with open(log) as f:
+            calls = [json.loads(line) for line in f]
+        with open(log + '.threads') as f:
+            active = [t for t, v in json.load(f).items() if not v.get('archived')]
+        return code, out, err, [c[:2] for c in calls if c[:2] in (['thread', 'spawn'], ['thread', 'archive'])], active
+
+    def test_an_effort_refusal_that_may_have_left_a_run_starts_no_other(self):
+        code, out, err, calls, active = self.cloudroom(WRAP_RECEIPT='1')
+        self.assertEqual(code, 1, err)
+        self.assertEqual(calls, [['thread', 'spawn']], 'the kit started a second run')
+        self.assertRegex(out[1], r'^fail start: effort: start refused medium without the refusal text: run (run-\S+): '
+                                 r'.*; next: stop \1, which ends any thread it started')
+        self.assertEqual(len(active), 1)
+
+    def test_a_start_without_effort_whose_stop_is_refused_is_reported_on_the_stop_line(self):
+        code, out, err, calls, active = self.cloudroom(WRAP_REFUSE='models,archive')
+        self.assertEqual(code, 1, err)
+        self.assertEqual(calls, [['thread', 'spawn'], ['thread', 'archive']])
+        self.assertEqual(len(active), 1)
+        self.assertRegex(out[1], r'^fail start: effort: start refused medium without the refusal text: Cloudroom did '
+                                 r'not list the levels of harness fake-harness')
+        self.assertRegex(out[3], r"^fail stop: the kit's start without effort, run (run-\S+), may still run: "
+                                 r"Cloudroom did not stop run \1: .*; next: stop it again: its thread still runs$")
+        self.assertEqual(out[2], NOT_RUN[0])
+
+    def test_a_child_living_only_during_the_start_without_effort_after_a_wrong_next_is_watched(self):
+        macos = {'PATH': NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable}
+        driver = os.path.join(FIXTURES, 'start-child', 'wrong-next', 'driver')
+        why = 'fail start: effort: start refused medium without the refusal text: harness fake-harness cannot run at ' \
+              'effort medium'
+        for python, env in ((sys.executable, {}), (os.path.join(NO_PROC, 'python3'), macos)):
+            with self.subTest(python=python):
+                self.tearDown()
+                self.setUp()
+                starts = os.path.join(self.folder, 'starts')
+                code, out, err = self.kit(driver, python, FAKE_STARTS=starts, **env)
+                self.assertEqual((code, out), (1, [PASS[0], why] + NOT_RUN + ['fail token: ' + IN_ARGS]), err)
+                with open(starts) as f:
+                    self.assertEqual(len(f.read().split()), 1)
+                self.assertEqual(self.left(), [])
+        self.tearDown()
+        self.setUp()
+        calls = os.path.join(self.folder, 'calls')
+        self.kit(driver, script=os.path.join('fixtures', 'recorded-kit'), KIT_CALLS=calls, KIT_RECORD_STOPS='1',
+                 FAKE_STARTS=os.path.join(self.folder, 'starts'))
+        main = {'sampled': 1, 'effort': False, 'token': False, 'canary': False}
+        with open(calls) as f:
+            self.assertEqual(json.load(f), [dict(main, effort=True), main, {'stop': 1}, dict(main, sampled=0, token=True)])
+
+    def test_a_live_key_host_effort_start_with_a_wrong_next_gets_one_start_without_effort(self):
+        kit = module(os.path.join(HERE, 'kit.py'))
+        host = kit.FakeHost(test_key=KEY)
+        self.addCleanup(host.close)
+        log = os.path.join(self.folder, 'live')
+        code, out, err = self.kit(os.path.join(FIXTURES, 'effort-key-host-live-refuses', 'driver'), DEVIN_API_KEY=KEY,
+                                  OPENWIZ_HOSTKEY_TEST_ORIGIN=host.origin, FAKE_LIVE_ORIGIN=host.origin,
+                                  FAKE_LIVE_LOG=log)
+        self.assertEqual(out[:4], [PASS[0], 'fail start: effort: start refused medium without the refusal text: the '
+                                   'host has no effort medium for harness fake-harness'] + NOT_RUN, err)
+        with open(log) as f:
+            self.assertEqual(f.read(), 'effort\n')
+        lines = [re.sub(r'run-[0-9a-f]{12}', '<run>', r[0].rpartition(' ')[0]) for r in host.requests]
+        self.assertEqual(lines[:2], ['POST /v1/runs/<run>/start', 'DELETE /v1/runs/<run>'],
+                         'the start without effort was not taken and stopped on the live host')
+        self.assertEqual(self.left(), [])
+
     def test_without_proc_as_on_macos_effort_on_a_command_line_is_seen(self):
         for name in ('effort', 'planted/effort-dropped'):
             with self.subTest(name):

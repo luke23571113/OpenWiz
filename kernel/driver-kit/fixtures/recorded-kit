@@ -13,6 +13,8 @@ def recorded_call(self, cmd, request=None, env=None, canary=None):
     if cmd == 'start':
         calls.append({'sampled': depth[0], 'effort': 'effort' in request, 'token': 'token' in request,
                       'canary': bool(canary)})
+    elif cmd == 'stop' and os.environ.get('KIT_RECORD_STOPS'):
+        calls.append({'stop': depth[0]})
     return call(self, cmd, request, env, canary)
 
 
