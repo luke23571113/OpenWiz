@@ -1554,9 +1554,9 @@ class SnapshotByName(Helper):
                          [], "each run removes its snapshot and its reservation")
 
     def test_a_later_run_never_takes_the_path_of_a_retired_snapshot_named_before_the_upgrade(self):
-        # comment-ok: catches: an upgraded run whose snapshot name has the shape a pre-upgrade run's
-        # random name had, so once a fallback retires a still-running legacy run's snapshot, a later run
-        # can draw that same name and the legacy run's saved path serves the later run's token.
+        # comment-ok: catches: retiring a pre-upgrade snapshot without reserving its slot, so once a
+        # fallback retires a still-running legacy run's snapshot, a later run can draw that same name
+        # and the legacy run's saved path serves the later run's token.
         cache = self.minted()
         helper = load_helper()
         legacy = self.private / ("run-" + cache.name[len("token-"):][:16] + "ab" * 8 + ".json")
@@ -1568,7 +1568,10 @@ class SnapshotByName(Helper):
                     OPENWIZ_GITHUB_API_BASE=refusing.base())
         self.assertFalse(legacy.exists(), "the fallback retired the legacy snapshot")
         self.answers(answer(token=TOKEN2))
-        real, seen = helper.secrets.token_hex, {}
+        real, forced, seen = helper.secrets.token_hex, ["ab" * 8], {}
+
+        def token_hex(size):
+            return forced.pop() if forced and size == 8 else real(size)
 
         def later_child(command, child, **kwargs):
             seen["later"] = child.get(helper.RUN_MARK)
@@ -1578,6 +1581,12 @@ class SnapshotByName(Helper):
             return 0
 
         with mock.patch.object(helper.secrets, "token_hex", lambda size: "ab" * 8 if size == 8 else real(size)), \
+                mock.patch.object(helper, "execute", later_child), \
+                mock.patch.object(helper.sys, "stderr"):
+            with self.assertRaises(helper.Refused):
+                helper.run([*REQ, "--", "true"], dict(self.env))
+        self.assertFalse(legacy.exists(), "a run that keeps drawing the retired legacy name is refused")
+        with mock.patch.object(helper.secrets, "token_hex", token_hex), \
                 mock.patch.object(helper, "execute", later_child), \
                 mock.patch.object(helper.sys, "stderr"):
             self.assertEqual(helper.run([*REQ, "--", "true"], dict(self.env)), 0)
