@@ -3,11 +3,39 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import shutil
+import subprocess
+import sys
 import tarfile
+import tempfile
 import unittest
 
 HERE = Path(__file__).resolve().parent
 CONTRACTS = HERE.parents[1]
+CHECKOUT = CONTRACTS.parent
+STAMP = "runtime/openwiz-build.txt"
+PROBE = r"""
+import importlib.machinery, importlib.util, json, os, subprocess, sys
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.join(HERE, '..', '..')
+KIT = os.path.join(ROOT, 'kernel', 'driver-kit')
+def credential():
+    spec = importlib.util.spec_from_loader('kit', importlib.machinery.SourceFileLoader('kit', os.path.join(KIT, 'kit.py')))
+    kit = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(kit)
+    return [kit.holds_credential('token=synthetic'), kit.holds_credential('build-ticket')]
+def key_helper():
+    asked = json.dumps({'host': 'synthetic-host', 'method': 'GET', 'path': '/'})
+    p = subprocess.run([sys.executable, '-I', os.path.join(KIT, 'hostkey.py')], input=asked, capture_output=True, text=True)
+    return json.loads(p.stdout)['error']
+def skills_pin():
+    with open(os.path.join(ROOT, 'wizskills.lock')) as f:
+        return sorted(json.load(f))
+def build_stamp():
+    with open(os.path.join(ROOT, 'openwiz-build.txt')) as f:
+        return f.readline()
+print(json.dumps({f.__name__: f for f in (credential, key_helper, skills_pin, build_stamp)}[sys.argv[1]]()))
+"""
 
 
 def unique_object(pairs):
@@ -133,6 +161,41 @@ def package_rules(package, manifest, archive, kit_schema):
     return failures
 
 
+def kit_files():
+    text = (CONTRACTS / "driver-package.v1.md").read_text(encoding="utf-8")
+    section = text.partition("\n## Kit files\n")[2].partition("\n## ")[0]
+    return re.findall(r"^\| `([^`]+)` \|", section, re.M)
+
+
+def install_root(folder):
+    build = folder / "build"
+    (build / "runtime").mkdir(parents=True)
+    (build / STAMP).write_text("openwiz.package.v1\n0.2.0\n")
+    root = folder / "install"
+    root.mkdir()
+    for path in kit_files():
+        target = root / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        source = build / "runtime" / path
+        shutil.copyfile(source if source.exists() else CHECKOUT / path, target)
+        target.chmod(0o600)
+    return root
+
+
+def add_driver(root, name, program):
+    driver = root / "drivers" / name / "driver"
+    driver.parent.mkdir(parents=True)
+    driver.write_bytes(program)
+    driver.chmod(0o700)
+    return driver
+
+
+def run(driver, *args, stdin=""):
+    p = subprocess.run([sys.executable, "-I", str(driver), *args], input=stdin, capture_output=True,
+                       text=True, timeout=60, env={"PATH": "/usr/bin:/bin", "HOME": tempfile.gettempdir()})
+    return p.returncode, p.stdout
+
+
 class DriverPackageFixtures(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -143,7 +206,7 @@ class DriverPackageFixtures(unittest.TestCase):
         return shape_errors(self.schema, ref, value)
 
     def test_package_refusals_are_isolated(self):
-        kit_schema = (CONTRACTS.parent / "kernel/driver-kit/schema.json").read_bytes()
+        kit_schema = (CHECKOUT / "kernel/driver-kit/schema.json").read_bytes()
         cases = read_json(HERE / "cases.json")
         self.assertEqual(set(cases), {p.name for p in HERE.iterdir() if p.is_dir()})
         for case, refusal in cases.items():
@@ -170,6 +233,38 @@ class DriverPackageFixtures(unittest.TestCase):
         for case in read_json(HERE / "shape-cases.json"):
             with self.subTest(kind=case["kind"], error=case["error"]):
                 self.assertEqual([tuple(case["error"])], self.errors(case["kind"], case["value"]))
+
+    def test_packaged_drivers_find_every_kit_file_they_use(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = install_root(Path(temp))
+            probe = add_driver(root, "synthetic-host", PROBE.encode())
+            expected = {"credential": [True, False],
+                        "key_helper": "host is not in kernel/driver-kit/hosts.json",
+                        "skills_pin": ["commit", "tree", "version"],
+                        "build_stamp": "openwiz.package.v1\n"}
+            for use, answer in expected.items():
+                with self.subTest(use=use):
+                    self.assertEqual((0, json.dumps(answer) + "\n"), run(probe, use))
+
+    def test_todays_drivers_answer_as_they_do_in_the_checkout(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = install_root(Path(temp))
+            for source in sorted(CHECKOUT.glob("adapters/*/driver")):
+                name = source.parent.name
+                driver = add_driver(root, name, source.read_bytes())
+                with self.subTest(driver=name):
+                    self.assertEqual(run(source, "start", stdin="{}"), run(driver, "start", stdin="{}"))
+
+    def test_package_schema_is_checked_against_the_installed_kit(self):
+        with tempfile.TemporaryDirectory() as temp:
+            kit_schema = install_root(Path(temp)) / "kernel/driver-kit/schema.json"
+            self.assertTrue(kit_schema.is_file(), "the install has no kit schema to check a package against")
+            for case, refusals in (("good", set()), ("changed-schema", {"kit-schema"})):
+                with self.subTest(case=case):
+                    folder = HERE / case
+                    self.assertEqual(refusals, package_rules(
+                        read_json(folder / "package.json"), read_json(folder / "manifest.json"),
+                        (folder / "driver.tar.gz").read_bytes(), kit_schema.read_bytes()))
 
 
 if __name__ == "__main__":
