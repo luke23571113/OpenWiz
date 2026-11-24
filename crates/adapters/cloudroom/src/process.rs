@@ -396,30 +396,30 @@ mod scrub_tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn a_child_loses_thread_context_and_keeps_the_server_address() {
-        use std::ffi::OsStr;
-        use std::os::unix::ffi::OsStrExt;
         let dir = PrivateDir::new("scrub");
         dir.file(
             "room-cli",
             "#!/bin/sh\n/bin/cat /proc/$$/environ > \"${0%/*}/seen\"\n",
             0o700,
         );
-        let out = Command::new(std::env::current_exe().unwrap())
-            .args([
-                "--exact",
-                "process::scrub_tests::scrub_probe",
-                "--nocapture",
-            ])
+        // The synthetic parent gets its own environment, including a raw byte in a name.
+        let parent = dir.file(
+            "probe-parent",
+            r#"#!/bin/sh
+exec /usr/bin/env -i \
+    ROOM_THREAD_ID=thr_syn_2564 ROOM_PROJECT_ID=prj_syn_2564 BB_THREAD_ID=thr_syn_2564 \
+    ROOM_SERVER_URL=http://127.0.0.1:9 SYN_KEPT=synthetic \
+    "BB_$(printf '\377')=synthetic" "OPENWIZ_SYN_2564_PROBE=${0%/*}" \
+    "$OPENWIZ_SYN_2564_TEST_EXE" --exact process::scrub_tests::scrub_probe --nocapture
+"#,
+            0o700,
+        );
+        let out = Command::new(parent)
             .env_clear()
-            .envs([
-                ("ROOM_THREAD_ID", "thr_syn_2564"),
-                ("ROOM_PROJECT_ID", "prj_syn_2564"),
-                ("BB_THREAD_ID", "thr_syn_2564"),
-                ("ROOM_SERVER_URL", "http://127.0.0.1:9"),
-                ("SYN_KEPT", "synthetic"),
-            ])
-            .env(OsStr::from_bytes(b"BB_\xff"), "synthetic")
-            .env(PROBE, &dir.0)
+            .env(
+                "OPENWIZ_SYN_2564_TEST_EXE",
+                std::env::current_exe().unwrap(),
+            )
             .stdin(Stdio::null())
             .output()
             .unwrap();
