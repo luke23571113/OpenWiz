@@ -3,53 +3,8 @@ The failing lines of the red run at the commit before the fix; tracebacks left o
 $ python3 -I tools/release/test_package.py -k driver -k release_json   (before the fix)
 ERROR: test_installed_boat_driver_finds_the_wizskills_pin (__main__.Package.test_installed_boat_driver_finds_the_wizskills_pin)
 FileNotFoundError: [Errno 2] No such file or directory: '<checkout>/adapters/boat/release.json'
-FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [not JSON]
-  AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
-FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [not UTF-8]
-  AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
-FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [an array]
-  AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
-FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [empty]
-  AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
-FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [no key]
-  AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
-FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [another key]
-  AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
-FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [a repeated key]
-  AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
-FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [not a list]
-  AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
-FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [null]
-  AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
-FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [a number]
-  AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
-FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [deep nesting]
-  AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
-FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [a repeated file]
-  AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
-FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [the driver]
-  AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
-FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [the schema]
-  AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
-FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [absolute]
-  AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
-FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [outside]
-  AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
-FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [a dot]
-  AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
-FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [a doubled slash]
-  AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
-FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [an empty name]
-  AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
-FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [a folder]
-  AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
-FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [missing]
-  AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
-FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [untracked]
-  AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
-FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [a link]
-  AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
-FAIL: test_a_malformed_release_json_stops_the_build_and_is_named (__main__.Package.test_a_malformed_release_json_stops_the_build_and_is_named) [a surrogate]
+FAIL: test_a_malformed_release_json_stops_the_build_and_is_named, every one of these cases at the same assertion:
+  not JSON, not UTF-8, an array, empty, no key, another key, a repeated key, not a list, null, a number, deep nesting, a repeated file, the driver, the schema, absolute, outside, a dot, a doubled slash, an empty name, a folder, missing, untracked, a link, a surrogate
   AssertionError: Tuples differ: (0, '') != (1, 'build-products: refused adapters/made[86 chars]r\n')
 FAIL: test_a_release_json_that_can_not_ship_a_driver_is_named (__main__.Package.test_a_release_json_that_can_not_ship_a_driver_is_named) (folder='made-up', names=('schema.json',), kind='file')
   AssertionError: 0 != 1 : 
