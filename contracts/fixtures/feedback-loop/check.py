@@ -8,8 +8,8 @@ sys.dont_write_bytecode = True
 CONTRACT = 'contracts/feedback-loop.v1.md'
 FIXTURES = 'contracts/fixtures/feedback-loop'
 ISSUE_KEYS = {'number', 'author', 'pull_request', 'title', 'body', 'labels', 'milestone', 'comments'}
-COVERAGE = ('report', 'not a report', 'report link', 'forged link', 'to a fleet', 'held', 'landed', 'second merge',
-            'closes no report')
+COVERAGE = ('report', 'not a report', 'facts', 'facts refused', 'report link', 'forged link', 'to a fleet', 'held',
+            'landed', 'second merge', 'closes no report')
 
 
 def strict(text):
@@ -59,6 +59,65 @@ def is_report(obj, c):
     lines = obj['body'].split('\n')
     markers = [x for x in lines if re.fullmatch(c['marker'], x)]
     return len(lines) >= 3 and lines[-2] == '' and markers == [lines[-1]]
+
+
+def parse_facts(obj, c):
+    if not is_report(obj, c):
+        return None
+    lines = obj['body'].split('\n')
+    markers = [x for x in lines if re.fullmatch(c['marker'], x)]
+    if len(lines) < 5 or lines[-2] != '' or lines[-4] != '' or markers != [lines[-1]]:
+        return None
+    f = c['facts']
+    prefix = f['prefix']
+    candidates = [x for x in lines if x.startswith(prefix)]
+    if candidates != [lines[-3]]:
+        return None
+    line = lines[-3]
+    if len(line) > f['max_length'] or not all(32 <= ord(ch) <= 126 for ch in line):
+        return None
+    raw = line[len(prefix):]
+    try:
+        parsed = strict(raw)
+    except ValueError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    order = f['order']
+    keys = list(parsed.keys())
+    if any(k not in f['values'] for k in keys):
+        return None
+    if any(k not in parsed for k in f['required']):
+        return None
+    if [k for k in order if k in parsed] != keys:
+        return None
+    for k, v in parsed.items():
+        spec = f['values'][k]
+        if spec['type'] == 'integer':
+            if type(v) is not int or v < spec['min'] or v > spec['max']:
+                return None
+        elif spec['type'] == 'string':
+            if type(v) is not str or not re.fullmatch(spec['pattern'], v, re.ASCII):
+                return None
+        else:
+            return None
+    if json.dumps(parsed, separators=(',', ':'), ensure_ascii=True) != raw:
+        return None
+    return parsed
+
+
+def check_facts(case, c):
+    obj = issue(case['input'])
+    exp = shape(case['expect'], {'is_report', 'facts'}, 'a facts expectation')
+    found_report = is_report(obj, c)
+    found_facts = parse_facts(obj, c)
+    problems = []
+    if found_report != exp['is_report']:
+        problems.append(f'is_report is {found_report}, the case expects {exp["is_report"]}')
+    if found_facts != exp['facts']:
+        problems.append(f'facts is {found_facts}, the case expects {exp["facts"]}')
+    tags = ['facts' if found_facts is not None else 'facts refused']
+    return problems, tags
 
 
 def report_link(obj, c, authors):
@@ -183,7 +242,7 @@ def check_landed(case, c):
     return problems, tags
 
 
-KINDS = {'report': check_report, 'link': check_link, 'triage': check_triage, 'landed': check_landed}
+KINDS = {'report': check_report, 'facts': check_facts, 'link': check_link, 'triage': check_triage, 'landed': check_landed}
 
 
 def scalar(s):
