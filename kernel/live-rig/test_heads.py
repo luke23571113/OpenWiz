@@ -30,11 +30,15 @@ AGENT_CLIS = ('claude codex cursor-agent agent cursor pi opencode copilot goose 
               'openhands devin warp grok codespaces conductor').split()
 AUTH = {'GH_TOKEN': SECRET, 'GITHUB_TOKEN': SECRET, 'GH_ENTERPRISE_TOKEN': SECRET, 'GH_HOST': 'example.invalid'}
 CHECKOUT = ['kernel/live-rig/heads.py', 'kernel/live-rig/rig.py', 'kernel/live-rig/receipt.py', 'kernel/driver-kit/kit.py',
-            'kernel/driver-kit/schema.json', 'kernel/records-kit/check.py', 'kernel/records.v1.md']
+            'kernel/driver-kit/hostkey.py', 'kernel/driver-kit/hosts.json', 'kernel/driver-kit/schema.json',
+            'kernel/records-kit/check.py', 'kernel/records.v1.md']
 DRIVER_PR_HEAD = {'adapters/template/driver': os.path.join(ROOT, 'adapters', 'template', 'driver'),
+           'adapters/template/README.md': os.path.join(ROOT, 'adapters', 'template', 'README.md'),
            'adapters/template/schema.json': os.path.join(ROOT, 'adapters', 'template', 'schema.json'),
            'adapters/four/driver': os.path.join(FIX, 'four-driver'),
-           'adapters/quoting/driver': os.path.join(FIX, 'quoting-driver')}
+           'adapters/four/README.md': os.path.join(ROOT, 'adapters', 'template', 'README.md'),
+           'adapters/quoting/driver': os.path.join(FIX, 'quoting-driver'),
+           'adapters/quoting/README.md': os.path.join(ROOT, 'adapters', 'template', 'README.md')}
 
 
 def git(cwd, *args):
@@ -168,7 +172,9 @@ class Heads(unittest.TestCase):
         return records[0].split(os.sep)[0]
 
     def expected_comment(self):
-        return read(os.path.join(FIX, 'expected-comment.md')).replace('{head}', self.head)
+        return read(os.path.join(FIX, 'expected-comment.md')).replace('{head}', self.head).replace(
+            'posted builder status note 2\n',
+            'posted builder status note 2; effort: medium reached a process the run started\n', 1)
 
     def expected_receipt(self, day):
         return read(os.path.join(FIX, 'expected-receipt.txt')).replace('{head}', self.head).replace(

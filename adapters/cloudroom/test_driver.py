@@ -95,7 +95,7 @@ class Driver(unittest.TestCase):
                            env=env, capture_output=True, text=True, timeout=120)
         self.assertEqual((p.returncode, p.stdout.splitlines()), (0, [
             'pass version: openwiz:records v1, and the schema is driver v1',
-            'pass start: the run posted builder status note 1',
+            'pass start: the run posted builder status note 1; effort: medium reached a process the run started',
             'pass wake: the run edited builder status note 1',
             'pass stop: the run ended, and a wake after it is refused',
             'pass token: no login or token passed through the driver']), p.stderr)
@@ -743,6 +743,13 @@ class Driver(unittest.TestCase):
         self.assertEqual(calls, [('thread', 'archive', 'thr_syn_0001')])
         self.assertIn(run, e.exception.args[0])
         self.assertIn('stop %s' % run, e.exception.args[1])
+
+
+    def test_a_provider_qualified_model_reaches_spawn(self):
+        code, out = self.call('start', dict(START, model='openrouter/anthropic/claude-sonnet-4.6'))
+        self.assertEqual(code, 0, out)
+        spawn = self.calls()[0]
+        self.assertEqual(spawn[spawn.index('--model') + 1], 'openrouter/anthropic/claude-sonnet-4.6')
 
 
 if __name__ == '__main__':
