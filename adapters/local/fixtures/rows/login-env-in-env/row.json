@@ -1,0 +1,42 @@
+{
+  "harness": "login-env-in-env",
+  "program": "signed-out-env-cli",
+  "start": [
+    "--print",
+    "--session-id",
+    "{session}",
+    "--model",
+    "{model}",
+    "{mode}",
+    "{prompt}"
+  ],
+  "wake": [
+    "--print",
+    "--resume",
+    "{session}",
+    "--model",
+    "{model}",
+    "{mode}",
+    "{prompt}"
+  ],
+  "session": {
+    "chosen": "uuid"
+  },
+  "modes": {
+    "workspace-write": [
+      "--sandbox",
+      "workspace-write"
+    ]
+  },
+  "env": {
+    "SIGNED_OUT_ENV_CLI_API_KEY": "local"
+  },
+  "effort": "none: example-none-cli has no effort flag or setting (its synthetic --help, in this folder's fake, lists none)",
+  "login": "signed-out-env-cli's own login, saved by `signed-out-env-cli auth login` under ~/.signed-out-env",
+  "daemon": "none",
+  "signed_out": [
+    "cannot find authorization"
+  ],
+  "login_command": "signed-out-env-cli auth login",
+  "login_env": "SIGNED_OUT_ENV_CLI_API_KEY"
+}
