@@ -98,8 +98,11 @@ if args[:1] == ['api'] and len(args) == 2 and args[1].startswith('repos/openwizd
     query = urllib.parse.parse_qs(args[1].split('?', 1)[1])
     answer([p for p in state('pulls').get(query['head'][0], []) if query['state'][0] in ('all', p['state'])])
 if args[:1] == ['api'] and len(args) == 2 and args[1].startswith('repos/openwizdev/OpenWiz/issues/') and \
-        '/comments?since=' in args[1]:
-    answer(state('comments').get(args[1].split('/')[4], []))
+        '/comments?' in args[1]:
+    query = {k: v[0] for k, v in urllib.parse.parse_qs(args[1].split('?', 1)[1]).items()}
+    found = [c for c in state('comments').get(args[1].split('/')[4], []) if c['updated_at'] >= query.get('since', '')]
+    page = int(query.get('page', '1'))
+    answer(found[(page - 1) * 100:page * 100])
 
 
 def lose(method):
@@ -113,7 +116,8 @@ if args[:2] == ['api', '-X'] and args[4:] == ['--input', '-']:
         number = path.split('/')[4]
         url = 'https://github.com/openwizdev/OpenWiz/pull/%s#issuecomment-%d' % (number, 900 + counter('comment'))
         state('comments', lambda c: c.setdefault(number, []).append({'html_url': url, 'body': sent['body'],
-                                                                       'user': {'login': login}}))
+                                                                       'user': {'login': login}, 'updated_at': os.environ.get(
+                                                                           'HEADS_NOW', '2030-01-02T03:04:05Z')}))
         lose('comment')
         answer({'html_url': url})
     if (method, path) == ('POST', 'repos/openwizdev/WizMarket/forks'):

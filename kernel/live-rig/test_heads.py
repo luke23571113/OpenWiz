@@ -411,6 +411,32 @@ class Heads(unittest.TestCase):
         self.assertEqual([{k: e.get(k) for k in AUTH} for e in given], [dict(dict.fromkeys(AUTH),
                          GH_HOST='github.com')] * 4)
 
+    def test_an_edited_comment_after_a_lost_answer_is_refused_and_a_skewed_clock_never_hides_one_on_page_two(self):
+        extra = ['--allow-cost', 'fixture-five', '--post']
+        self.assertEqual(self.heads(['fixture-five'], *extra, env=dict(self.env, HEADS_LOSE='comment'))[0], 2)
+        remote, journal = os.path.join(self.state, 'comments.json'), os.path.join(self.out, 'publish.json')
+        posted = json.loads(read(remote))
+        edited = json.loads(read(remote))
+        edited['201'][0]['body'] = edited['201'][0]['body'].replace('5 of 5 pass', '5 of 5 pass, edited')
+        with open(remote, 'w') as f:
+            json.dump(edited, f)
+        code, out, err = self.heads(['fixture-five'], *extra)
+        comment_posts = lambda: len([c for c in self.writes() if c['args'][3].endswith('/comments')])
+        self.assertEqual((comment_posts(), code), (1, 2), out)
+        self.assertEqual(err.splitlines()[-1], 'heads.py: an earlier comment of this run on #201 was changed, so nothing '
+                                               'is posted')
+        posted['201'][:0] = [{'html_url': 'u', 'body': 'other', 'user': {'login': LOGIN}, 'updated_at':
+                              '2030-01-02T03:04:05Z'}] * 100
+        with open(remote, 'w') as f:
+            json.dump(posted, f)
+        plan = json.loads(read(journal))
+        plan['comments'][0]['tried'] = '2099-01-01T00:00:00Z'
+        with open(journal, 'w') as f:
+            json.dump(plan, f)
+        code, out, err = self.heads(['fixture-five'], *extra)
+        self.assertEqual((comment_posts(), code), (1, 0), out + err)
+        self.assertIn('posted https://github.com/openwizdev/OpenWiz/pull/201#issuecomment-901\n', out)
+
     def test_help_and_a_skip_never_load_the_kit_module_or_its_credential_reads(self):
         marker = os.path.join(self.folder, 'kit-loaded')
         with open(os.path.join(self.checkout, 'kernel', 'driver-kit', 'kit.py'), 'w') as f:
