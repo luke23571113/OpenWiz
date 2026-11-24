@@ -34,6 +34,8 @@ _spec.loader.exec_module(driver)
 TOKEN = 'gh' + 'p_' + 'Synthetic0Kit0Value' * 2 + '00'  # a token's shape, built here so no file holds one
 PROJECT, PARENT = 'prj_syn_0001', 'thr_syn_parent'
 PLATFORMS = r'\*\*Platforms:\*\*[ \t]*[^\s*]'
+CANT = ("this host can't set effort: remove the effort for this harness in your Models table or Roster to run it "
+        "at the host's default")
 START = {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket', 'harness': 'claude', 'model': 'Opus 5.5'}
 
 
@@ -73,6 +75,8 @@ class Driver(unittest.TestCase):
         return p.returncode, out
 
     def calls(self):
+        if not os.path.exists(self.log):
+            return []
         with open(self.log) as f:
             return [json.loads(line) for line in f]
 
@@ -95,6 +99,159 @@ class Driver(unittest.TestCase):
             'pass wake: the run edited builder status note 1',
             'pass stop: the run ended, and a wake after it is refused',
             'pass token: no login or token passed through the driver']), p.stderr)
+
+    def started(self):
+        state = self.env['OPENWIZ_CLOUDROOM_STATE']
+        return sorted(os.listdir(state)) if os.path.isdir(state) else []
+
+    def test_an_effort_reaches_room_cli_as_reasoning_level(self):
+        for harness, model, effort, provider in (('claude', 'Opus 5.5', 'medium', 'claude-code'),
+                                                 ('codex', 'Synthetic 1', 'high', 'codex'),
+                                                 ('fake-harness', 'Synthetic 1', 'medium', 'fake-harness')):
+            with self.subTest(harness):
+                self.fresh()
+                code, out = self.call('start', dict(START, harness=harness, model=model, effort=effort))
+                spawns = [c for c in self.calls() if c[:2] == ['thread', 'spawn']]
+                self.assertEqual([c[c.index('--reasoning-level'):][:2] for c in spawns if '--reasoning-level' in c],
+                                 [['--reasoning-level', effort]], out)
+                self.assertEqual((code, len(spawns)), (0, 1), out)
+                self.assertEqual(spawns[0].count('--reasoning-level'), 1)
+                self.assertEqual(spawns[0][5:7], ['--provider', provider])
+                with open(self.log + '.threads') as f:
+                    self.assertEqual(json.load(f)['thr_syn_0001']['reasoning'], effort)
+                if harness == 'fake-harness':
+                    self.assertTrue(self.a_turn_holds('FAKE_ROOM_REASONING_LEVEL=' + effort), 'no turn ran at ' + effort)
+
+    def a_turn_holds(self, entry, wait=10):
+        end = time.time() + wait
+        while time.time() < end:
+            for pid in filter(str.isdigit, os.listdir('/proc')):
+                try:
+                    with open('/proc/%s/environ' % pid, 'rb') as f:
+                        env = f.read().split(b'\0')
+                except OSError:
+                    continue
+                if ('KIT_TEST=' + self.mark).encode() in env and entry.encode() in env:
+                    return True
+            time.sleep(0.05)
+        return False
+
+    def test_no_effort_runs_at_the_hosts_default(self):
+        code, out = self.call('start', START)
+        self.assertEqual(code, 0, out)
+        self.assertEqual([c[:2] for c in self.calls()], [['thread', 'spawn']])
+        self.assertNotIn('--reasoning-level', self.calls()[0])
+
+    def test_an_effort_it_cannot_set_is_refused_and_starts_nothing(self):
+        cases = {'a provider with no levels': dict(harness='pi', model='Synthetic 1', effort='medium'),
+                 'a level the model does not list': dict(effort='ultra'),
+                 'a level only Synthetic 1 lists': dict(effort='xhigh'),
+                 'a level only Opus 5.5 lists': dict(harness='codex', model='Synthetic 1', effort='low'),
+                 'a model Cloudroom does not list': dict(model='Synthetic Unlisted', effort='medium')}
+        for name, case in cases.items():
+            with self.subTest(name):
+                self.fresh()
+                code, out = self.call('start', dict(START, **case))
+                self.assertEqual(code, 1, out)
+                self.assertEqual(out['next'], CANT)
+                self.assertIn(case.get('harness', 'claude'), out['error'])
+                self.assertIn(case['effort'], out['error'])
+                self.assertEqual(self.calls(), [['provider', 'models', driver.provider(dict(START, **case)), '--json']],
+                                 'a refused effort reached spawn')
+                self.assertEqual(self.started(), [], 'a refused start saved a run')
+
+    def test_a_start_whose_levels_cannot_be_read_starts_nothing(self):
+        for effort, env in (('medium', {'FAKE_ROOM_REFUSE': 'models', 'FAKE_ROOM_SAY': 'Synthetic: not signed in'}),
+                            ('medium', {'FAKE_ROOM_MODELS': 'Synthetic plain table'}), ('Medium', {})):
+            with self.subTest(effort=effort, env=env):
+                self.fresh()
+                code, out = self.call('start', dict(START, effort=effort), **env)
+                self.assertEqual(code, 1, out)
+                self.assertNotIn('Synthetic', json.dumps(out))
+                self.assertNotEqual(out['next'], CANT)
+                self.assertNotIn(['thread', 'spawn'], [c[:2] for c in self.calls()])
+                self.assertEqual(self.started(), [])
+
+    def lookup_failed(self, harness='gemini', said='room-cli gave an error the driver does not repeat'):
+        return {'error': 'Cloudroom did not list the levels of harness %s: %s; nothing was saved or started'
+                         % (harness, said),
+                'next': 'check `room-cli provider models %s`, then start again' % driver.provider(dict(harness=harness))}
+
+    def test_a_lookup_diagnostic_never_reaches_the_answer(self):
+        credential = 'GH_TOKEN=synthetic-demo-credential-' + self.mark
+        line = 'Unknown provider gemini. See room-cli provider list.'
+        says = {'a mismatched name carrying it': 'Unknown provider %s. See room-cli provider list.\n' % credential,
+                'after the right line': line + ' ' + credential + '\n',
+                'before the right line': credential + ' ' + line + '\n',
+                'on the next line': line + '\n' + credential + '\n',
+                'the credential on stdout, the right line on stderr': line + '\n'}
+        for name, say in says.items():
+            with self.subTest(name):
+                self.fresh()
+                code, out = self.call('start', dict(START, harness='gemini', effort='medium'), FAKE_ROOM_MODELS_SAY=say,
+                                      FAKE_ROOM_MODELS_OUT=credential if 'stdout' in name else '')
+                self.assertEqual((code, out), (1, self.lookup_failed()))
+                self.assertNotIn('synthetic-demo-credential', json.dumps(out))
+                self.assertEqual(self.calls(), [['provider', 'models', 'gemini', '--json']])
+                self.assertEqual(self.started(), [])
+
+    def test_an_unknown_provider_gets_the_exact_refusal(self):
+        for harness, say in (('gemini', None), ('gemini', 'Unknown provider gemini. See room-cli provider list.'),
+                             ('synthetic-harness', None), ('claude', 'Unknown provider claude-code. See room-cli '
+                                                                     'provider list.\n')):
+            with self.subTest(harness=harness, say=say):
+                self.fresh()
+                code, out = self.call('start', dict(START, harness=harness, effort='medium'),
+                                      **({} if say is None else {'FAKE_ROOM_MODELS_SAY': say}))
+                self.assertEqual((code, out), (1, {
+                    'error': "Cloudroom does not know harness %s, so it can't set effort medium for it; nothing was "
+                             'saved or started' % harness, 'next': CANT}))
+                self.assertEqual(self.calls(), [['provider', 'models', driver.provider(dict(harness=harness)), '--json']])
+                self.assertEqual(self.started(), [])
+
+    def test_a_credential_shaped_harness_with_an_effort_never_reaches_the_lookup(self):
+        value = 'sk' + '-synthetic0marker0value00' + self.mark
+        code, out = self.call('start', dict(START, harness=value, effort='medium'))
+        self.assertEqual(code, 1, out)
+        self.assertIn('harness looks like a credential', out['error'])
+        self.assertNotIn(value, json.dumps(out))
+        self.assertEqual((self.calls(), self.started()), ([], []))
+
+    def test_a_genuine_lookup_failure_keeps_its_fixed_words(self):
+        line = 'Unknown provider %s. See room-cli provider list.\n'
+        cases = {'another provider': (dict(FAKE_ROOM_MODELS_SAY=line % 'codex'), None),
+                 'a longer name': (dict(FAKE_ROOM_MODELS_SAY=line % 'gemini2'), None),
+                 'a shorter name': (dict(FAKE_ROOM_MODELS_SAY=line % 'gemin'), None),
+                 'another case': (dict(FAKE_ROOM_MODELS_SAY=line % 'Gemini'), None),
+                 "Cloudroom's name for a harness that has one": (dict(FAKE_ROOM_MODELS_SAY=line % 'gemini'), 'claude'),
+                 'the harness name for a provider Cloudroom names otherwise': (
+                     dict(FAKE_ROOM_MODELS_SAY=line % 'claude'), 'claude'),
+                 'another exit code': (dict(FAKE_ROOM_MODELS_SAY=line % 'gemini', FAKE_ROOM_MODELS_EXIT='2'), None),
+                 'an answer on stdout too': (dict(FAKE_ROOM_MODELS_SAY=line % 'gemini', FAKE_ROOM_MODELS_OUT='[]'), None),
+                 'the line on stdout only': (dict(FAKE_ROOM_MODELS_SAY='', FAKE_ROOM_MODELS_OUT=line % 'gemini'), None),
+                 'no answer': (dict(FAKE_ROOM_MODELS_SAY=''), None),
+                 'signed out': (dict(FAKE_ROOM_MODELS_SAY='Synthetic: not signed in\n'), None)}
+        for name, (env, harness) in cases.items():
+            with self.subTest(name):
+                self.fresh()
+                harness = harness or 'gemini'
+                code, out = self.call('start', dict(START, harness=harness, effort='medium'), **env)
+                said = ('room-cli is not signed in' if name == 'signed out' else
+                        'room-cli gave no answer' if name == 'no answer' else
+                        'room-cli gave an error the driver does not repeat')
+                self.assertEqual((code, out), (1, self.lookup_failed(harness, said)))
+                self.assertNotEqual(out['next'], CANT)
+                self.assertNotIn(['thread', 'spawn'], [c[:2] for c in self.calls()])
+                self.assertEqual(self.started(), [])
+
+    def test_version_lists_effort_and_the_readme_says_how(self):
+        self.assertIn('effort', self.call('version', {})[1]['can'])
+        with open(os.path.join(HERE, 'README.md')) as f:
+            lines = f.read().splitlines()
+        login = lines.index('Login: held by Cloudroom')
+        self.assertRegex(lines[login + 1] if lines[login + 1] else lines[login + 2],
+                         r'^Effort: passed as `--reasoning-level <effort>`')
+        self.assertIn('--reasoning-level <effort>', next(l for l in lines if l.startswith('| `start` |')))
 
     def test_wake_is_the_fleet_routes_queued_delivery(self):
         # catches: a wake that steers (interrupts) instead of queueing, passes its text as an argument, answers

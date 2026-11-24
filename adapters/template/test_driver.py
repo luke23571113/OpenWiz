@@ -16,8 +16,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DRIVER = os.path.join(HERE, 'driver')
 NO_PROC = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit', 'fixtures', 'no-proc')
 REPO = os.path.realpath(os.path.join(HERE, '..', '..'))
-HARNESSES = ('claude', 'claude-code', 'codex', 'gemini', 'opencode', 'openclaw', 'cursor-agent', 'amp', 'aider',
-             'goose')
+sys.path.insert(0, os.path.join(REPO, 'kernel', 'driver-kit'))
+from stubs import stub_path
+sys.path.pop(0)
+
 TOOLS = ('sh', 'ps', 'lsof', 'awk', 'sleep', 'dirname')
 START = {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket', 'harness': 'fake-harness',
          'model': 'Synthetic 1'}
@@ -38,6 +40,16 @@ def broken(req, run, woken):
         os.chmod(t.STATE, 0o500)
     return pid
 t.launch = broken
+t.main()
+'''
+REFUSAL = ("this host can't set effort: remove the effort for this harness in your Models table or Roster to run it "
+           "at the host's default")
+CANT_FORM = '''import importlib.machinery, importlib.util, sys
+sys.dont_write_bytecode = True
+spec = importlib.util.spec_from_loader('template', importlib.machinery.SourceFileLoader('template', %r))
+t = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(t)
+t.VERSION['can'] = [c for c in t.VERSION['can'] if c != 'effort']
 t.main()
 '''
 PAUSES_AFTER_CHECK = '''import importlib.machinery, importlib.util, os, sys, time
@@ -64,15 +76,21 @@ def pinned_path(folder, *fixtures):
         if shutil.which(name):
             os.symlink(shutil.which(name), os.path.join(tools, name))
     os.symlink(sys.executable, os.path.join(tools, 'python3'))
-    return no_real_harness(os.pathsep.join(fixtures + (tools,)), fixtures)
+    guarded = stub_path(path=tools)
+    stub_dir = guarded.split(os.pathsep, 1)[0]
+    path = os.pathsep.join((*fixtures, guarded))
+    no_real_harness(path, stub_dir, fixtures)
+    return path, stub_dir
 
 
-def no_real_harness(path, fixtures=(os.path.join(HERE, 'fixtures'),)):
-    allowed = {os.path.realpath(f) for f in fixtures}
-    for name in HARNESSES:
+def no_real_harness(path, stub_dir, fixtures=(os.path.join(HERE, 'fixtures'),)):
+    if stub_dir not in path.split(os.pathsep):
+        raise AssertionError('the shared stub directory is missing from PATH')
+    allowed = {os.path.realpath(stub_dir)} | {os.path.realpath(f) for f in fixtures}
+    for name in os.listdir(stub_dir):
         found = shutil.which(name, path=path)
         if found and os.path.dirname(os.path.realpath(found)) not in allowed:
-            raise AssertionError('%s on the PATH is %s, outside the fixtures: a test could launch a real harness'
+            raise AssertionError('%s on the PATH is %s, outside the fixtures and stubs: a test could launch a real harness'
                                  % (name, found))
     return path
 
@@ -103,9 +121,12 @@ class Template(unittest.TestCase):
         self.folder = tempfile.mkdtemp()
         self.mark = secrets.token_hex(8)
         self.turns, self.hold = os.path.join(self.folder, 'turns'), os.path.join(self.folder, 'hold')
+        path, self.stub_dir = pinned_path(self.folder, os.path.join(HERE, 'fixtures'))
+        self.addCleanup(shutil.rmtree, self.stub_dir)
+        no_real_harness(path, self.stub_dir)
         self.env = dict(os.environ, KIT_TEST=self.mark, FAKE_TURNS=self.turns, FAKE_HOLD=self.hold,
                         OPENWIZ_TEMPLATE_STATE=os.path.join(self.folder, 'state'), OPENWIZ_TEMPLATE_LIVE='1',
-                        PATH=pinned_path(self.folder, os.path.join(HERE, 'fixtures')))
+                        PATH=path)
 
     def tearDown(self):
         os.chmod(self.folder, 0o700)
@@ -146,7 +167,7 @@ class Template(unittest.TestCase):
 
     def call(self, cmd, request, driver=DRIVER, **env):
         env = dict(self.env, **env)
-        no_real_harness(env['PATH'])
+        no_real_harness(env['PATH'], self.stub_dir)
         p = subprocess.run([driver, cmd], input=json.dumps(request), env=env, capture_output=True, text=True,
                            timeout=60)
         return p.returncode, json.loads(p.stdout)
@@ -181,7 +202,7 @@ class Template(unittest.TestCase):
             self.setUp()
         finally:
             os.environ['PATH'] = old
-        self.assertIsNone(shutil.which('claude', path=self.env['PATH']), 'the PATH reaches a real claude')
+        self.assertEqual(shutil.which('claude', path=self.env['PATH']), os.path.join(self.stub_dir, 'claude'))
         self.assertEqual(shutil.which('fake-harness', path=self.env['PATH']),
                          os.path.join(HERE, 'fixtures', 'fake-harness'))
         with self.assertRaisesRegex(AssertionError, 'could launch a real harness'):
@@ -208,7 +229,7 @@ class Template(unittest.TestCase):
         os.symlink(os.path.realpath(DRIVER), os.path.join(local, 'codex'))
         self.assertTrue(os.path.realpath(shutil.which('codex', path=local)).startswith(REPO + os.sep))
         with self.assertRaisesRegex(AssertionError, 'codex on the PATH is .*outside the fixtures'):
-            no_real_harness(local)
+            no_real_harness(local + os.pathsep + self.stub_dir, self.stub_dir)
 
     def test_the_readmes_start_example_answers_as_documented(self):
         with open(os.path.join(HERE, 'README.md')) as f:
@@ -216,6 +237,124 @@ class Template(unittest.TestCase):
         self.assertIsNotNone(found, 'the README has no start example')
         self.assertEqual(self.call('start', json.loads(found.group(1)), OPENWIZ_TEMPLATE_LIVE='')[1],
                          json.loads(found.group(2)))
+
+    def args(self, count=0):
+        deadline = time.monotonic() + 10
+        while True:
+            try:
+                with open(self.env['FAKE_ARGS']) as f:
+                    found = [json.loads(line) for line in f]
+            except FileNotFoundError:
+                found = []
+            if len(found) >= count or time.monotonic() > deadline:
+                return found
+            time.sleep(0.05)
+
+    def effort_in(self, args):
+        return [args[i + 1] for i, a in enumerate(args[:-1]) if a == '--effort']
+
+    def nothing_started(self):
+        time.sleep(0.5)
+        state = self.env['OPENWIZ_TEMPLATE_STATE']
+        return (self.logged(), self.marked(), os.listdir(state) if os.path.isdir(state) else []) == ([], [], [])
+
+    def test_version_lists_effort_and_the_readme_says_how_under_its_login_line(self):
+        code, version = self.call('version', {})
+        self.assertEqual(code, 0, version)
+        self.assertIn('effort', version['can'])
+        lines = read(os.path.join(HERE, 'README.md')).splitlines()
+        login = next(i for i, line in enumerate(lines) if line.startswith('Login:'))
+        self.assertEqual(lines[login + 1], "Effort: passed as each harness's own flag, for the harnesses and levels "
+                                           'in the table below; any other harness or level is refused')
+        rows = {}
+        for line in lines[login + 2:]:
+            if line.startswith('|'):
+                cells = [c.strip() for c in line.strip().strip('|').split('|')]
+                rows[cells[0]] = cells[1]
+            elif rows:
+                break
+        self.assertEqual(rows['`fake-harness`'], '`--effort <level>`, for low, medium, high, xhigh and max')
+        self.assertTrue(rows['`pi`'].startswith("can't ("), rows)
+        self.assertTrue(rows['any other harness'].startswith("can't ("), rows)
+
+    def test_start_passes_its_effort_to_the_harness_and_wake_passes_it_again(self):
+        for effort in ('low', 'medium', 'high', 'xhigh', 'max'):
+            with self.subTest(effort=effort):
+                self.env['FAKE_ARGS'] = os.path.join(self.folder, 'args-' + effort)
+                self.turns = self.env['FAKE_TURNS'] = os.path.join(self.folder, 'turns-' + effort)
+                code, out = self.call('start', dict(START, effort=effort))
+                self.assertEqual(code, 0, out)
+                [first] = self.args(1)
+                self.assertEqual(self.effort_in(first), [effort], first)
+                [(turn, _, _)] = self.logged(1)
+                self.assertTrue(self.until(lambda: not alive(turn)), 'the fake turn did not end')
+                self.assertEqual(self.call('wake', out), (0, dict(out, woke=True)))
+                self.assertEqual(len(self.args(2)), 2, 'the wake started no turn')
+                self.assertEqual(self.effort_in(self.args()[1]), [effort], 'the wake dropped the effort')
+                self.assertEqual(self.call('stop', out), (0, dict(out, stopped=True)))
+
+    def test_start_without_effort_passes_none(self):
+        self.env['FAKE_ARGS'] = os.path.join(self.folder, 'args')
+        code, out = self.call('start', START)
+        self.assertEqual(code, 0, out)
+        [args] = self.args(1)
+        self.assertNotIn('--effort', args)
+        self.assertEqual(self.call('stop', out), (0, dict(out, stopped=True)))
+
+    def test_an_effort_it_does_not_pass_is_refused_and_nothing_starts(self):
+        for effort in ('turbo', 'minimal', 'none', 'medium-high'):
+            with self.subTest(effort=effort):
+                code, out = self.call('start', dict(START, effort=effort))
+                self.assertEqual(code, 1, out)
+                self.assertEqual(out['next'], REFUSAL)
+                self.assertIn('fake-harness', out['error'])
+                self.assertIn(effort, out['error'])
+                self.assertTrue(self.nothing_started(), 'a refused effort started something')
+
+    def test_a_harness_it_does_not_pass_effort_to_is_refused_and_nothing_starts(self):
+        for harness in ('pi', 'fake-other'):
+            with self.subTest(harness=harness):
+                code, out = self.call('start', dict(START, harness=harness, effort='medium'))
+                self.assertEqual(code, 1, out)
+                self.assertEqual(out['next'], REFUSAL)
+                self.assertIn(harness, out['error'])
+                self.assertIn('medium', out['error'])
+                self.assertTrue(self.nothing_started(), 'a refused harness started something')
+
+    def test_a_harness_without_effort_still_starts_at_its_default(self):
+        self.env['FAKE_ARGS'] = os.path.join(self.folder, 'args')
+        code, out = self.call('start', dict(START, harness='pi'))
+        self.assertEqual(code, 0, out)
+        [args] = self.args(1)
+        self.assertNotIn('--effort', args)
+        self.assertEqual(self.call('stop', out), (0, dict(out, stopped=True)))
+
+    def test_an_effort_that_is_not_a_word_is_refused_as_input(self):
+        for effort in ('Medium', '', 'x' * 21, 7, None):
+            with self.subTest(effort=effort):
+                code, out = self.call('start', dict(START, effort=effort))
+                self.assertEqual(code, 1, out)
+                self.assertEqual(out, {'error': 'effort is not valid', 'next': 'fix effort as `driver schema` shows'})
+                self.assertTrue(self.nothing_started(), 'an invalid effort started something')
+
+    def test_the_cant_form_leaves_effort_out_of_can_and_refuses_it_as_input(self):
+        driver = self.wrapper('cant-form', CANT_FORM)
+        code, version = self.call('version', {}, driver=driver)
+        self.assertEqual((code, version['can']), (0, ['start', 'wake', 'stop']))
+        code, out = self.call('start', dict(START, effort='medium'), driver=driver)
+        self.assertEqual(code, 1, out)
+        self.assertNotEqual(out['next'], REFUSAL, "the can't form answered as if it could set some effort")
+        self.assertIn('the input needs exactly', out['error'])
+        self.assertTrue(self.nothing_started(), "the can't form started a run with an effort")
+        self.env['FAKE_ARGS'] = os.path.join(self.folder, 'args')
+        code, out = self.call('start', START, driver=driver)
+        self.assertEqual(code, 0, out)
+        [args] = self.args(1)
+        self.assertNotIn('--effort', args)
+        self.assertEqual(self.call('stop', out, driver=driver), (0, dict(out, stopped=True)))
+        readme = read(os.path.join(HERE, 'README.md'))
+        self.assertIn('drop `effort` from `can`', readme)
+        self.assertIn("Effort: the host can't set it (<why>)", readme)
 
     def test_stop_ends_what_the_turn_left_behind_after_it_exits(self):
         code, out = self.call('start', START)
@@ -393,6 +532,29 @@ class Template(unittest.TestCase):
         worker = self.handed_off(pids)
         self.assertEqual(self.call('stop', out, **macos), (0, dict(out, stopped=True)))
         self.assertFalse(alive(worker), 'a worker the turn handed off as it exited still runs after stop')
+
+    def test_without_proc_as_on_macos_stop_says_when_lsof_cannot_check_the_output_file(self):
+        for broken in (False, True):
+            with self.subTest(lsof_fails=broken):
+                self.tearDown()
+                self.setUp()
+                macos = {'PATH': NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable}
+                code, out = self.call('start', START, **macos)
+                self.assertEqual(code, 0, out)
+                self.logged(1)
+                stop = dict(self.env, **macos)
+                if broken:
+                    folder = os.path.join(self.folder, 'broken-lsof')
+                    os.mkdir(folder)
+                    with open(os.path.join(folder, 'lsof'), 'w') as f:
+                        f.write('#!/bin/sh\necho "lsof: synthetic failure %s" >&2\nexit 1\n' % self.mark)
+                    os.chmod(os.path.join(folder, 'lsof'), 0o700)
+                    stop['PATH'] = folder + os.pathsep + stop['PATH']
+                p = subprocess.run([DRIVER, 'stop'], input=json.dumps(out), env=stop, capture_output=True, text=True,
+                                   timeout=60)
+                self.assertEqual((p.returncode, json.loads(p.stdout)), (0, dict(out, stopped=True)))
+                self.assertEqual('could not check' in p.stderr, broken, p.stderr)
+                self.assertNotIn(self.mark, p.stderr)
 
     def asked_ps_for_environments(self, calls):
         with open(calls) as f:
