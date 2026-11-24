@@ -27,6 +27,13 @@ BAD = {
     'the removed auth subcommand': ['auth', 'qwen-oauth'],
     'no --model': START[:4] + START[6:],
 }
+HEADLESS_DENIED = {
+    'plan': {'run_shell_command', 'monitor', 'edit', 'write_file'},
+    'default': {'run_shell_command', 'monitor', 'edit', 'write_file'},
+    'auto': {'run_shell_command', 'monitor', 'edit', 'write_file'},
+    'auto-edit': {'run_shell_command', 'monitor'},
+    'yolo': set(),
+}
 SIGNED_OUT = ('none', 'qwen-oauth', 'openai', 'openai-env-key', 'provider-key', 'provider-env-key', 'enforced-type',
               'subscription-expired')
 
@@ -53,6 +60,21 @@ def supervisor_shape():
     finally:
         os.killpg(pid, signal.SIGKILL)
         os.waitpid(pid, 0)
+
+
+def headless_modes(readme):
+    table = readme.partition('## The modes')[2].partition('\n## ')[0]
+    rows = [[c.strip() for c in l.strip('|').split('|')] for l in table.splitlines() if l.startswith('|')]
+    if not rows or not any('headless' in c.lower() for c in rows[0]):
+        return ['the README modes table has no column for what each mode does headless']
+    col = [i for i, c in enumerate(rows[0]) if 'headless' in c.lower()][0]
+    found = {r[0].strip('`'): set(re.findall(r'`(run_shell_command|monitor|edit|write_file)`', r[col]))
+             for r in rows[2:] if len(r) > col}
+    failures = [] if found == HEADLESS_DENIED else \
+        ["the README's headless column does not list the tools qwen removes in each mode: %r" % found]
+    if 'security.folderTrust' not in table or 'overridden to "default"' not in table:
+        failures.append('the README modes section does not say an untrusted clone downgrades the mode to default')
+    return failures
 
 
 def main():
@@ -86,6 +108,8 @@ def main():
         commands = f.read().partition('## The commands')[2].partition('\n## ')[0]
     if not re.search(r'- Start: .*\n- Wake: .*\n(.*\n)?.*`general\.chatRecording`', commands):
         failures.append('the README does not name the general.chatRecording prerequisite beside start and wake')
+    with open(os.path.join(HERE, 'README.md')) as f:
+        failures += headless_modes(f.read())
     if 'subscription_credentials.json' not in row['login'] or 'oauth_creds.json' in row['login']:
         failures.append("the row's login does not name the Qwen subscription sign-in, subscription_credentials.json")
     if sorted(row['modes']) != sorted(['plan', 'default', 'auto-edit', 'auto', 'yolo']) or \
