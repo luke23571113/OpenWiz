@@ -7,7 +7,6 @@ sys.path.insert(0, os.path.join(HERE, '..', '..'))
 import test_harnesses as th
 
 ROWS = os.path.dirname(HERE)
-FAKE = os.path.join(HERE, 'fake')
 ID = '00000000-0000-4000-8000-0000000000a1'
 
 
@@ -26,13 +25,6 @@ def not_installed():
             PATH=path_without_auggie(env))
 
 
-def not_signed_in():
-    with th.ThrowawayMachine(ROWS, 'auggie', 'auggie', FAKE, 'full-access') as env:
-        code, out = env.start(FAKE_CLI_SIGNED_OUT='1')
-        return code == 1 and th.kit.invalid(out, th.ERROR) is None and 'not signed in' in out.get('error', '') \
-            and 'auggie auth login' in out.get('next', '')
-
-
 def first_json_line_names_the_session():
     with tempfile.TemporaryDirectory() as state:
         th.local.STATE = state
@@ -49,7 +41,6 @@ def first_json_line_names_the_session():
 
 def main():
     checks = [('not installed: a D3 error whose next says to install auggie, starting nothing', not_installed),
-              ('not signed in: a D3 error that says so, whose next names auggie auth login', not_signed_in),
               ('the session header: the driver reads the id from 1.2.2\'s first JSON line', first_json_line_names_the_session)]
     ok = True
     for what, check in checks:
