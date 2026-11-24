@@ -10,6 +10,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 code="$(sed '1,/^python_below = True$/d' "$0")"
 exec "$py" -I -c "$code" "$here" "$@"
 python_below = True
+import fcntl
 import hashlib
 import json
 import os
@@ -32,8 +33,9 @@ sha256 before anything is run or installed from it. It never signs in, never ins
 never runs sudo, and runs nothing it installed except `<tool> --version`; a tool is published only
 after its staged copy names its pinned version, so a working one is never replaced by a broken one.
 Each program it starts gets only HOME, USER, LOGNAME, SHELL, LANG, LC_ALL, LC_CTYPE, TERM, TMPDIR
-and TZ from your environment, never a token or key. A second run installs nothing. --dry-run prints
-each step and writes nothing, not even a temporary file.
+and TZ from your environment, never a token or key. A command already in <prefix>/bin that it didn't
+install is kept and never run. A second run installs nothing, and two runs for one prefix take turns.
+--dry-run prints each step and writes nothing, not even a temporary file.
 
 Exit 0 when every tool is installed, already there or left out by design; 1 when a download,
 checksum or install failed; 2 on a usage error or a missing python3 3.9+.'''
@@ -109,6 +111,17 @@ def system_tool(name, minimum):
     return '.'.join(map(str, have)), None
 
 
+def sha256_of(path):
+    h = hashlib.sha256()
+    try:
+        with open(path, 'rb') as f:
+            for block in iter(lambda: f.read(1 << 20), b''):
+                h.update(block)
+    except OSError:
+        return None
+    return h.hexdigest()
+
+
 def fetch(file, work):
     path = os.path.join(work, 'download')
     digest = hashlib.sha256()
@@ -177,9 +190,8 @@ def install(tool, file, prefix, work):
     if kind == 'installer':
         return run_installer(tool, path, prefix, work)
     staged = os.path.join(prefix, 'lib', 'openwiz-vps', 'staged', name)
-    # A wheel lives at a path named by its sha256, so a repin never rewrites the one a working launcher imports.
-    wheels = os.path.join(prefix, 'lib', 'openwiz-vps', 'wheels', name)
-    wheel = os.path.join(wheels, file['sha256'] + '.whl')
+    wheel = wheel_path(prefix, name, file['sha256'])
+    wheels = os.path.dirname(wheel)
     new_wheel = False
     try:
         if kind == 'binary':
@@ -190,9 +202,14 @@ def install(tool, file, prefix, work):
             except (KeyError, OSError, tarfile.TarError, zipfile.BadZipFile) as e:
                 raise Refused('cannot unpack %s: %s' % (file['member'], type(e).__name__))
         elif kind == 'wheel':
-            new_wheel = not os.path.exists(wheel)
-            if new_wheel:
-                place(open(path, 'rb').read(), wheel)
+            if sha256_of(wheel) != file['sha256']:
+                try:
+                    place(open(path, 'rb').read(), wheel)
+                except OSError as e:
+                    raise Refused('%s: %s' % ('its cached wheel fails its checksum and cannot be replaced'
+                                              if os.path.lexists(wheel) else 'cannot write its wheel',
+                                              type(e).__name__))
+                new_wheel = True
             code = 'import importlib, sys; sys.path.insert(0, sys.argv.pop(1)); ' \
                    'sys.exit(importlib.import_module(%r).main())' % tool['module']
             place(('#!/bin/sh\nexec %s -I -c %s %s "$@"\n' % (shlex.quote(sys.executable), shlex.quote(code),
@@ -212,18 +229,37 @@ def install(tool, file, prefix, work):
                 os.remove(os.path.join(wheels, old))
 
 
+def hold_lock(prefix):
+    path = os.path.join(prefix, 'lib', 'openwiz-vps', 'lock')
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        lock = open(path, 'a')
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print('bootstrap: waiting for another bootstrap on %s' % prefix, file=sys.stderr, flush=True)
+            fcntl.flock(lock, fcntl.LOCK_EX)
+    except OSError as e:
+        print('bootstrap: cannot lock %s: %s' % (path, type(e).__name__), file=sys.stderr)
+        sys.exit(1)
+    return lock
+
+
 def stamp_path(prefix, name):
     return os.path.join(prefix, 'lib', 'openwiz-vps', name + '.json')
 
 
-def stamped(tool, file, prefix):
+def read_stamp(prefix, name):
     try:
-        with open(stamp_path(prefix, tool['name'])) as f:
+        with open(stamp_path(prefix, name)) as f:
             stamp = json.load(f)
     except (OSError, ValueError):
-        return False
-    return stamp == {'version': tool['version'], 'sha256': file['sha256']} and \
-        os.path.exists(os.path.join(prefix, 'bin', tool['name']))
+        return None
+    return stamp if isinstance(stamp, dict) else None
+
+
+def wheel_path(prefix, name, sha256):
+    return os.path.join(prefix, 'lib', 'openwiz-vps', 'wheels', name, sha256 + '.whl')
 
 
 def main():
@@ -236,6 +272,7 @@ def main():
     except (OSError, ValueError, KeyError) as e:
         usage('cannot read %s: %s' % (opts['tools'], type(e).__name__))
     installed, there, left, available, failed, work = 0, 0, [], set(), False, None
+    lock = None if dry else hold_lock(prefix)
 
     def leave(name, why):
         left.append('left out %s: %s' % (name, why))
@@ -267,11 +304,26 @@ def main():
                             % tool['home_only'])
                 continue
             file = tool['files'].get(key) or tool['files'].get('any')
-            have = None
-            if file and stamped(tool, file, prefix):
-                have = tool['version']
-            elif tool.get('system_min'):
-                have = system_tool(name, tool['system_min'])[0]
+            if os.path.lexists(dst) and not os.path.lexists(stamp_path(prefix, name)):
+                leave(name, 'your existing %s was not installed by this bootstrap, so it is kept and never run; '
+                            'move it aside to install the pinned %s' % (dst, tool['version']))
+                continue
+            stamp, launcher = read_stamp(prefix, name), sha256_of(dst)
+            if os.path.lexists(dst) and (not stamp or not launcher or stamp.get('launcher') != launcher):
+                leave(name, 'your existing %s is not the copy this bootstrap installed there (or its record is too '
+                            'old to tell), so it is kept and never run; move it aside to install the pinned %s'
+                            % (dst, tool['version']))
+                continue
+            if os.path.lexists(dst) and file and stamp.get('version') == tool['version'] and \
+                    stamp.get('sha256') == file['sha256'] and (tool['kind'] != 'wheel' or sha256_of(
+                        wheel_path(prefix, name, file['sha256'])) == file['sha256']):
+                already(name, tool['version'])
+                continue
+            if tool['kind'] == 'installer' and os.path.lexists(dst):
+                leave(name, 'your existing %s is kept and not run, since its installer would overwrite it in '
+                            'place; move it aside to install the pinned %s' % (dst, tool['version']))
+                continue
+            have = system_tool(name, tool['system_min'])[0] if tool.get('system_min') else None
             if have:
                 already(name, have)
                 continue
@@ -281,14 +333,6 @@ def main():
             missing = [n for n in tool.get('needs', []) if n not in available]
             if missing:
                 leave(name, 'needs ' + ', '.join(missing))
-                continue
-            if tool['kind'] == 'installer' and os.path.lexists(dst):
-                said = run_version(dst) or ''
-                if tool['version'] in said:
-                    already(name, tool['version'])
-                else:
-                    leave(name, 'your existing %s is kept (it does not name %s); move it aside to install the '
-                                'pinned one' % (dst, tool['version']))
                 continue
             if dry:
                 print('would install %s %s from %s, sha256 %s' % (name, tool['version'], file['url'], file['sha256']),
@@ -309,7 +353,8 @@ def main():
                 shutil.rmtree(step, ignore_errors=True)
                 shutil.rmtree(os.path.join(prefix, 'lib', 'openwiz-vps', 'staged'), ignore_errors=True)
             stamp = stamp_path(prefix, name)
-            place(json.dumps({'version': tool['version'], 'sha256': file['sha256']}).encode(), stamp)
+            place(json.dumps({'version': tool['version'], 'sha256': file['sha256'],
+                              'launcher': sha256_of(dst)}).encode(), stamp)
             os.chmod(stamp, 0o644)
             installed += 1
             available.add(name)
@@ -317,6 +362,8 @@ def main():
     finally:
         if work:
             shutil.rmtree(work, ignore_errors=True)
+        if lock:
+            lock.close()
     if dry:
         print('bootstrap: dry run, %d to install, %d already there, %d left out' % (installed, there, len(left)))
     else:
