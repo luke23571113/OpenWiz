@@ -398,8 +398,11 @@ def precheck(run, state):
         return
     fills = {'{model}': req['model'], '{effort}': req.get('effort')}
     env = dict(row['env'], **effort_of(req['harness'], row, req.get('effort'))[1])
-    outcome, start, until = row_command(run, [state['program']] + [fills.get(a, a) for a in check['run'][1:]], env,
-                                        PRECHECK_SECONDS)
+    try:
+        outcome, start, until = row_command(run, [state['program']] + [fills.get(a, a) for a in check['run'][1:]],
+                                            env, PRECHECK_SECONDS)
+    except OSError:
+        outcome, start, until = 'error', 0, 0
     state['precheck_output'] = [start, until]
     why = failed(outcome, PRECHECK_SECONDS)
     why = why and 'it ' + why
