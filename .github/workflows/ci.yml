@@ -125,6 +125,7 @@ jobs:
           env -u OPENWIZ_GITHUB_APP_KEY python3 -I kernel/driver-kit/test_stubs.py
           python3 -I kernel/records/model/test_model.py
           python3 -I ci/driver-tests.py
+          python3 -I ci/test_ci_driver_tests.py
           python3 -I contracts/fixtures/feedback-loop/test_check.py
           python3 -I tools/bench/first-fleet/test_bench.py
           python3 -I tools/ci-overload/test_supply.py
