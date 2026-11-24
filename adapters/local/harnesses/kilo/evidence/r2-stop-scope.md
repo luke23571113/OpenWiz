@@ -40,3 +40,22 @@ fail README stop: missing Linux, HR1, macOS, detached persistent background proc
 fail row daemon: missing Linux, HR1, macOS, detached persistent background process, may outlive stop, #2443
 exit 1
 ```
+
+## Green run
+
+```text
+pass README stop: states the HR1 platform scope and live check
+pass row daemon: states the HR1 platform scope and live check
+exit 0
+```
+
+Both harness commands ran on Linux with 40 refusal stubs first on PATH.
+
+```text
+$ env -u OPENWIZ_GITHUB_APP_KEY python3 -I adapters/local/test_harnesses.py
+rows in adapters/local/harnesses: kilo
+pass kilo: the contract, the folder, the kit's five checks, and the session, env, background process and effort checks
+exit 0
+$ env -u OPENWIZ_GITHUB_APP_KEY python3 -I adapters/local/harnesses/kilo/test_row.py
+exit 0
+```
