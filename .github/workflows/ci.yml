@@ -133,6 +133,7 @@ jobs:
           python3 -I adapters/openclaw/test_driver.py
           python3 -I contracts/fixtures/feedback-loop/test_check.py
           python3 -I tools/bench/first-fleet/test_bench.py
+          python3 -I tools/ci-overload/test_supply.py
       - name: The live-check rig's tests
         if: matrix.part == 2
         run: |
