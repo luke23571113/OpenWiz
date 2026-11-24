@@ -8,7 +8,7 @@ The Augment Auggie CLI as a harness row on the local driver ([the harness-row co
 
 - **Start:** `auggie --no-cloud -p --mode json --model <model> "<prompt>"`, in the run's worktree.
 - **Wake (same run):** `auggie --session <id> --no-cloud -p --mode json --model <model> "<message>"`, in the same worktree.
-- **Stop:** the driver ends the run's process tree.
+- **Stop:** the driver ends the run's process tree. That holds on Linux; macOS waits on the live check (#2448), below.
 - **Permission mode:** `full-access` only (below).
 - **Cloud mode off:** both turns pass `--no-cloud`. Without it, 1.2.2 turns on cloud mode from a saved preference even when the command line has no `--cloud`, and streams the run to Augment's web UI, where it is visible and steerable. `--no-cloud` overrides `--cloud` and that saved state (`auggie --help` 1.2.2). The fake refuses a turn without it.
 
@@ -25,12 +25,15 @@ Result: same-run wake holds, so the row is built.
 
 ## Stop leaves nothing running
 
-`auggie -p` runs its indexing in a worker thread (`indexing-worker.mjs`, through `node:worker_threads`), inside the same process. `auggie daemon` is the cloud-agent daemon: the row never starts it and never passes `--cloud`. The bash tool starts background commands `detached`, in their own process group, so a run can leave one behind. The driver's stop ends every process under the run, including ones that left their process group. The row declares that background process, its fake starts a stand-in for it, and the harness check requires it to be gone after stop.
+`auggie -p` runs its indexing in a worker thread (`indexing-worker.mjs`, through `node:worker_threads`), inside the same process. `auggie daemon` is the cloud-agent daemon: the row never starts it, never passes `--cloud`, and passes `--no-cloud` on every turn. The bash tool starts background commands `detached`, in their own process group, so a run can leave one behind. The row declares that background process, its fake starts a stand-in for it, and the harness check requires it to be gone after stop.
+
+- **Linux:** the driver's stop ends every process under the run, including ones that left their process group.
+- **macOS:** not claimed yet. There, stop can't reach a process that leaves its turn's process group, closes or redirects its output, and is orphaned before the supervisor's next look ([the local driver's limit](../../README.md)). A detached background command can do exactly that. The row claims macOS only if the signed-in live check (#2448) runs there and its stop leaves nothing running.
 
 ## Not installed, not signed in
 
 - **Not installed:** the driver's D3 error says `harness auggie is not installed here`, and its `next` says to install `auggie` and sign in yourself. The CLI's own install is `npm install -g @augmentcode/auggie`.
-- **Not signed in:** 1.2.2 prints its session header, then `No API key found for unknown.` on stderr, and exits 1. `auggie auth status` prints `Not logged in.` and exits 1. The row's `signed_out` is `No API key found for `, and its `login_command` is `auggie auth login`. A signed-out start therefore fails with the D3 error `the harness is not signed in`, and its `next` names `auggie auth login`. The fake answers as 1.2.2 does when the runner sets `FAKE_CLI_SIGNED_OUT=1`. The red runs before HR1's revision 4 are in [evidence/red-signed-out.txt](evidence/red-signed-out.txt) and [evidence/red-signed-out-fields.txt](evidence/red-signed-out-fields.txt).
+- **Not signed in:** 1.2.2 prints its session header, then `No API key found for unknown.` on stderr, and exits 1. `auggie auth status` prints `Not logged in.` and exits 1. The row's `signed_out` is `No API key found for `, and its `login_command` is `auggie auth login`. A signed-out start therefore fails with the D3 error `the harness is not signed in`, and its `next` names `auggie auth login`. The fake answers as 1.2.2 does when the runner sets `FAKE_CLI_SIGNED_OUT=1`, and the harness runner's signed-out check covers it. The red runs before HR1's revision 4 are in [evidence/red-signed-out.txt](evidence/red-signed-out.txt) and [evidence/red-signed-out-fields.txt](evidence/red-signed-out-fields.txt).
 
 ## Effort: none
 
