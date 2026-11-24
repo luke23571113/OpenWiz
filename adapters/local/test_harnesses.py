@@ -711,6 +711,23 @@ def row_commands_keep_the_drivers_environment(planted):
     return result[0] == 0 and got == 'local' and dict(os.environ) == before
 
 
+def precheck_that_cannot_run_is_refused(planted):
+    with open(os.path.join(planted, 'row-commands', 'row.json')) as f:
+        state = {'request': {'harness': 'row-commands', 'model': 'synthetic-1'}, 'program': 'row-commands-cli',
+                 'row': json.load(f)}
+    saved = local.row_command
+    local.row_command = lambda *_: (_ for _ in ()).throw(OSError('no temporary folder: synthetic'))
+    try:
+        local.precheck('run-000000000000', state)
+        return False
+    except local.Refused as e:
+        return 'it could not run; nothing was started' in str(e.args[0])
+    except OSError:
+        return False
+    finally:
+        local.row_command = saved
+
+
 def row_command_ended_when_its_watch_fails(planted):
     if not os.path.isdir('/proc/self'):
         return True
@@ -751,6 +768,8 @@ def check_driver(rows):
              ("a precheck that exits non-zero, does not match or runs past its timeout is a D3 refusal that starts "
               "no turn, runs outside the clone with the row's env, and keeps its output in the run's log only",
               precheck_refusals_start_nothing(rows)),
+             ("a precheck that cannot open the run's log or its folder is the same D3 refusal, so its run is saved "
+              "as stopped", precheck_that_cannot_run_is_refused(rows)),
              ("a precheck's output is left out of the first turn's sign-in check, so a first turn that ends at once "
               "with exit 0 still starts", precheck_output_is_not_the_turns(rows)),
              ("a precheck that names {effort} is skipped for a start without an effort, and its model and effort "
