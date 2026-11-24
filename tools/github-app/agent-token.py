@@ -791,9 +791,6 @@ def gh_checked(fd, path, refuse, args, env):
 API_BASE = "https://api.github.com"
 NOT_REVOKED = "openwiz: openwiz[bot] token not revoked ({}); the token is kept for a later revoke\n"
 NO_TOKEN = "openwiz: openwiz[bot] token not revoked (no token found)\n"
-# A run started before the upgrade has run-<32 hex>.json; an upgraded run has
-# run-<16 hex>-<16 hex>.json, a shape no pre-upgrade name has, so a later run never
-# takes the path a still-running older run saved.
 SNAPSHOT = re.compile(r"run-(?:[0-9a-f]{32}|[0-9a-f]{16}-[0-9a-f]{16})\.json")
 REVOKE_REASONS = ("GitHub refused", "GitHub unreachable", "not the GitHub API", "no token found")
 
