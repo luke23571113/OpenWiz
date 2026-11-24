@@ -10,8 +10,14 @@ The proof uses only the standard library. Its schema walker covers the
 keywords this contract uses and refuses unknown ones. It does not act as
 the installer: it reports the complete set of violations in a fixture
 so a different failure cannot mask the intended one. It never extracts
-or runs any archive member. The synthetic kit commit stands for the
-checkout's kit schema bytes in this offline proof.
+or runs any archive member. The checkout's kit stands for the installed
+build's; the synthetic kit commit names no real kit and selects none.
+
+Three tests lay out an install from the contract's "Kit files" table. A
+synthetic driver uses each file as the table allows, each driver in
+`adapters/` must refuse an empty `start` exactly as it does in the checkout
+(nothing starts), and a package's schema is checked against the installed
+kit's. `red-run-kit-files.txt` is their run before the table existed.
 
 Each directory has the three release assets and a `package.json` that
 could appear as a listing's package block. `cases.json` gives the one

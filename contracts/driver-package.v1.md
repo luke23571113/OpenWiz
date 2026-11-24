@@ -12,10 +12,16 @@ Keep the executable `driver` at the repository root, alongside
 `schema.json` and `README.md`. Keep tests and their synthetic inputs in
 the repository (the template uses `test_driver.py` and `fixtures/`). The
 root `kit-commit` file contains the full lowercase 40-hex OpenWiz commit
-and one terminating LF. Use that kit for CI and live runs. The repository's
+and one terminating LF. Use that kit for CI and live runs: copy the
+repository's driver files into `drivers/<name>/` of a checkout of that
+commit and run that checkout's kit, so that the driver finds the
+[kit files](#kit-files) as it does when installed. The repository's
 `schema.json` is byte-identical to that commit's
 `kernel/driver-kit/schema.json`. CI and the release producer check it
-against those exact bytes, not a reserialized JSON object.
+against those exact bytes, not a reserialized JSON object. The kit commit says
+which kit the author tested with. It never selects or fetches a kit: an
+installed driver always uses the installed build's, and the two commits
+may differ.
 
 The README has one plain `Login: <where the login lives>` line and the
 `Effort:` line required by driver v1. It also declares
@@ -108,23 +114,53 @@ variable or keychain entry already used by another host.
    names), malformed archives, unsafe paths (absolute paths, backslashes,
    or empty, dot or dot-dot segments), extra or missing files. Do not
    use a tar extraction API. Check file bytes against the manifest and
-   check `schema.json` byte for byte against the kit schema from the
-   exact pinned OpenWiz commit, never a schema reported by the downloaded
-   program. Read the README only as plain untrusted text; its driver name
-   must match the selected name and the manifest. Refuse mismatches.
+   check `schema.json` byte for byte against the kit schema of the build
+   the driver is installed into, whatever its `kit_commit`: the build that
+   carries the pin, or the selected build for a listing. Never use a schema
+   reported by the downloaded program, and fetch none. On a difference,
+   refuse; the next step is `openwiz update`, or a driver release made
+   with this build's kit. Read the README only as plain untrusted text;
+   its driver name must match the selected name and the manifest. Refuse
+   mismatches.
 4. The user's pick is the yes for core and first-party pins. For a
    verified listing, display one confirmation: name, publisher, version,
    login line, abilities and receipt date. For a listed driver, show
    that it has not passed the kit, and require its own explicit yes
    after the warning. A default, an absent answer or an agent's answer
    is never the user's yes. None of the fetched code runs before the
-   checks and the yes. After yes, in private staging, require the driver's
-   v1 `version` answer to agree with its declared name and abilities
-   before installing it. Do not install or save an approval on refusal.
+   checks and the yes. After yes, in private staging laid out with its kit
+   files as the install is, require the driver's v1 `version` answer to
+   agree with its declared name and abilities before installing it. Do not
+   install or save an approval on refusal.
 5. Install the verified driver and data only after success. Save one
    approval per fetched driver with exactly its `repository`,
    `publisher`, `version` and archive `sha256`. A refusal says what
    went wrong and what to do next, using the driver v1 error shape.
+
+## Kit files
+
+Drivers load kit files by a path relative to their own folder
+(`../../kernel/driver-kit/kit.py` and the like). The kit is not in a
+package, so the install gives every driver these files, each copied from
+`runtime/<path>` of the selected build to `<install-root>/<path>` and
+checked against that build's manifest:
+
+| File | What a driver may do with it |
+| --- | --- |
+| `kernel/driver-kit/kit.py` | Load it and call `holds_credential(text)`, the credential check |
+| `kernel/driver-kit/schema.json` | Nothing: the installer checks a package's `schema.json` against it |
+| `kernel/records-kit/check.py` | Nothing: `kit.py` loads it |
+| `kernel/driver-kit/hostkey.py` | Run it as driver v1's N4 key helper, for a host in its registry |
+| `kernel/driver-kit/hosts.json` | Nothing: `hostkey.py` reads it as the kernel's registry |
+| `wizskills.lock` | Read the WizSkills release OpenWiz pins |
+| `openwiz-build.txt` | Read the build's version, source and target |
+
+A packaged driver may rely on these uses, on the files of its own folder,
+and on no other OpenWiz file. Every build under this contract keeps them,
+so a driver keeps working on a later build. Directories are `0700` and files `0600`,
+owned by the user and never links. Do not use a driver's own copy in their
+place, and take none from `kit_commit` or the network. A build without one
+of these files cannot fill the folder: refuse and keep the last good build.
 
 ## Drivers folder and updates
 
@@ -136,8 +172,14 @@ or write into foreign-owned directories. Core drivers are copied from
 the verified build and checked against its manifest. Rebuild only from
 verified build files and fetched packages that match saved approvals or
 first-party pins; do not treat existing loose files as a source of trust.
-Stage before replacing the selected contents. Keep existing settings,
-Roster and host names.
+Stage before replacing the selected contents. The drivers folder and the
+[kit files](#kit-files) are rebuilt together, from the build being
+selected: a driver never runs beside another build's kit files, and a
+failure keeps the last good build with its own drivers and kit files.
+Rebuilding an approved, unchanged package repeats every check except the
+`schema.json` comparison, which it passed when it was added or last moved:
+a later kit schema only adds to driver v1, so it must not remove a working
+driver. Keep existing settings, Roster and host names.
 
 On update an approved listing driver can move to a newer version without
 another yes only when the repository and publisher are unchanged and the
@@ -158,7 +200,8 @@ A kernel release carries `pins.json`, a `pin` record with
 empty). Each entry contains `package`, `publisher`, and `evidence`.
 Driver names must be unique. These are reviewed, kernel-owned pins, not
 automatically promoted listings. The release gate checks the pinned
-hashes against the exact assets. Admit a pin only with one of:
+hashes against the exact assets, and each package's `schema.json` against
+the release's own kit schema. Admit a pin only with one of:
 
 - `evidence.receipt`: a reviewed verified WizMarket receipt URL at a
   full WizMarket commit, for the exact package repository, commit and
