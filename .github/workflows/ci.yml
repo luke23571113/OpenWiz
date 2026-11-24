@@ -98,7 +98,7 @@ jobs:
   release:
     if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
@@ -131,6 +131,7 @@ jobs:
           python3 -I adapters/template/test_driver.py
           python3 -I adapters/cloudroom/test_driver.py
           python3 -I adapters/devin/test_driver.py
+          python3 -I adapters/factory/test_driver.py
           python3 -I adapters/openclaw/test_driver.py
           python3 -I contracts/fixtures/feedback-loop/test_check.py
           python3 -I tools/bench/first-fleet/test_bench.py
@@ -139,8 +140,9 @@ jobs:
         if: matrix.part == 2
         run: |
           stubs=$(mktemp -d)
-          for cli in claude codex cursor-agent agent pi opencode copilot goose gemini kimi qwen cline kilo crush \
-              vibe auggie kiro-cli junie amp agy oz sculpt hermes acpx droid; do
+          for cli in claude codex cursor-agent agent cursor pi opencode copilot goose gemini kimi qwen cline kilo \
+              kilocode crush vibe auggie kiro-cli junie amp agy oz sculpt hermes acpx droid boat room-cli runpane \
+              pane openhands devin warp grok codespaces conductor; do
             printf '#!/bin/sh\necho "%s: refused, CI never starts an agent CLI" >&2\nexit 1\n' "$cli" > "$stubs/$cli"
             chmod +x "$stubs/$cli"
           done

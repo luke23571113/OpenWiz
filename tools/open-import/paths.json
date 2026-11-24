@@ -16,6 +16,7 @@
     "adapters/boat/**",
     "adapters/cloudroom/**",
     "adapters/devin/**",
+    "adapters/factory/**",
     "adapters/hermes/**",
     "adapters/local/**",
     "adapters/openclaw/**",

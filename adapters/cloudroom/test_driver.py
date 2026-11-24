@@ -94,7 +94,7 @@ class Driver(unittest.TestCase):
                            env=env, capture_output=True, text=True, timeout=120)
         self.assertEqual((p.returncode, p.stdout.splitlines()), (0, [
             'pass version: openwiz:records v1, and the schema is driver v1',
-            'pass start: the run posted builder status note 1',
+            'pass start: the run posted builder status note 1; effort: medium reached a process the run started',
             'pass wake: the run edited builder status note 1',
             'pass stop: the run ended, and a wake after it is refused',
             'pass token: no login or token passed through the driver']), p.stderr)
@@ -121,17 +121,30 @@ class Driver(unittest.TestCase):
                 if harness == 'fake-harness':
                     self.assertTrue(self.a_turn_holds('FAKE_ROOM_REASONING_LEVEL=' + effort), 'no turn ran at ' + effort)
 
-    def a_turn_holds(self, entry, wait=10):
+    def test_cloud_worker_keeps_effort_after_spawn(self):
+        code, out = self.call('start', dict(START, harness='fake-harness', model='Synthetic 1', effort='medium'),
+                              FAKE_ROOM_HOST='cloud')
+        self.assertEqual(code, 0, out)
+        self.assertTrue(self.a_turn_holds('FAKE_ROOM_REASONING_LEVEL=medium', argv=b'--reasoning-level\0medium\0'),
+                        'the cloud worker lost the effort arguments after spawn')
+
+    def a_turn_holds(self, entry, wait=10, *, argv=None):
         end = time.time() + wait
         while time.time() < end:
             for pid in filter(str.isdigit, os.listdir('/proc')):
                 try:
                     with open('/proc/%s/environ' % pid, 'rb') as f:
                         env = f.read().split(b'\0')
+                    if ('KIT_TEST=' + self.mark).encode() not in env or entry.encode() not in env:
+                        continue
+                    if argv is None:
+                        return True
+                    if any(e.startswith(b'FAKE_WORKER=') for e in env):
+                        with open('/proc/%s/cmdline' % pid, 'rb') as f:
+                            if b'\0' + argv in f.read():
+                                return True
                 except OSError:
                     continue
-                if ('KIT_TEST=' + self.mark).encode() in env and entry.encode() in env:
-                    return True
             time.sleep(0.05)
         return False
 
