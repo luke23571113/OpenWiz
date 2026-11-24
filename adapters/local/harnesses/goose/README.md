@@ -36,10 +36,10 @@ No live test was run and nothing was signed in to: the live run is #2499. No tes
 
 ## Effort
 
-**None.** goose has one effort setting, `GOOSE_THINKING_EFFORT` (`off`, `low`, `medium`, `high` or `max`; [`providers.md`](https://github.com/aaif-goose/goose/blob/v1.60.2/documentation/docs/getting-started/providers.md), and `get_goose_thinking_effort` in [`config/base.rs`](https://github.com/aaif-goose/goose/blob/v1.60.2/crates/goose/src/config/base.rs)), but it is not always applied, and nothing says so:
+**None.** goose's generic effort setting is `GOOSE_THINKING_EFFORT` (`off`, `low`, `medium`, `high` or `max`; [`providers.md`](https://github.com/aaif-goose/goose/blob/v1.60.2/documentation/docs/getting-started/providers.md), and `get_goose_thinking_effort` in [`config/base.rs`](https://github.com/aaif-goose/goose/blob/v1.60.2/crates/goose/src/config/base.rs)). When it is unset or doesn't parse, the same method falls back to legacy Claude settings (`CLAUDE_THINKING_TYPE`, `CLAUDE_THINKING_ENABLED`) and a Gemini one (`GEMINI3_THINKING_LEVEL`), and some model families take an effort suffix on the model name (below). None of these is always applied, and nothing says so:
 
 - [`crates/goose-providers/src/ollama.rs`](https://github.com/aaif-goose/goose/blob/v1.60.2/crates/goose-providers/src/ollama.rs) (`reasoning_effort`) sends no effort for a model without thinking, and sends `max` as `high`. Its own test, `reasoning_effort_omits_level_for_models_without_thinking`, expects the effort to be dropped.
-- `get_goose_thinking_effort` drops a value that doesn't parse (`.parse().ok()`) without an error.
-- A model name ending in an effort word (such as `-high`) sets its own effort ([`crates/goose-provider-types/src/model.rs`](https://github.com/aaif-goose/goose/blob/v1.60.2/crates/goose-provider-types/src/model.rs)), which the row can't see from the model id alone.
+- `get_goose_thinking_effort` drops a `GOOSE_THINKING_EFFORT` value that doesn't parse (`.parse().ok()`) and falls back as above, without an error.
+- For OpenAI Responses and xAI reasoning models, a model name ending in an effort word (such as `-high`) sets its own effort (`normalize_effort_suffix` in [`crates/goose-provider-types/src/model.rs`](https://github.com/aaif-goose/goose/blob/v1.60.2/crates/goose-provider-types/src/model.rs)), which the row can't see from the model id alone.
 
 The harness-row contract says a row must not claim an effort its CLI silently ignores for some models, so the row says `"effort": "none: ..."`, and a start that carries an effort is refused and starts nothing.
