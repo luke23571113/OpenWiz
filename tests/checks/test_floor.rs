@@ -105,5 +105,5 @@ fn the_committed_floor_is_a_positive_multiple_of_ten() {
     let object = value.as_object().unwrap();
     assert_eq!(object.len(), 1, "only the rust floor: {text}");
     let floor = object["rust"].as_u64().expect("a whole number");
-    assert!(floor > 0 && floor % 10 == 0, "floor {floor}");
+    assert!(floor > 0 && floor.is_multiple_of(10), "floor {floor}");
 }
