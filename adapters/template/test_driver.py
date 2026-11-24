@@ -114,6 +114,10 @@ worker = subprocess.Popen(['sleep', '120'], start_new_session=True, stdin=subpro
 with open(%r, 'w') as f:
     f.write('%%d %%d' %% (os.getpid(), worker.pid))
 """
+NO_LSOF = ('driver: lsof could not run or failed, so the driver could not check which processes hold this '
+           "run's output files open; it ended only the turns' process groups and the processes their "
+           'supervisors recorded')
+
 
 class Template(unittest.TestCase):
     def setUp(self):
@@ -500,6 +504,30 @@ class Template(unittest.TestCase):
         worker = self.handed_off(pids)
         self.assertEqual(self.call('stop', out, **macos), (0, dict(out, stopped=True)))
         self.assertFalse(alive(worker), 'a worker the turn handed off as it exited still runs after stop')
+
+    def test_without_proc_as_on_macos_stop_warns_when_lsof_failed_in_a_supervisor_that_has_exited(self):
+        folder, pids = self.harness_handing_off_as_it_exits('fake-harness')
+        broken = os.path.join(self.folder, 'broken-lsof')
+        os.mkdir(broken)
+        with open(os.path.join(broken, 'lsof'), 'w') as f:
+            f.write('#!/bin/sh\necho "lsof: synthetic failure %s" >&2\nexit 1\n' % self.mark)
+        os.chmod(os.path.join(broken, 'lsof'), 0o700)
+        macos = dict(self.env, PATH=os.pathsep.join((broken, folder, NO_PROC, self.env['PATH'])),
+                     NO_PROC_PYTHON=sys.executable)
+        code, out = self.call('start', START, **macos)
+        self.assertEqual(code, 0, out)
+        self.handed_off(pids)
+        state = self.env['OPENWIZ_TEMPLATE_STATE']
+        with open(os.path.join(state, out['run'] + '.json')) as f:
+            supervisor = json.load(f)['turns'][0]['supervisor']
+        self.until(lambda: not alive(supervisor))
+        output = os.path.join(state, '%s.%d.out' % (out['run'], supervisor))
+        self.assertTrue(os.path.exists(output), 'the output file was removed before stop')
+        p = subprocess.run([DRIVER, 'stop'], input=json.dumps(out), env=macos, capture_output=True, text=True, timeout=60)
+        self.assertEqual((p.returncode, json.loads(p.stdout)), (0, dict(out, stopped=True)))
+        self.assertEqual([l for l in p.stderr.splitlines() if 'could not check' in l], [NO_LSOF], p.stderr)
+        self.assertNotIn(self.mark, p.stderr)
+        self.assertEqual([f for f in os.listdir(state) if f.startswith('%s.%d.' % (out['run'], supervisor))], [])
 
     def test_without_proc_as_on_macos_stop_says_when_lsof_cannot_check_the_output_file(self):
         for broken in (False, True):

@@ -525,6 +525,32 @@ def record_kept(run, kept):
         pass
 
 
+def lsof_failed_record(run, supervisor):
+    return os.path.join(STATE, '%s.%d.nolsof' % (run, supervisor))
+
+
+def record_lsof_failed(run):
+    try:
+        with open(lsof_failed_record(run, os.getpid()), 'w') as f:
+            json.dump({'supervisor_since': since(os.getpid())}, f)
+        return True
+    except OSError:
+        return False
+
+
+def lsof_failed_in(run, supervisors):
+    for pid, started in supervisors:
+        try:
+            with open(lsof_failed_record(run, pid)) as f:
+                if json.load(f)['supervisor_since'] == started:
+                    return True
+        except FileNotFoundError:
+            continue
+        except (OSError, ValueError, KeyError, TypeError):
+            return True
+    return False
+
+
 def recorded_by(run, supervisors):
     recorded = {}
     for pid, started in supervisors:
@@ -539,7 +565,7 @@ def recorded_by(run, supervisors):
 
 
 def look_after_the_turn_on_macos(run, harness, output):
-    kept, looks = {}, 0
+    kept, looks, marked = {}, 0, False
     while True:
         children_left = any_child_running_after_reaping(harness)
         scanned = looks % LOOKS_PER_OUTPUT_CHECK == 0
@@ -547,6 +573,8 @@ def look_after_the_turn_on_macos(run, harness, output):
         if not children_left and not now and not scanned:
             now = members({os.getpid()}, kept, writing_to(output))
         looks += 1
+        if LSOF_COULD_NOT_CHECK and not marked:
+            marked = record_lsof_failed(run)
         if now != kept:
             kept = now
             record_kept(run, kept)
@@ -691,6 +719,8 @@ def running(turn):
 
 def end(turns, run):
     kept = [(t['supervisor'], t['supervisor_since']) for t in turns if t and t['supervisor_since'] is not None]
+    if lsof_failed_in(run, kept):
+        LSOF_COULD_NOT_CHECK.append(run)
     for sig, wait in ((signal.SIGTERM, GRACE), (signal.SIGKILL, 2)):
         sent, deadline = set(), time.monotonic() + wait
         while time.monotonic() < deadline:
@@ -878,6 +908,11 @@ def answer(cmd):
             except OSError:
                 kept = False
             end(state['turns'], run)
+            for name in (lsof_failed_record(run, t['supervisor']) for t in state['turns'] if t):
+                try:
+                    os.remove(name)
+                except OSError:
+                    pass
             if not kept:
                 raise Refused('run %s has ended, but the driver could not save that it is stopped' % run,
                               WRITABLE + ', then stop it again')
