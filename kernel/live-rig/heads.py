@@ -39,7 +39,7 @@ JOURNAL_KEYS = {'login', 'outcome', 'comments', 'receipts', 'fork', 'ref', 'put'
 FORK_READY_TRIES = 6
 PAGE = 100
 RUN_LINE = '<!-- openwiz:heads-run %s -->\n'
-TRIED_MARGIN = datetime.timedelta(hours=1)
+MAX_PAGES = 30
 STAMP = '%Y-%m-%dT%H:%M:%SZ'
 COMMENT = re.compile(r'\*\*[A-Z][A-Z0-9]{1,15} live kit run: [0-5] of 5 pass\*\*, at head `[0-9a-f]{40}`\n\n```\n'
                      r'((?:[^`\n]*\n)*)```\n')
@@ -371,16 +371,27 @@ class Publish:
         os.remove(self.path)
 
     def posted(self, c, body):
-        tried = datetime.datetime.strptime(c['tried'], STAMP) - TRIED_MARGIN
-        found = gh_json(['api', 'repos/%s/issues/%d/comments?since=%s&per_page=%d' % (
-            OPENWIZ, c['pr'], tried.strftime(STAMP), PAGE)])
-        if not isinstance(found, list) or len(found) >= PAGE:
-            raise Refused('cannot tell whether the earlier comment on #%d was posted, so nothing is posted' % c['pr'])
-        mine = [f['html_url'] for f in found if isinstance(f, dict) and f.get('body') == body and
-                isinstance(f.get('user'), dict) and f['user'].get('login') == self.plan['login']]
+        # SECURITY: run identity is this run's marker under the stored login on any page, never a body match or a clock.
+        marker, mine = RUN_LINE.strip() % c['run'], []
+        for page in range(1, MAX_PAGES + 1):
+            found = gh_json(['api', 'repos/%s/issues/%d/comments?per_page=%d&page=%d' % (OPENWIZ, c['pr'], PAGE, page)])
+            if not (isinstance(found, list) and all(isinstance(f, dict) for f in found)):
+                raise Refused('cannot tell whether the earlier comment on #%d was posted, so nothing is posted' % c['pr'])
+            mine += [f for f in found if isinstance(f.get('user'), dict) and f['user'].get('login') == self.plan['login']
+                     and isinstance(f.get('body'), str) and marker in f['body']]
+            if len(found) < PAGE:
+                break
+        else:
+            raise Refused('#%d has more comments than heads.py reads, so nothing is posted' % c['pr'])
         if len(mine) > 1:
             raise Refused('#%d holds this run\'s comment more than once' % c['pr'])
-        return mine[0] if mine else None
+        if mine and mine[0]['body'] != body:
+            raise Refused('an earlier comment of this run on #%d was changed, so nothing is posted' % c['pr'])
+        url = mine[0].get('html_url') if mine else None
+        if mine and not (isinstance(url, str) and re.fullmatch(COMMENT_URL, url) and
+                         url.split('/pull/')[1].split('#')[0] == str(c['pr'])):
+            raise Refused('#%d gave an unreadable comment address, so nothing is posted' % c['pr'])
+        return url
 
     @staticmethod
     def intended(found, head, title, body):
