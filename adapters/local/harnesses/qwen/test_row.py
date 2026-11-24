@@ -1,4 +1,4 @@
-import importlib.machinery, importlib.util, json, os, re, signal, subprocess, sys
+import importlib.machinery, importlib.util, json, os, re, signal, subprocess, sys, time
 
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -63,7 +63,15 @@ def supervisor_shape():
             return ["the fake's StopFailure hook supervisor is not qwen's detached shape: %r" % (shape,)]
         return []
     finally:
-        os.killpg(pid, signal.SIGKILL)
+        hooks = []
+        for _ in range(1000):
+            with open('/proc/%d/task/%d/children' % (pid, pid)) as f:
+                hooks = [int(c) for c in f.read().split()]
+            if hooks:
+                break
+            time.sleep(0.01)
+        for p in hooks + [pid]:
+            os.kill(p, signal.SIGKILL)
         os.waitpid(pid, 0)
 
 

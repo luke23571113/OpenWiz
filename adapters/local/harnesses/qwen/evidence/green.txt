@@ -1,4 +1,4 @@
-$ env -u OPENWIZ_GITHUB_APP_KEY PATH=<31 refusing stubs>:$PATH python3 -I adapters/local/test_harnesses.py   (this row)
+$ env -u OPENWIZ_GITHUB_APP_KEY PATH=<31 refusing stubs>:$PATH python3 -I adapters/local/test_harnesses.py   (this row, after review round 1)
 fail claude: row.json harness: claude is built in, and no row may use a built-in name
 fail credential-env: row.json env: a value looks like a credential; env holds only fixed settings that are not credentials
 fail daemon-survives: daemon: the background process the row declares still runs after stop
