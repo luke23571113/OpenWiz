@@ -15,6 +15,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -66,11 +67,6 @@ class Rig(unittest.TestCase):
                 continue
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             (shutil.copytree if os.path.isdir(src) else shutil.copy2)(src, dst)
-        signed_out = os.path.join(self.checkout, 'kernel', 'live-rig', 'fixtures', 'hosts', 'signed-out.json')
-        with open(signed_out) as f:
-            config = json.load(f)
-        with open(signed_out, 'w') as f:
-            json.dump(dict(config, cost='none'), f)
         for name in ('planted', 'quoting'):
             os.makedirs(os.path.join(self.checkout, 'adapters', name))
             shutil.copy2(os.path.join(FAKES, name + '-driver'), os.path.join(self.checkout, 'adapters', name, 'driver'))
@@ -352,6 +348,20 @@ class Rig(unittest.TestCase):
         self.assertEqual((p.returncode, p.stdout), (0, 'skipped fixture-linked fake-harness: cost\n'), p.stderr)
         self.assertFalse(os.path.exists(marker))
         self.assertEqual(len(self.records()), 1)
+
+    def test_a_failed_hosts_prefix_lookup_refuses_before_loading_configs(self):
+        rig = self.module()
+        prefix = os.path.dirname(self.hosts)
+        lstat = os.lstat
+
+        def refuse_prefix(path):
+            if path == prefix:
+                raise PermissionError(errno.EACCES, 'Permission denied')
+            return lstat(path)
+
+        with patch.object(os, 'lstat', side_effect=refuse_prefix):
+            with self.assertRaisesRegex(rig.Refused, 'cannot look up a step of --hosts'):
+                rig.load_hosts(self.hosts, None)
 
     def test_a_host_whose_cost_is_not_none_is_skipped_as_cost_before_any_status_probe_runs(self):
         marker = os.path.join(self.folder, 'status-ran')

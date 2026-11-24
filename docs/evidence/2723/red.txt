@@ -185,3 +185,25 @@ AssertionError: 'unset kept' != '0 kept'
 Ran 19 tests in 108.664s
 
 FAILED (failures=4)
+
+R1 prefix lookup proof: ran Rig.test_a_failed_hosts_prefix_lookup_refuses_before_loading_configs
+with rig.py from 2a4bd15d84732603069a0674d362b0f5711dd03b, an injected EACCES on
+a prefix, and the same fixtures and refusing stubs.
+AssertionError: Refused not raised
+Ran 1 test
+FAILED (failures=1)
+
+CI reproduction at c91037d85af934d4bfc8072bdcc44f26593338d8.
+$ PATH=<stubs>:$PATH env -u OPENWIZ_GITHUB_APP_KEY python3 -I kernel/live-rig/test_heads.py
+FAIL: test_a_host_not_signed_in_is_skipped_and_starts_no_kit
+The fixture ran a kit with --allow-cost; the assertion expected a sign-in skip.
+Ran 15 tests
+FAILED (failures=1)
+
+$ PATH=<stubs>:$PATH env -u OPENWIZ_GITHUB_APP_KEY python3 -I kernel/live-rig/vps/test_hosts.py
+FAIL: test_each_config_gives_its_exact_skip_line_and_starts_nothing (9 subtests)
+The old expectations wanted a sign-in skip; the paid hosts skipped for cost.
+FAIL: test_status_checks_call_only_read_only_status_commands
+The old assertion expected probe calls; the log was empty.
+Ran 9 tests
+FAILED (failures=10)

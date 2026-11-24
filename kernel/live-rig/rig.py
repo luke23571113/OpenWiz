@@ -182,7 +182,15 @@ def check_host(host):
         return 'cost'
     for command in host['signed_in']:
         if not signed_in(command):
-            return 'not signed in: ' + command[0]
+            program = command[0]
+            if program == 'env':
+                for word in command[1:]:
+                    if re.match(r'[A-Za-z_][A-Za-z0-9_]*=', word):
+                        continue
+                    if _text(word, PROGRAM):
+                        program = word
+                    break
+            return 'not signed in: ' + program
     return None
 
 
@@ -201,7 +209,7 @@ def kit_shapes():
 def signed_in_login():
     try:
         p = subprocess.run(['gh', 'api', 'user', '--jq', '.login'], stdin=subprocess.DEVNULL, capture_output=True,
-                           text=True, timeout=STATUS_SECONDS)
+                           text=True, timeout=STATUS_SECONDS, env=dict(os.environ, GH_TELEMETRY='0'))
     except (OSError, subprocess.TimeoutExpired):
         return None
     login = p.stdout.strip()

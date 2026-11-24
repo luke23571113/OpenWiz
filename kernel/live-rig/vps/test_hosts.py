@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -33,19 +34,7 @@ CONFIGS = {
 }
 GH_PROBE = ['gh', 'auth', 'status', '--hostname', 'github.com', '--active', '--no-refresh']
 BILLS = {'hermes': 'unknown', 'pane': 'unknown', 'factory': 'unknown', 'conductor': 'unknown', 'cursor': 'unknown'}
-SKIPS = {
-    'hermes': {'tool missing': 'not installed: hermes', 'gh missing': 'not installed: gh', 'tool signed out': 'cost',
-               'key name unset': 'cost', 'gh signed out': 'not signed in: gh', 'signed in': 'cost'},
-    'pane': {'tool missing': 'not installed: runpane', 'gh missing': 'not installed: gh',
-             'tool signed out': 'not signed in: runpane', 'key name unset': 'cost', 'gh signed out': 'not signed in: gh',
-             'signed in': 'cost'},
-    'factory': {'tool missing': 'not installed: droid', 'gh missing': 'not installed: gh', 'tool signed out': 'cost',
-                'key name unset': 'not signed in: python3', 'gh signed out': 'not signed in: gh', 'signed in': 'cost'},
-    'conductor': {'tool missing': 'not installed: curl', 'gh missing': 'not installed: gh', 'tool signed out': 'cost',
-                  'key name unset': 'not signed in: python3', 'gh signed out': 'not signed in: gh', 'signed in': 'cost'},
-    'cursor': {'tool missing': 'not installed: curl', 'gh missing': 'not installed: gh', 'tool signed out': 'cost',
-               'key name unset': 'not signed in: python3', 'gh signed out': 'not signed in: gh', 'signed in': 'cost'},
-}
+SITUATIONS = ('tool missing', 'gh missing', 'tool signed out', 'key name unset', 'gh signed out', 'signed in')
 
 
 def load(name, path):
@@ -126,12 +115,17 @@ class Skips(unittest.TestCase):
             os.symlink(real, os.path.join(fakes, name))
         return stubs + os.pathsep + fakes
 
-    def rig(self, host, situation):
-        want = CONFIGS[host]
-        env = {'PATH': self.path_of_stubs_then_fakes(situation, want['tool']), 'HOME': self.folder, 'LANG': 'C.UTF-8'}
+    def fixture_env(self, host, situation):
+        env = {'PATH': self.path_of_stubs_then_fakes(situation, CONFIGS[host]['tool']), 'HOME': self.folder,
+               'LANG': 'C.UTF-8'}
         for key in ('FACTORY_API_KEY', 'CONDUCTOR_API_KEY', 'CURSOR_API_KEY'):
             if situation != 'key name unset':
                 env[key] = SECRET
+        return env
+
+    def rig(self, host, situation):
+        want = CONFIGS[host]
+        env = self.fixture_env(host, situation)
         out = os.path.join(self.folder, 'out-' + host + '-' + situation.replace(' ', '-'))
         p = subprocess.run([sys.executable, '-I', os.path.join(self.checkout, 'kernel', 'live-rig', 'rig.py'),
                             '--hosts', self.hosts, '--settings', self.settings, '--out', out, '--host', want['host']],
@@ -146,8 +140,10 @@ class Skips(unittest.TestCase):
         return p, records
 
     def test_each_config_gives_its_exact_skip_line_and_starts_nothing(self):
-        for host, situations in SKIPS.items():
-            for situation, why in situations.items():
+        for host, config in CONFIGS.items():
+            missing = {'tool missing': 'not installed: ' + config['tool'], 'gh missing': 'not installed: gh'}
+            for situation in SITUATIONS:
+                why = missing.get(situation, 'cost')
                 with self.subTest(host=host, situation=situation):
                     p, records = self.rig(host, situation)
                     self.assertEqual(p.returncode, 0, p.stderr)
@@ -155,12 +151,17 @@ class Skips(unittest.TestCase):
                                                                          why))
                     self.assertEqual([(r['outcome'], r['skipped'], r['kit_exit']) for r in records],
                                      [('skipped', why, None)])
+                    self.assertFalse(os.path.exists(self.log))
                     for text in (p.stdout, p.stderr, json.dumps(records)):
                         self.assertNotIn(SECRET, text)
 
-    def test_status_checks_call_only_read_only_status_commands(self):
-        for host in SKIPS:
-            self.rig(host, 'signed in')
+    def test_cost_override_runs_only_the_read_only_status_commands(self):
+        rig = load('rig', RIG)
+        for host in CONFIGS:
+            with self.subTest(host=host):
+                config = rig.load_host(os.path.join(HOSTS, host + '.json'))
+                with patch.dict(os.environ, self.fixture_env(host, 'signed in'), clear=True):
+                    self.assertIsNone(rig.check_host(dict(config, cost='none')))
         calls = []
         if os.path.isfile(self.log):
             with open(self.log) as f:
