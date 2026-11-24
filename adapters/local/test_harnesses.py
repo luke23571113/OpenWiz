@@ -32,7 +32,7 @@ PLANTED = {
     'example-none': 'pass example-none: ' + GOOD,
     'effort-crowded': 'pass effort-crowded: ' + GOOD,
     'signed-out-json': 'pass signed-out-json: ' + GOOD,
-    'signed-out-env': 'pass signed-out-env: ' + GOOD,
+    'login-env-good': 'pass login-env-good: ' + GOOD,
     'login-env-lowercase': 'fail login-env-lowercase: row.json login_env: it is not one variable name: a capital, then '
                            '1 to 63 capitals, digits or _',
     'login-env-value': 'fail login-env-value: row.json login_env: it looks like a credential; login_env names a '
@@ -41,8 +41,6 @@ PLANTED = {
                             'command the user runs to sign in',
     'login-env-too-long': "fail login-env-too-long: row.json login_env: with it, the not-signed-in next passes D3's "
                           '300 characters; shorten login_command, login_env or program',
-    'login-env-in-env': "fail login-env-in-env: row.json login_env: the row's env sets it; only the user sets it, "
-                        'for the CLI',
     'wake-no-session': 'fail wake-no-session: row.json wake: it has no {session}',
     'larger-argument': 'fail larger-argument: row.json start: a placeholder sits inside a larger argument; '
                        'each fills a whole argument',
@@ -464,25 +462,31 @@ def busy_wake_needs_no_write(env):
 
 
 def longest_login_env_fits(planted):
+    good = local.read_row(os.path.join(planted, 'login-env-good', 'row.json'), 'login-env-good')
+    try:
+        local.check_row(dict(good, login_env='LOGIN_ENV_GOOD_CLI_LOGIN', env={'LOGIN_ENV_GOOD_CLI_LOGIN': 'local'}),
+                        'login-env-good')
+        in_env = False
+    except local.Broken as e:
+        in_env = e.args == ('login_env', "the row's env sets it; only the user sets it, for the CLI")
     with tempfile.TemporaryDirectory(prefix='variant-') as rows:
-        folder = os.path.join(rows, 'signed-out-env')
-        shutil.copytree(os.path.join(planted, 'signed-out-env'), folder)
-        with open(os.path.join(folder, 'row.json')) as f:
-            row = json.load(f)
+        folder = os.path.join(rows, 'login-env-good')
+        shutil.copytree(os.path.join(planted, 'login-env-good'), folder)
+        row = dict(good)
         row.update(program='p' * 60, login_env='K' * 64, login_command='c' * 122)
         with open(os.path.join(folder, 'row.json'), 'w') as f:
             json.dump(row, f)
-        with ThrowawayMachine(rows, 'signed-out-env', row['program'], os.path.join(folder, 'fake'),
+        with ThrowawayMachine(rows, 'login-env-good', row['program'], os.path.join(folder, 'fake'),
                               'workspace-write') as env:
             code, out = env.start(FAKE_CLI_SIGNED_OUT='1')
         row['login_command'] += 'c'
         with open(os.path.join(folder, 'row.json'), 'w') as f:
             json.dump(row, f)
-        with ThrowawayMachine(rows, 'signed-out-env', mode='workspace-write') as env:
+        with ThrowawayMachine(rows, 'login-env-good', mode='workspace-write') as env:
             longer = env.start_refused_starting_nothing(lambda out: '(login_env:' in out['error'])
     return code == 1 and kit.invalid(out, ERROR) is None and \
         out['next'].startswith('sign in with %s, or set %s for %s yourself, then start again' % (
-            'c' * 122, 'K' * 64, 'p' * 60)) and longer
+            'c' * 122, 'K' * 64, 'p' * 60)) and longer and in_env
 
 
 def check_driver(rows):
@@ -495,8 +499,8 @@ def check_driver(rows):
               "ids are lower-case words of up to 20 characters", effort_checked_first_with_its_grammar(rows)),
              ("a row whose fixed arguments in start, wake, modes or effort look like a credential, joined or as a "
               "flag and its value, is refused naming only its field", credential_arguments_refused(rows)),
-             ("the longest valid login_env row's not-signed-in next fits D3's 300 characters, and one character "
-              "more refuses the row", longest_login_env_fits(rows))]
+             ("the longest valid login_env row's not-signed-in next fits D3's 300 characters, one character more "
+              "refuses the row, and so does a row whose env sets its login_env", longest_login_env_fits(rows))]
     if os.path.isdir('/proc/self'):
         found.append(("a row's env and effort setting reach only the harness, never the turn's supervisor",
                       supervisor_keeps_the_drivers_environment(rows)))

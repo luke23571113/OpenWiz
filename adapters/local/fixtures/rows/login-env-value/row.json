@@ -1,6 +1,6 @@
 {
   "harness": "login-env-value",
-  "program": "signed-out-env-cli",
+  "program": "login-env-good-cli",
   "start": [
     "--print",
     "--session-id",
@@ -30,11 +30,11 @@
   },
   "env": {},
   "effort": "none: example-none-cli has no effort flag or setting (its synthetic --help, in this folder's fake, lists none)",
-  "login": "signed-out-env-cli's own login, saved by `signed-out-env-cli auth login` under ~/.signed-out-env",
+  "login": "login-env-good-cli's own login, saved by `login-env-good-cli auth login` under ~/.login-env-good",
   "daemon": "none",
   "signed_out": [
     "cannot find authorization"
   ],
-  "login_command": "signed-out-env-cli auth login",
+  "login_command": "login-env-good-cli auth login",
   "login_env": "GITHUB_PAT_SYNTHETIC0000"
 }
