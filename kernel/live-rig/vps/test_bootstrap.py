@@ -18,8 +18,9 @@ sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 BOOTSTRAP = os.path.join(HERE, 'bootstrap.sh')
 TOOLS = os.path.join(HERE, 'tools.json')
-AGENT_CLIS = ('claude codex cursor-agent agent pi opencode copilot goose gemini kimi qwen cline kilo crush vibe '
-              'auggie kiro-cli junie amp agy oz sculpt hermes acpx droid').split()
+AGENT_CLIS = ('claude codex cursor-agent agent cursor pi opencode copilot goose gemini kimi qwen cline kilo kilocode '
+              'crush vibe auggie kiro-cli junie amp agy oz sculpt hermes acpx droid boat room-cli runpane pane '
+              'openhands devin warp grok codespaces conductor').split()
 PLATFORMS = ['linux-x86_64', 'linux-aarch64', 'darwin-x86_64', 'darwin-arm64']
 PLANTED = {'GH_TOKEN': 'synthetic-planted-value', 'ANTHROPIC_API_KEY': 'synthetic-planted-value',
            'HERMES_INSTALL_CHANNEL': 'main', 'HERMES_INSTALL_DIR': '/synthetic/elsewhere'}
@@ -403,6 +404,59 @@ class BootstrapTest(unittest.TestCase):
             self.assertRegex(read(out), '(?m)^installed runpane 2.4.246$')
         self.assertIn('bootstrap: waiting for another bootstrap on %s' % self.fx.prefix, read(b_err))
         self.assert_runpane_at(pin_b)
+
+    def hand_replace(self, name):
+        launcher = os.path.join(self.fx.prefix, 'bin', name)
+        script(launcher, 'echo "%s ran by hand $*" >> "%s"\necho "fake 2.4.246 (synthetic)"\n' % (name, self.fx.calls))
+        return launcher, sha256(launcher)
+
+    def assert_kept_by_hand(self, r, name, launcher, before):
+        self.assertNotIn('ran by hand', read(self.fx.calls))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('left out %s: your existing %s is not the copy this bootstrap installed there (or its record is '
+                      'too old to tell), so it is kept and never run; move it aside to install the pinned 2.4.246'
+                      % (name, launcher), self.summary(r.stdout)[1])
+        self.assertEqual(sha256(launcher), before)
+
+    def test_a_hand_replaced_launcher_is_kept_on_a_repin(self):
+        self.assertEqual(self.fx.run().returncode, 0)
+        launcher, before = self.hand_replace('runpane')
+        tools, _ = self.fx.repin('valid')
+        r = self.fx.run(tools=tools)
+        self.assert_kept_by_hand(r, 'runpane', launcher, before)
+
+    def test_a_stamp_that_names_no_launcher_keeps_it(self):
+        self.assertEqual(self.fx.run().returncode, 0)
+        stamp = os.path.join(self.fx.prefix, 'lib', 'openwiz-vps', 'runpane.json')
+        with open(stamp) as f:
+            legacy = {k: v for k, v in json.load(f).items() if k in ('version', 'sha256')}
+        with open(stamp, 'w') as f:
+            json.dump(legacy, f)
+        launcher, before = self.hand_replace('runpane')
+        r = self.fx.run()
+        self.assert_kept_by_hand(r, 'runpane', launcher, before)
+
+    def test_a_same_pin_rerun_hashes_the_active_wheel(self):
+        self.assertEqual(self.fx.run().returncode, 0)
+        with open(os.path.join(self.fx.prefix, 'lib', 'openwiz-vps', 'runpane.json')) as f:
+            pin = json.load(f)['sha256']
+        wheel = self.plant_corrupt_cache(pin)
+        saved = os.path.join(self.root, 'saved-downloads')
+        shutil.copytree(self.fx.dl, saved)
+        self.fx.remove_downloads()
+        offline = self.fx.run()
+        self.assertNotIn('runpane:corrupt', read(self.fx.calls))
+        self.assertEqual(offline.returncode, 1, offline.stdout + offline.stderr)
+        self.assertTrue(any(x.startswith('left out runpane: download failed: ') for x in self.summary(offline.stdout)[1]),
+                        offline.stdout)
+        for name in os.listdir(saved):
+            shutil.copy(os.path.join(saved, name), self.fx.dl)
+        r = self.fx.run()
+        self.assertNotIn('runpane:corrupt', read(self.fx.calls))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertRegex(r.stdout, '(?m)^installed runpane 2.4.246$')
+        self.assertEqual(sha256(wheel), pin)
+        self.assert_runpane_at(pin)
 
     def test_home_only_installer_is_refused_under_another_prefix(self):
         prefix = os.path.join(self.root, 'elsewhere')
