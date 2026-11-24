@@ -619,7 +619,7 @@ class Kit:
                 kind, v = self.sampled('start', dict(request, effort=a.effort), None, None)
                 effort = '%s reached a process the run started' % a.effort
             if kind == 'bad':
-                return 'fail', 'effort: ' + v
+                return 'fail', 'effort: ' + v if hosts else v
             if kind == 'ok' and cant:
                 self.call('stop', {'run': v['run']})
                 return 'fail', "effort: its README says %s can't set effort, but a start with it was taken" % a.harness
