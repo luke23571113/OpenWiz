@@ -1665,6 +1665,52 @@ class SnapshotByName(Helper):
                     self.assertEqual((escaped, active), (None, []), "no error escapes and no active name is left")
                     self.assertEqual(self.deletes(refusing), [("DELETE", sha(f"Bearer {TOKEN}"))])
 
+    def test_a_pre_upgrade_helper_still_retires_an_upgraded_run_snapshot(self):
+        # comment-ok: catches: an upgraded run naming its snapshot outside pre-upgrade SNAPSHOT
+        # (run-[0-9a-f]{32}.json), or revoke trusting a pre-upgrade run channel alone, so a still-running
+        # pre-upgrade helper leaves an upgraded run's snapshot active after GitHub refuses the revoke.
+        with self.subTest("pre-upgrade retire matches upgraded snapshot"):
+            cache = self.minted()
+            helper, private, cache_file = self.loaded()
+            name = helper.reserve(private, cache_file)
+            helper.token_for(private, self.WANTED, self.env, snapshot=name)
+            snapshot = self.private / name
+            pre_upgrade = helper.re.compile(r"run-[0-9a-f]{32}\.json")
+            with helper.locked(private):
+                helper.drop(private, cache_file, cache_file, retire=True)
+                for entry in helper.listed(private):
+                    held = private.read(entry) if pre_upgrade.fullmatch(entry) else None
+                    if isinstance(held, dict) and held.get("request") == cache_file:
+                        helper.drop(private, entry, cache_file, retire=True)
+            reason, served = helper.snapshot_token(str(snapshot), dict(self.env, **{helper.RUN_MARK: str(snapshot)}),
+                                                   check=lambda path, env: None)
+            self.assertEqual((snapshot.exists(), reason, served and sha(served)), (False, "no current token", None),
+                             "a pre-upgrade retirement removes the upgraded snapshot and serves nothing")
+            api = self.api()
+            later = self.helper("revoke", *REQ, OPENWIZ_GITHUB_API_BASE=api.base())
+            self.assertEqual((later.returncode, later.stderr), (0, ""), "the kept copy is still revocable")
+            self.assertEqual(self.deletes(api), [("DELETE", sha(f"Bearer {TOKEN}"))])
+            self.assert_never_exposed(later)
+        with self.subTest("revoke inside a pre-upgrade run retires an unreadable upgraded snapshot"):
+            shutil.rmtree(self.private, True)
+            self.minted()
+            helper, private, cache_file = self.loaded()
+            name = helper.reserve(private, cache_file)
+            helper.token_for(private, self.WANTED, self.env, snapshot=name)
+            snapshot = self.private / name
+            snapshot.chmod(0)
+            refusing = self.api(status=401)
+            env = dict(self.env, OPENWIZ_GITHUB_API_BASE=refusing.base())
+            with mock.patch.object(helper, "ask_run", return_value="GitHub refused"), \
+                    mock.patch.object(helper.sys, "stderr"):
+                self.assertEqual(helper.revoke(list(REQ), env), 1)
+            if snapshot.exists():
+                snapshot.chmod(0o600)
+            reason, served = helper.snapshot_token(str(snapshot), dict(env, **{helper.RUN_MARK: str(snapshot)}),
+                                                   check=lambda path, env: None)
+            self.assertEqual((snapshot.exists(), reason, served and sha(served)), (False, "no current token", None),
+                             "the unreadable upgraded snapshot is retired even when ask_run handled revoke")
+
 
 def live_token_in(path):
     return json.loads(path.read_text()).get("token") if path.exists() else None
