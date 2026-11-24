@@ -12,7 +12,7 @@ WRITABLE = 'make OPENWIZ_LOCAL_STATE (or ~/.local/state/openwiz-local) a folder 
 VERSION = {'driver': 'local', 'records': ['openwiz:records v1'], 'can': ['start', 'wake', 'stop', 'many-at-once']}
 START = {'repository': r'[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}', 'ticket': None,
          'skill': r'(?=.{1,60}$)[a-z0-9]+(-[a-z0-9]+)*', 'harness': r'[a-z0-9][a-z0-9._-]{0,59}',
-         'model': r'[A-Za-z0-9][A-Za-z0-9 ._:@+-]{0,59}'}
+         'model': r'(?=.{1,100}$)[A-Za-z0-9][A-Za-z0-9 ._:@+-]*(/[A-Za-z0-9][A-Za-z0-9 ._:@+-]*)*'}
 RUN = {'run': r'run-[0-9a-f]{12}'}
 HARNESSES = {'claude': lambda model, mode, prompt: ['-p', prompt, '--model', model, '--permission-mode', mode],
              'codex': lambda model, mode, prompt: ['exec', '--model', model, '--sandbox', mode, prompt]}
