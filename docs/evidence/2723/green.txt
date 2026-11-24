@@ -21,3 +21,13 @@ test_the_record_keeps_only_the_five_check_lines_each_free_of_paths_the_repositor
 Ran 17 tests in 107.355s
 
 OK
+
+Fixture checkpoint at 59e35cef6c542cb1a1047cb9052eb86b5eef9c3b.
+PATH=<stubs>:$PATH env -u OPENWIZ_GITHUB_APP_KEY python3 -I <suite>
+The 37 agent CLI stubs, plus refusing curl and gh fallbacks, went first on PATH.
+Fixture fakes supplied the expected CLI responses.
+kernel/live-rig/test_rig.py: 20 tests, OK
+kernel/live-rig/test_heads.py: 15 tests, OK
+kernel/live-rig/test_receipt.py: 42 tests, OK (skipped=2)
+kernel/live-rig/vps/test_bootstrap.py: 11 tests, OK
+kernel/live-rig/vps/test_hosts.py: 9 tests, OK
