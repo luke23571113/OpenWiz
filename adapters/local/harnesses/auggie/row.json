@@ -2,6 +2,7 @@
   "harness": "auggie",
   "program": "auggie",
   "start": [
+    "--no-cloud",
     "-p",
     "--mode",
     "json",
@@ -13,6 +14,7 @@
   "wake": [
     "--session",
     "{session}",
+    "--no-cloud",
     "-p",
     "--mode",
     "json",

@@ -6,10 +6,11 @@ Effort: none
 
 The Augment Auggie CLI as a harness row on the local driver ([the harness-row contract](../../harness-row.md)). Check your sign-in with `auggie auth status`. The row never reads, sets or stores a key, and never passes `--augment-session-json`.
 
-- **Start:** `auggie -p --mode json --model <model> "<prompt>"`, in the run's worktree.
-- **Wake (same run):** `auggie --session <id> -p --mode json --model <model> "<message>"`, in the same worktree.
+- **Start:** `auggie --no-cloud -p --mode json --model <model> "<prompt>"`, in the run's worktree.
+- **Wake (same run):** `auggie --session <id> --no-cloud -p --mode json --model <model> "<message>"`, in the same worktree.
 - **Stop:** the driver ends the run's process tree.
 - **Permission mode:** `full-access` only (below).
+- **Cloud mode off:** both turns pass `--no-cloud`. Without it, 1.2.2 turns on cloud mode from a saved preference even when the command line has no `--cloud`, and streams the run to Augment's web UI, where it is visible and steerable. `--no-cloud` overrides `--cloud` and that saved state (`auggie --help` 1.2.2). The fake refuses a turn without it.
 
 ## The fact: does the JSON output name the session a wake needs?
 
