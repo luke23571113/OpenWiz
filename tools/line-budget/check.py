@@ -112,10 +112,11 @@ def report(base, merge, ceiling, seconds):
         print(f'  {name:<15} {b:>8} {m:>8} {m - b:>+7}')
     b, m = (sum(c[n] for n in ORDER) - c['locked'] for c in (base, merge))
     print(f'line-budget: total, lockfiles excluded: {m} of {ceiling}; base {b}, change {m - b:+}')
-    return m
+    return b, m
 
 
-def judge(base, merge, ceiling, total, ceiling_changed, description):
+def judge(base, merge, ceiling, totals, ceiling_changed, description):
+    base_total, total = totals
     errors = []
     excepted, bad = pointer_lines(description, EXCEPTION)
     errors += [f'malformed exception line: {s!r}; the form is "{EXCEPTION} <pointer>"' for s in bad]
@@ -123,7 +124,10 @@ def judge(base, merge, ceiling, total, ceiling_changed, description):
     errors += [f'malformed ceiling line: {s!r}; the form is "{CEILING} <pointer>"' for s in bad]
     if ceiling_changed and not recorded:
         errors.append(f'{CEILING_FILE} changed; the description needs a "{CEILING} <pointer>" line')
-    if total > ceiling and not excepted:
+    if base_total > ceiling:
+        print(f'line-budget: base is {base_total - ceiling} lines over the ceiling. '
+              'The budget is report-only while the base is over.')
+    elif total > ceiling and not excepted:
         grew = ', '.join(f'{n} {merge[n] - base[n]:+}' for n in ORDER
                          if n != 'lockfiles' and merge[n] > base[n]) or 'none'
         errors.append(f'{total} lines is {total - ceiling} over the ceiling of {ceiling}; grew: {grew}.'
@@ -155,13 +159,13 @@ def main(argv):
             raise Unreadable('give --base, --merge and one of --description-file or --pr')
         (base, base_raw), (merge, raw) = count(a.repo_dir, a.base), count(a.repo_dir, a.merge)
         ceiling = read_ceiling(raw)
-        total = report(base, merge, ceiling, time.monotonic() - start)
+        totals = report(base, merge, ceiling, time.monotonic() - start)
         if a.description_file is not None:
             with open(a.description_file, encoding='utf-8') as f:
                 description = f.read()
         else:
             description = read_description(a.repo or '', a.pr)
-        return judge(base, merge, ceiling, total, base_raw != raw, description)
+        return judge(base, merge, ceiling, totals, base_raw != raw, description)
     except (Unreadable, OSError, UnicodeDecodeError) as e:
         print(f'line-budget: {e}', file=sys.stderr)
         return 2
