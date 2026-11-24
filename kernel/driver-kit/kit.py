@@ -184,8 +184,63 @@ class Request(tuple):
     phase = None
 
 
+PROBE_REPO = 'example/site'
+START_FIELDS = ('repository', 'ticket', 'skill', 'harness', 'model')
+ECHO_PLACEHOLDER = re.compile(
+    r'\{\{(?:request\.([A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*)*)|start\.([a-z]+))\}\}')
+
+
+def _validate_echo(value):
+    has_req, has_start = False, False
+    if isinstance(value, str):
+        if '{{' in value or '}}' in value:
+            m = ECHO_PLACEHOLDER.fullmatch(value)
+            if not m or (m.group(2) is not None and m.group(2) not in START_FIELDS):
+                raise ValueError('malformed echo placeholder (expected {{request.<field>}} or {{start.<field>}})')
+            return m.group(1) is not None, m.group(2) is not None
+        return False, False
+    if isinstance(value, dict):
+        for k, v in value.items():
+            if '{{' in k or '}}' in k:
+                raise ValueError(
+                    'malformed echo placeholder (expected {{request.<field>}} or {{start.<field>}} as a string value)')
+            r, s = _validate_echo(v)
+            has_req, has_start = has_req or r, has_start or s
+        return has_req, has_start
+    if isinstance(value, list):
+        for item in value:
+            r, s = _validate_echo(item)
+            has_req, has_start = has_req or r, has_start or s
+        return has_req, has_start
+    return False, False
+
+
+def _render_echo(value, req, start):
+    if isinstance(value, str):
+        m = ECHO_PLACEHOLDER.fullmatch(value)
+        if not m:
+            return value
+        if m.group(2) is not None:
+            if not isinstance(start, dict) or m.group(2) not in start:
+                raise KeyError(m.group(2))
+            return start[m.group(2)]
+        cur = req
+        for part in m.group(1).split('.'):
+            if not isinstance(cur, dict) or part not in cur:
+                raise KeyError(part)
+            cur = cur[part]
+        return cur
+    if isinstance(value, dict):
+        return {k: _render_echo(v, req, start) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_render_echo(v, req, start) for v in value]
+    return value
+
+
 class FakeHost:
-    def __init__(self, status=200, headers=(), body=b'{}', answers=(), test_key=None, trust=None, phase=None):
+    def __init__(self, status=200, headers=(), body=b'{}', answers=(), test_key=None, trust=None, phase=None,
+                 start=None):
+        templated = [(a,) + _validate_echo(a['body']) for a in answers]
         self.requests, self.fetches = [], []
         self.lock = threading.Lock()
         host = self
@@ -212,9 +267,24 @@ class FakeHost:
                     record.phase = phase() if phase else None
                     with host.lock:
                         host.requests.append(record)
-                    for a in answers:
+                    for a, uses_req, uses_start in templated:
                         if a['method'] == self.command and re.fullmatch(a['path'], self.path.partition('?')[0]):
-                            code, data = a['status'], json.dumps(a['body']).encode()
+                            if uses_req or uses_start:
+                                try:
+                                    req_body = None
+                                    if uses_req:
+                                        req_body = parse(sent.decode('utf-8'))
+                                        if not isinstance(req_body, dict):
+                                            raise ValueError('not an object')
+                                    rendered = _render_echo(a['body'], req_body, start)
+                                except (UnicodeDecodeError, ValueError):
+                                    code, data = 400, json.dumps({'error': 'request body is not a JSON object'}).encode()
+                                except KeyError:
+                                    code, data = 400, json.dumps({'error': 'echo field missing from request'}).encode()
+                                else:
+                                    code, data = a['status'], json.dumps(rendered).encode()
+                            else:
+                                code, data = a['status'], json.dumps(a['body']).encode()
                             break
                 self.send_response(code)
                 for k, v in headers:
@@ -885,6 +955,7 @@ class Kit:
                         type(a['status']) is int and 100 <= a['status'] <= 599):
                     raise ValueError('an answer is not a method, a path pattern and a status')
                 re.compile(a['path'])
+                _validate_echo(a['body'])
             return answers
         except FileNotFoundError:
             return []
@@ -1004,17 +1075,18 @@ class Kit:
         self.file_check(entry)
         canary = (name, 'kit-canary-' + secrets.token_hex(16))
         self.active.add(canary[1])
+        a = self.args
+        probe = {'repository': PROBE_REPO, 'ticket': a.ticket, 'skill': a.skill,
+                 'harness': a.harness, 'model': a.model}
         phase, server = {'now': None}, []
         host = FakeHost(answers=self.lifecycle(), test_key=canary[1], phase=lambda: phase['now'],
-                        trust=lambda port: self.trusted_helper(port, server[0]))
+                        trust=lambda port: self.trusted_helper(port, server[0]), start=probe)
         server.append(host.server.server_address[1])
         env = {k: v for k, v in self.env.items() if k != entry['variable']}
         env[OVERRIDE] = host.origin
-        a = self.args
         try:
             phase['now'] = 'start'
-            kind, v = self.sampled('start', {'repository': a.repo, 'ticket': a.ticket, 'skill': a.skill,
-                                             'harness': a.harness, 'model': a.model}, env, canary)
+            kind, v = self.sampled('start', probe, env, canary)
             run = v['run'] if kind == 'ok' else 'kit-key-run'
             for op in ('wake', 'stop'):
                 phase['now'] = op
