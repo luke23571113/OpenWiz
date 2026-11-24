@@ -875,7 +875,9 @@ class Boat(unittest.TestCase):
                             '--tracker', self.tracker, '--wait', '8'],
                            env=dict(self.env, FAKE_BOAT_PUSH='denied'), capture_output=True, text=True, timeout=300)
         self.assertEqual((p.returncode, p.stdout.splitlines()[1]), (1, "fail start: the sandbox cannot push to "
-                         "example/site: the GitHub account connected in boat needs write access to it"), p.stderr)
+                         "example/site: the GitHub account connected in boat needs write access to it; next: give the "
+                         "GitHub account connected in boat's dashboard write access to example/site, then start again"),
+                         p.stderr)
 
     def test_start_installs_the_pinned_skills_or_refuses(self):
         # catches: a sandbox without the pinned WizSkills skills, so its agent can't follow the skill or post
