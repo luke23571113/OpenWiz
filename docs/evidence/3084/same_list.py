@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""The builder before and after #3084 list the same runtime/adapters and runtime/kernel files for one source
-(usage: same_list.py BEFORE_COMMIT SOURCE_COMMIT). Reads git only; prints both lists' digests."""
 import hashlib
 from pathlib import Path
 import re

@@ -146,7 +146,6 @@ class Package(unittest.TestCase):
                    'adapters/boat/schema.json': (ROOT / 'adapters/template/schema.json').read_bytes(),
                    'adapters/local/driver': b'#!/usr/bin/env python3\nprint("synthetic local driver")\n',
                    'adapters/local/schema.json': b'{"synthetic": "local schema"}\n',
-                   # #3084: a driver no list names ships because its own folder says so.
                    'adapters/made-up/driver': b'#!/usr/bin/env python3\nprint("synthetic new driver")\n',
                    'adapters/made-up/schema.json': b'{"synthetic": "new schema"}\n',
                    'adapters/made-up/fixtures/deep/host.json': b'{"synthetic": "extra file"}\n',
@@ -160,7 +159,7 @@ class Package(unittest.TestCase):
         releases = {'adapters/boat/release.json': [], 'adapters/local/release.json': [],
                     'adapters/devin/release.json': ['README.md', 'fixtures/kit-host.json'],
                     'adapters/made-up/release.json': ['fixtures/deep/host.json'],
-                    'adapters/boat/fixtures/release.json': []}  # not a driver folder's own
+                    'adapters/boat/fixtures/release.json': []}
         with tempfile.TemporaryDirectory(prefix='openwiz-driver-products-') as temporary:
             root = Path(temporary)
             binaries = root / 'bin'
@@ -234,8 +233,6 @@ class Package(unittest.TestCase):
                 'reached its host only from the key helper, in its header'], keyed.stderr)
 
     def test_every_driver_shipped_before_its_folder_decided_still_ships_the_same_files(self):
-        # #3084: catches a driver folder that lost its release.json, or an extra file it shipped.
-        # A new driver or a new extra file needs no edit here. docs/evidence/3084 compares the whole list.
         hosts = ('boat', 'cloudroom', 'devin', 'factory', 'hermes', 'local', 'openclaw')
         before = {f'runtime/adapters/{host}/{name}' for host in hosts for name in ('driver', 'schema.json')}
         before |= {'runtime/adapters/devin/README.md', 'runtime/adapters/devin/fixtures/kit-host.json'}
@@ -250,7 +247,6 @@ class Package(unittest.TestCase):
             self.assertEqual([p for p in assets if p.startswith('runtime/adapters/template/')], [])
 
     def test_a_malformed_release_json_stops_the_build_and_is_named(self):
-        # #3084: catches a build that ships, skips or half-reads a driver whose release.json is wrong.
         listed = lambda *names: json.dumps({'extra_files': names}).encode()
         bad = {'not JSON': b'{', 'not UTF-8': b'{"extra_files": ["\xff"]}', 'an array': b'[]', 'empty': b'',
                'no key': b'{}', 'another key': b'{"extra_files": [], "ship": true}',
@@ -277,7 +273,6 @@ class Package(unittest.TestCase):
                 (folder / 'release.json').write_bytes(data)
                 source = commit(root, 'skills', 'tools', 'adapters')
                 (folder / 'untracked.md').write_bytes(b'synthetic\n')
-                # The build reads the source commit's file, whatever the checkout now holds.
                 (folder / 'release.json').write_bytes(good)
                 result, output = collected(root, source)
                 if case == 'good':
@@ -289,7 +284,6 @@ class Package(unittest.TestCase):
                 self.assertFalse(output.exists())
 
     def test_a_release_json_that_can_not_ship_a_driver_is_named(self):
-        # #3084: catches a build that ships half a driver, or one the installer would never make runnable.
         for folder, names, kind in (('made-up', ('schema.json',), 'file'), ('made-up', ('driver',), 'file'),
                                     ('Made_Up', ('driver', 'schema.json'), 'file'),
                                     ('made-up', ('driver', 'schema.json'), 'link')):
@@ -515,7 +509,6 @@ def commit(root, *paths):
 
 
 def collected(root, source):
-    """The collector's result and output folder for one target of the synthetic source."""
     (root / 'bin').mkdir()
     (root / 'job').mkdir()
     receipts = build(root / 'bin', source, TARGETS[0], root / 'job')

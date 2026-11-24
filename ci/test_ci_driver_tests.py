@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Proofs of driver-tests.py on synthetic driver folders."""
 from pathlib import Path
 import subprocess
 import sys
@@ -25,7 +24,6 @@ class DriverTests(unittest.TestCase):
                                   capture_output=True, text=True, timeout=60)
 
     def test_every_folders_tests_run_once_in_name_order(self):
-        # catches: a skipped folder, a second test file never run, a helper run as a test.
         result = self.run_on({'adapters/zed/driver': '', 'adapters/zed/test_driver.py': PASS,
                               'adapters/abc/driver': '', 'adapters/abc/test_driver.py': PASS,
                               'adapters/abc/test_rows.py': PASS, 'adapters/abc/helper.py': FAIL,
@@ -38,7 +36,6 @@ class DriverTests(unittest.TestCase):
             'driver-tests: ok (3 test files)'])
 
     def test_a_failing_test_fails_the_run_and_the_rest_still_run(self):
-        # catches: only the last file's status counting, or a signal read as success.
         for text in (FAIL, KILLED):
             for first, last in ((text, PASS), (PASS, text)):
                 result = self.run_on({'adapters/abc/driver': '', 'adapters/abc/test_driver.py': first,
@@ -49,7 +46,6 @@ class DriverTests(unittest.TestCase):
                 self.assertEqual(result.stderr, f'driver-tests: failed: adapters/{name}/test_driver.py\n')
 
     def test_a_driver_folder_without_test_driver_fails_and_is_named(self):
-        # catches: an untested driver passing, even beside another test or a folder of that name.
         for extra in ({}, {'adapters/bare/test_other.py': PASS}, {'adapters/bare/test_driver.py/x': ''}):
             result = self.run_on({'adapters/bare/driver': '', 'adapters/abc/driver': '',
                                   'adapters/abc/test_driver.py': PASS, **extra})
@@ -58,7 +54,6 @@ class DriverTests(unittest.TestCase):
             self.assertEqual(result.stdout.count('ran test_driver.py 1\n'), 1)
 
     def test_nothing_to_run_fails(self):
-        # catches: a wrong root or a renamed folder reading as success.
         for files in ({}, {'adapters/note/README.md': ''}):
             result = self.run_on(files)
             self.assertEqual((result.returncode, result.stderr), (1, 'driver-tests: failed: no driver test found\n'))
