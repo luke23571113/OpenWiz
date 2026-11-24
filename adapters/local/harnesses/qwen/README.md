@@ -73,9 +73,16 @@ An explicit allow rule (`permissions.allow` in the user's or the project's `sett
 
 ## What the fake allows
 
-`fake` accepts only the start and wake lines above, with one of the five modes and a UUID session, and exits 2 on anything else: `-p`, `--yolo` with `--approval-mode`, `--session-id` with `--resume`, a non-UUID id, text output, an effort flag, `serve` and `auth`. `test_row.py` proves each of those refusals and that each documented line is taken.
+`fake` takes only the row's start and wake lines above, with one of the five modes and a UUID session, and exits 2 on anything else. `test_row.py` labels its refusals by kind:
+
+- **Not qwen's grammar:** an unknown mode, `--yolo` with `--approval-mode`, `--session-id` with `--resume`, a non-UUID id and an effort flag. `qwen` 0.28.4 refuses or lacks each.
+- **Valid `qwen`, outside this row:** `-p` (deprecated but documented), no prompt, two prompts, text output, no `--model`, `serve` and `auth`. `qwen` takes these; the row never sends them, so the fake refuses them to catch a row that drifts.
+- **A fixture rule:** a `--resume` prompt must start `You were woken` and a `--session-id` prompt must not. That is how the fake tells the driver's wake from its start, not `qwen`'s grammar.
+
+It also checks that each documented line is taken, that each sign-in refusal above matches `signed_out`, that a wake with chat recording off is `qwen`'s missing-session exit and not a sign-in failure, the hook supervisor's detached shape, the modes and the README's headless table.
 
 ## Evidence
 
 - `evidence/red.txt`: the runner on an empty row (`{}`), failing.
 - `evidence/green.txt`: the runner on this row, passing.
+- `evidence/round-1/`: review round 1, each finding's red run, committed before its fix, and its green run: `r1-*` (the sign-in refusals), `r2-*` (the hook supervisor), `r3-*` (chat recording) and `r4-*` (headless modes).

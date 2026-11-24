@@ -4,10 +4,11 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, os.environ['FAKE_CLI_LIB'])
 import fake_cli
 
-HELP = '''The fake qwen (Qwen Code 0.28.4): it allows only these command lines, from qwen's own --help:
+HELP = '''The fake qwen (Qwen Code 0.28.4): it takes only this row's two command lines, a subset of qwen's grammar:
   qwen --output-format stream-json --session-id <uuid> --model <m> --approval-mode <mode> <prompt>
   qwen --output-format stream-json --resume <uuid> --model <m> --approval-mode <mode> <prompt>
-where <mode> is plan, default, auto-edit, auto or yolo, and <prompt> is the one positional prompt.
+where <mode> is plan, default, auto-edit, auto or yolo, and <prompt> is the one positional prompt; as a fixture rule,
+a --resume prompt starts "You were woken" and a --session-id prompt does not.
 It lists no effort flag or variable; signed out, it prints qwen's stream-json error result and exits 1.'''
 MODES = ('plan', 'default', 'auto-edit', 'auto', 'yolo')
 UUID = r'[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}'

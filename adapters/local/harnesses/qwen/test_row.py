@@ -11,22 +11,27 @@ START = ['--output-format', 'stream-json', '--session-id', SID, '--model', 'synt
          FIRST]
 WAKE = ['--output-format', 'stream-json', '--resume', SID, '--model', 'synthetic-1', '--approval-mode', 'yolo', WOKEN]
 GOOD = [START, WAKE] + [START[:7] + [m, FIRST] for m in ('plan', 'default', 'auto-edit', 'auto')]
-BAD = {
-    'the deprecated -p prompt flag': START[:8] + ['-p', FIRST],
-    'no prompt': START[:8],
-    'two prompts': START + ['again'],
+NOT_QWEN = {
     'an approval mode qwen does not have': START[:7] + ['never', FIRST],
     '--yolo with --approval-mode': START[:8] + ['--yolo', FIRST],
     '--session-id with --resume': WAKE[:4] + ['--session-id', SID] + WAKE[4:],
     'a session id that is not a UUID': START[:3] + ['fake-0123456789ab'] + START[4:],
-    'text output': ['--output-format', 'text'] + START[2:],
     'an effort flag qwen does not have': START[:8] + ['--reasoning-effort', 'high', FIRST],
-    'the start prompt on a resume': WAKE[:8] + [FIRST],
-    'a wake prompt on a new session': START[:8] + [WOKEN],
+}
+OUTSIDE_THE_ROW = {
+    'the deprecated -p prompt flag': START[:8] + ['-p', FIRST],
+    'no prompt': START[:8],
+    'two prompts': START + ['again'],
+    'text output': ['--output-format', 'text'] + START[2:],
+    'no --model': START[:4] + START[6:],
     'the serve subcommand': ['serve'],
     'the removed auth subcommand': ['auth', 'qwen-oauth'],
-    'no --model': START[:4] + START[6:],
 }
+FIXTURE_RULE = {
+    'the start prompt on a resume': WAKE[:8] + [FIRST],
+    'a wake prompt on a new session': START[:8] + [WOKEN],
+}
+BAD = dict(NOT_QWEN, **OUTSIDE_THE_ROW, **FIXTURE_RULE)
 HEADLESS_DENIED = {
     'plan': {'run_shell_command', 'monitor', 'edit', 'write_file'},
     'default': {'run_shell_command', 'monitor', 'edit', 'write_file'},
@@ -117,8 +122,10 @@ def main():
         failures.append("the row's modes are not qwen's five --approval-mode values")
     for line in failures:
         print('fail: ' + line)
-    print('test_row.py: %d bad lines refused, %d documented lines taken, %d sign-in refusals checked, modes checked: %s'
-          % (len(BAD), len(GOOD), len(SIGNED_OUT), 'fail' if failures else 'ok'))
+    print('test_row.py: %d lines checked for refusal (%d not qwen, %d valid qwen outside this row, %d fixture rules), '
+          '%d documented lines, %d sign-in refusals: %s'
+          % (len(BAD), len(NOT_QWEN), len(OUTSIDE_THE_ROW), len(FIXTURE_RULE), len(GOOD), len(SIGNED_OUT),
+             'fail' if failures else 'ok'))
     return 1 if failures else 0
 
 
