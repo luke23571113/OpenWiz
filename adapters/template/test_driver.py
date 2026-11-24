@@ -592,5 +592,14 @@ class Template(unittest.TestCase):
                 self.assertEqual(self.asked_ps_for_environments(calls), [], 'the driver asked ps for process environments')
 
 
+    def test_a_provider_qualified_model_reaches_the_harness(self):
+        self.env['FAKE_ARGS'] = os.path.join(self.folder, 'args')
+        code, out = self.call('start', dict(START, model='kimi-code/kimi-for-coding'))
+        self.assertEqual(code, 0, out)
+        [args] = self.args(1)
+        self.assertEqual(args[args.index('--model') + 1], 'kimi-code/kimi-for-coding')
+        self.assertEqual(self.call('stop', out), (0, dict(out, stopped=True)))
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
