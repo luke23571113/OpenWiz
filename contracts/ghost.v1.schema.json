@@ -30,6 +30,9 @@
     "route_name": {
       "enum": ["pair", "health", "context", "turns", "complete", "draft", "feedback", "bench"]
     },
+    "stdio_route_name": {
+      "enum": ["health", "context", "turns", "complete", "draft", "feedback", "bench"]
+    },
     "refusal_code": {
       "enum": [
         "invalid_request",
@@ -67,7 +70,7 @@
       "additionalProperties": false,
       "properties": {
         "id": { "$ref": "#/$defs/non_empty_string" },
-        "route": { "$ref": "#/$defs/route_name" },
+        "route": { "$ref": "#/$defs/stdio_route_name" },
         "body": { "type": "object" }
       }
     },
@@ -236,8 +239,8 @@
         "acceptance_rate": { "type": "number", "minimum": 0, "maximum": 1 },
         "chars_saved_per_message": { "type": "number", "minimum": 0 },
         "suggestions_per_message": { "type": "number", "minimum": 0 },
-        "p50_latency_ms": { "type": "number", "minimum": 0 },
-        "p90_latency_ms": { "type": "number", "minimum": 0 }
+        "p50_latency_ms": { "type": ["number", "null"], "minimum": 0 },
+        "p90_latency_ms": { "type": ["number", "null"], "minimum": 0 }
       }
     },
     "tier_metrics": {
@@ -472,14 +475,18 @@
     },
     "recall_step": {
       "type": "object",
-      "required": ["action", "input", "expected_text", "expected_ghost", "expected_request"],
+      "required": ["action", "input", "expected_text", "expected_ghost", "expected_request", "expected_events"],
       "additionalProperties": false,
       "properties": {
         "action": { "enum": ["type", "accept_word", "accept_all", "dismiss"] },
         "input": { "type": "string" },
         "expected_text": { "type": "string" },
         "expected_ghost": { "type": ["string", "null"], "minLength": 1 },
-        "expected_request": { "type": "boolean" }
+        "expected_request": { "type": "boolean" },
+        "expected_events": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/outcome" }
+        }
       }
     },
     "recall_case": {

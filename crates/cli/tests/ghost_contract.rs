@@ -77,6 +77,10 @@ fn contract_doc_names_required_sections_and_rules() {
         "openwiz ghost pair",
         "openwiz ghost bench",
         "openwiz ghost forget",
+        "## Composer rules",
+        "typed_over",
+        "HTTP-only",
+        "replay_path",
     ] {
         assert!(
             doc.contains(needle),
@@ -207,6 +211,29 @@ fn recall_fixtures_cover_spec_table_and_interactions() {
         has_typed_through_no_request,
         "missing typed-through step with expected_request=false"
     );
+
+    for outcome in [
+        "shown",
+        "accepted_all",
+        "accepted_word",
+        "typed_through",
+        "dismissed",
+        "typed_over",
+    ] {
+        let seen = cases.iter().any(|c| {
+            c["steps"].as_array().is_some_and(|s| {
+                s.iter().any(|st| {
+                    st["expected_events"]
+                        .as_array()
+                        .is_some_and(|ev| ev.iter().any(|e| e == outcome))
+                })
+            })
+        });
+        assert!(
+            seen,
+            "recall-cases.json missing expected_events covering {outcome}"
+        );
+    }
 }
 
 #[test]
@@ -241,6 +268,37 @@ fn schema_rejects_malformed_samples() {
     assert!(
         !validate_def(&s, "event", &bad_event).is_empty(),
         "confidence > 1.0 should be rejected"
+    );
+
+    let stdio_pair =
+        json!({"id": "req_1", "route": "pair", "body": {"code": "SYN-1", "surface": "cli"}});
+    assert!(
+        !validate_def(&s, "stdio_request", &stdio_pair).is_empty(),
+        "pair route over stdio should be rejected"
+    );
+
+    let empty_bench = json!({
+        "schema": "openwiz.ghost.v1",
+        "kind": "bench_report",
+        "source": "fixtures",
+        "messages": 0,
+        "overall": {
+            "shown": 0,
+            "accepted": 0,
+            "acceptance_rate": 0.0,
+            "chars_saved_per_message": 0.0,
+            "suggestions_per_message": 0.0,
+            "p50_latency_ms": null,
+            "p90_latency_ms": null
+        },
+        "per_tier": [],
+        "per_surface": []
+    });
+    let errs = validate_def(&s, "bench_report", &empty_bench);
+    assert!(
+        errs.is_empty(),
+        "bench_report with shown=0 and null latencies should be valid:\n{}",
+        errs.join("\n")
     );
 }
 

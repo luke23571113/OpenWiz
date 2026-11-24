@@ -63,9 +63,9 @@ Every HTTP error response (and every stdio error response body) is a `#/$defs/re
 
 ### Stdio (`openwiz ghost --stdio`)
 
-One UTF-8 JSON object per line (`\n`-delimited) on stdin; one compact JSON object per line on stdout. **Stdio needs no pairing token** (and runs no `Host` or `Origin` check): only the process that spawned the engine can write to its stdin.
+One UTF-8 JSON object per line (`\n`-delimited) on stdin; one compact JSON object per line on stdout. **Stdio needs no pairing token** (and runs no `Host` or `Origin` check): only the process that spawned the engine can write to its stdin. `pair` is **HTTP-only**; a stdio request with `"route": "pair"` is refused with `status: 404` and refusal code `unknown_route`.
 
-- **Request (`#/$defs/stdio_request`):** `{"id":"req-1","route":"complete","body":{...}}`
+- **Request (`#/$defs/stdio_request`):** `{"id":"req-1","route":"complete","body":{...}}` (`route` is one of `health`, `context`, `turns`, `complete`, `draft`, `feedback`, `bench`)
 - **Response (`#/$defs/stdio_response`):** `{"id":"req-1","status":200,"body":{...}}`
   On error, `status` is the HTTP status code from the refusal table above and `body` is a `#/$defs/refusal`. If an input line cannot be parsed as a JSON object with a string `id`, `id` is `null` and `status` is `400`.
 
@@ -82,13 +82,25 @@ Every route schema pair is defined in `ghost.v1.schema.json` as `<route>_request
 | `POST /ghost/v1/complete` | `{session_id, surface, prefix, seq}` | `{schema, seq, suggestion}` (`suggestion` is `{id, text, full_text, tier, confidence, latency_ms}` or `null`) |
 | `POST /ghost/v1/draft` | `{session_id, surface}` | `{schema, draft}` (`draft` is `{id, text, precomputed, latency_ms}` or `null`; never sent) |
 | `POST /ghost/v1/feedback` | `#/$defs/event` | `{schema, recorded, logged}` (`logged` is `false` unless opt-in local log is on) |
-| `POST /ghost/v1/bench` | `{source, surface, replay_path?}` | `#/$defs/bench_report` |
+| `POST /ghost/v1/bench` | `{source, surface, replay_path?}` (`replay_path` is stdio/CLI-only; over HTTP it must be omitted or `null`, otherwise `400` `invalid_request`) | `#/$defs/bench_report` |
 
 `complete` rules:
 - `seq` is a monotonic nonnegative integer per `session_id`; a newer `seq` supersedes any in-flight request, and a stale reply is dropped.
 - `suggestion.text` is the suffix after the caret (1–8 words, ending at a word or sentence boundary); `suggestion.full_text` equals `prefix + suggestion.text`.
 - When confidence is below the tuned threshold (start: `0.30`) or nothing matches, `suggestion` is `null`.
 - Typed-through characters and word accepts consume the cached suggestion client-side with zero requests.
+
+## Composer rules
+
+Every composer (OpenWiz app, T3 Code, BB plugin) and `openwiz ghost bench` must follow these exact interaction and event-emission rules so `acceptance_rate` and per-surface metrics stay comparable:
+
+- **Stability:** while a suggestion is visible and the user's typing still agrees with its remaining suffix, the composer never swaps it for a different suggestion and makes zero `complete` requests.
+- **`shown`:** fires **once per distinct `suggestion.id`** when a non-null suggestion first becomes visible after the caret (`chars_accepted: 0`). Never re-fired on typed-through re-renders or after `accept_word` on the same suggestion.
+- **`accepted_all`:** Tab (or long-press on phone) inserts the entire remaining ghost, clears it with zero requests, and fires `accepted_all` once with `chars_accepted` equal to the remaining characters accepted.
+- **`accepted_word`:** Right arrow at end of text, Ctrl/Option+Right (or tap on phone) takes the next word **plus its single trailing space** when one follows (for example, `"2 and merge"` accepts `"2 "` and leaves `"and merge"`). Fires `accepted_word` once per word-accept action with `chars_accepted` equal to the characters accepted in that step; zero requests.
+- **`typed_through`:** when the user types character(s) matching the start of the visible ghost, the composer consumes them from the cached ghost with zero requests and fires `typed_through` **once per typed-through step** with `chars_accepted` equal to the consumed character count.
+- **`dismissed`:** Esc clears the visible ghost and fires `dismissed` once (`chars_accepted: 0`). It suppresses `complete` requests for the rest of the current word and any immediately following whitespace; requesting resumes on the first non-whitespace character of the next word.
+- **`typed_over`:** when the user types a character that contradicts (does not match the start of) the visible ghost, the composer clears the old ghost, fires `typed_over` once for the old `suggestion.id` (`chars_accepted: 0`), and sends a new `complete` request for the updated prefix (emitting a new `shown` if a non-null suggestion returns).
 
 ## Context pack (`#/$defs/context_pack`)
 
@@ -127,6 +139,8 @@ bench_metrics { shown, accepted, acceptance_rate, chars_saved_per_message,
 
 - `acceptance_rate`: `accepted / shown` in `[0, 1]` (`0.0` when `shown` is `0`).
 - `chars_saved_per_message`: accepted characters still present in the sent message, averaged per message.
+- `p50_latency_ms` and `p90_latency_ms`: `null` when `shown` is `0`; nonnegative numbers otherwise.
+- `replay_path`: allowed only on stdio / CLI (`openwiz ghost bench`). Over HTTP, `POST /ghost/v1/bench` accepts only the bundled fixtures (`source: "fixtures"`) or the opt-in local log (`source: "log"`), with `replay_path` omitted or `null`; any non-null `replay_path` over HTTP is refused with `400` `invalid_request`.
 - `per_tier` and `per_surface` are arrays (not maps) so the dependency-free schema validator checks every entry strictly.
 
 ## CLI subcommands (`openwiz ghost`)
