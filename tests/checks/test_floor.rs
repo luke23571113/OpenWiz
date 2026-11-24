@@ -9,7 +9,6 @@ fn root() -> PathBuf {
     Path::new(TESTS).parent().unwrap().to_path_buf()
 }
 
-/// Runs `ci/rust-tests.sh --floor-check` on a synthetic floor and summary.
 fn check(case: &str, floor: &str, log: &str) -> (bool, String) {
     let dir = env::temp_dir().join(format!("openwiz-test-floor-{case}-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
@@ -30,7 +29,6 @@ fn check(case: &str, floor: &str, log: &str) -> (bool, String) {
     (out.status.success(), text)
 }
 
-/// Two targets' summaries summing to `n`, with lines that must not count.
 fn summary(n: u32) -> String {
     format!(
         "running 3 tests\n\

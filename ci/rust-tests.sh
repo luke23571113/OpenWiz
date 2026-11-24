@@ -4,9 +4,6 @@ scope=--workspace
 num() {
   case "$1" in '' | *[!0-9]* | ???????????????????*) return 1 ;; esac
 }
-# The test-count floor: the sum of the summaries' passed counts must reach
-# the committed floor, so a suite that stops loading can't pass green.
-# Usage: floor_check <hint: yes|no> <floor json> <log>...
 floor_check() {
   hint="$1" file="$2"
   shift 2
@@ -127,7 +124,6 @@ echo "rust-tests: the fixture release build took $(($(date +%s) - prebuild_began
 
 finish() {
   rc="$1"
-  # A failing run's summaries say FAILED: the floor judges only green runs.
   if [ "$rc" = 0 ]; then
     hint=no
     [ "$scope" = --workspace ] || hint=yes
