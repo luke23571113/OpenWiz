@@ -265,6 +265,37 @@ class PlantedBreaks(unittest.TestCase):
         self.assertGreater(len(long_facts), 1024)
         self._expect_facts_refused(self._replace_facts_line(long_facts))
 
+    def test_facts_line_refuses_private_looking_values(self):
+        bad_lines = [
+            'OpenWiz feedback facts {"v":1,"model":"192.168.1.1"}',
+            'OpenWiz feedback facts {"v":1,"model":"ghp_synthetic000000"}',
+            'OpenWiz feedback facts {"v":1,"model":"sk-synthetic000000"}',
+            'OpenWiz feedback facts {"v":1,"model":"thr_synthetic123"}',
+        ]
+        for line in bad_lines:
+            with self.subTest(line=line):
+                self._expect_facts_refused(self._replace_facts_line(line))
+
+    def test_facts_line_refuses_log_counts_without_log_section_or_with_wrong_count(self):
+        def strip_log_keep_log_lines(d):
+            d['input']['body'] = (
+                'What happened:\nThe approve button sits under the footer.\n\n'
+                'OpenWiz feedback facts {"v":1,"log_lines":0}\n\n'
+                'OpenWiz feedback operation 3f2a9c4e1b7d40a6958e0c2d7b1a4f63'
+            )
+        self._expect_facts_refused(case('report-with-facts', strip_log_keep_log_lines))
+
+        def strip_log_keep_redactions(d):
+            d['input']['body'] = (
+                'What happened:\nThe approve button sits under the footer.\n\n'
+                'OpenWiz feedback facts {"v":1,"redactions":0}\n\n'
+                'OpenWiz feedback operation 3f2a9c4e1b7d40a6958e0c2d7b1a4f63'
+            )
+        self._expect_facts_refused(case('report-with-facts', strip_log_keep_redactions))
+
+        self._expect_facts_refused(
+            self._replace_facts_line('OpenWiz feedback facts {"v":1,"log_lines":3,"redactions":2}'))
+
 
 if __name__ == '__main__':
     unittest.main()
