@@ -8,6 +8,8 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
+import importlib.util
 
 sys.dont_write_bytecode = True
 
@@ -27,8 +29,16 @@ else:
 if key not in answers:
     print('gh: Not Found (HTTP 404)', file=sys.stderr)
     sys.exit(1)
+with open(sys.argv[0] + '.log', 'a') as log:
+    log.write(str(key) + '\\n')
 got = answers[key]
 response = got['gh'] if type(got) is dict and 'gh' in got else {'body': got}
+if 'advance' in response:
+    with open(sys.argv[0] + '.clock', 'r+') as clock:
+        now = int(clock.read() or 0) + response['advance']
+        clock.seek(0)
+        clock.truncate()
+        clock.write(str(now))
 if 'raw' in response:
     sys.stdout.write(response['raw'])
     sys.exit(0)
@@ -39,7 +49,7 @@ if '--include' in sys.argv:
     sys.stdout.write('HTTP/2.0 %d %s\\n' % (status, 'OK' if status < 400 else 'Error'))
     sys.stdout.write(''.join('%s: %s\\r\\n' % item for item in sorted(headers.items())) + '\\r\\n')
 sys.stdout.write(json.dumps(response['body']))
-if status >= 400:
+if status >= 400 or (key == 'graphql' and 'errors' in response['body']):
     print('gh: synthetic error (HTTP %d)' % status, file=sys.stderr)
     sys.exit(1)
 '''
@@ -99,9 +109,26 @@ class Supply(unittest.TestCase):
 
     def supply(self, answered, supplier=None):
         (self.bin / 'gh.json').write_text(json.dumps(answered))
+        (self.bin / 'gh.clock').write_text('0')
         env = {'PATH': str(self.bin), 'HOME': str(self.root), 'LANG': 'C.UTF-8'}
         return subprocess.run([sys.executable, '-I', str(supplier or self.tool / 'supply.py'), '--repository', REPO,
                                '--output', str(self.output)], env=env, capture_output=True, text=True, timeout=60)
+
+    def observe(self, answered, start=None):
+        start = int(time.time()) if start is None else start
+        (self.bin / 'gh.json').write_text(json.dumps(answered))
+        (self.bin / 'gh.clock').write_text('0')
+        spec = importlib.util.spec_from_file_location('read_queue_' + self.id().replace('.', '_'),
+                                                      self.tool / 'read_queue.py')
+        reader = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(reader)
+        with mock.patch.dict(os.environ, {'PATH': str(self.bin)}):
+            observation = reader.observe(REPO, lambda: start + int((self.bin / 'gh.clock').read_text()))
+        self.output.write_bytes(reader.wire(observation))
+        return observation
+
+    def requests(self):
+        return (self.bin / 'gh.log').read_text().splitlines()
 
     def guard(self, observed=None):
         state = self.root / 'private' / 'pause.json'
@@ -231,6 +258,89 @@ class Supply(unittest.TestCase):
                 (self.root / 'private' / 'pause.json').unlink(missing_ok=True)
                 answer = self.guard()
                 self.assertEqual((answer['level'], answer['allowed']), ('unknown', False))
+
+
+    def test_a_graphql_rate_limit_that_gh_exits_1_on_keeps_its_backoff(self):
+        answered = answers()
+        answered['graphql'] = {'gh': {'body': {'errors': [{'type': 'RATE_LIMITED', 'message': 'limited'}]}}}
+        observation = self.written(answered)
+        wait = observation['budgets']['graphql']['retry_after'] - observation['observed_at']
+        self.assertIn(wait, range(55, 61))
+        self.assertEqual(self.requests()[-1], 'graphql')
+        answer = self.guard()
+        self.assertEqual((answer['level'], sorted(answer['causes'])),
+                         ('alarm', ['graphql_backoff', 'observation_unknown']))
+
+    def test_a_graphql_probe_without_remaining_writes_complete_false(self):
+        for case, body in (('no data', {}), ('no rateLimit', {'data': {}}),
+                           ('no remaining', {'data': {'rateLimit': {}}}),
+                           ('remaining not an integer', {'data': {'rateLimit': {'remaining': '4000'}}}),
+                           ('remaining negative', {'data': {'rateLimit': {'remaining': -1}}})):
+            with self.subTest(case=case):
+                answered = answers()
+                answered['graphql'] = body
+                observation = self.written(answered)
+                self.assertEqual((observation['complete'], observation['queue']['complete']), (False, False))
+
+    def test_a_pass_longer_than_the_guards_window_is_not_complete(self):
+        page = f'{BASE}/runs/7102/jobs?per_page=100&page=1'
+        for advance, complete in ((60, True), (61, False)):
+            with self.subTest(advance=advance):
+                answered = answers()
+                answered[page] = {'gh': {'body': answered[page], 'advance': advance}}
+                observation = self.observe(answered)
+                self.assertEqual((observation['complete'], observation['queue']['complete']), (complete, complete))
+                if not complete:
+                    self.assertNotIn('rate_limit', self.requests()[2:])
+
+    def test_a_repeated_run_or_job_id_in_one_listing_is_not_complete(self):
+        def overlapping_pages(answered):
+            listing = f'{BASE}/workflows/ci.yml/runs?status=queued&per_page=100'
+            runs = [{'id': 9000 + n, 'run_attempt': 1, 'event': 'push'} for n in range(100)]
+            answered[listing + '&page=1'] = {'total_count': 101, 'workflow_runs': runs}
+            answered[listing + '&page=2'] = {'total_count': 101, 'workflow_runs': runs[-1:]}
+            for run in runs:
+                answered[f'{BASE}/runs/{run["id"]}/jobs?per_page=100&page=1'] = {'total_count': 0, 'jobs': []}
+
+        def one_page(answered):
+            listing = f'{BASE}/workflows/ci.yml/runs?status=in_progress&per_page=100&page=1'
+            answered[listing]['workflow_runs'][1] = dict(answered[listing]['workflow_runs'][0])
+
+        def repeated_job(answered):
+            jobs = answered[f'{BASE}/runs/7101/jobs?per_page=100&page=1']['jobs']
+            jobs[1] = dict(jobs[0])
+
+        for case in (overlapping_pages, one_page, repeated_job):
+            with self.subTest(case=case.__name__):
+                answered = answers()
+                case(answered)
+                observation = self.written(answered)
+                self.assertEqual((observation['complete'], observation['queue']['complete']), (False, False))
+                ids = [j['id'] for j in observation['queue']['jobs']]
+                self.assertEqual(len(ids), len(set(ids)))
+
+    def test_a_backoff_after_a_crossed_reset_keeps_its_deadline(self):
+        start = int(time.time()) - 30
+        answered = answers()
+        answered['rate_limit']['resources']['core']['reset'] = start + 5
+        page = f'{BASE}/runs/7102/jobs?per_page=100&page=1'
+        headers = {'Retry-After': '120', 'X-Ratelimit-Limit': '5000', 'X-Ratelimit-Remaining': '3000',
+                   'X-Ratelimit-Reset': str(start + 3600)}
+        answered[page] = {'gh': {'status': 403, 'headers': headers, 'advance': 20,
+                                 'body': {'message': 'You have exceeded a secondary rate limit.'}}}
+        observation = self.observe(answered, start)
+        self.assertEqual(observation['budgets']['rest'],
+                         {'remaining': 3000, 'limit': 5000, 'reset_at': start + 3600, 'retry_after': start + 140})
+        self.assertEqual(self.requests()[-1], page)
+        answer = self.guard(start + 30)
+        self.assertEqual((answer['level'], sorted(answer['causes'])), ('alarm', ['observation_unknown', 'rest_backoff']))
+
+    def test_a_malformed_job_row_gives_the_plain_failure_line(self):
+        answered = answers()
+        answered[f'{BASE}/runs/7101/jobs?per_page=100&page=1']['jobs'][0] = 'synthetic-row'
+        result = self.supply(answered)
+        self.assertEqual((result.returncode, result.stdout, result.stderr), (1, '', 'supply: the queue read failed\n'))
+        self.assertFalse(self.output.exists())
 
 
 if __name__ == '__main__':
