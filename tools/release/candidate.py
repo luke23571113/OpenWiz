@@ -976,6 +976,7 @@ def rehearsal_run(commit):
 
 
 def rehearsal_receipt(rehearse, body, run_id, artifacts, target, archive):
+    import zlib
     commit, name = body['source']['commit'], f"openwiz-rehearsal-{body['release_version']}-{target}"
     found = [a for a in artifacts if isinstance(a, dict) and a.get('name') == name and a.get('expired') is False
              and type(a.get('id')) is int and isinstance(a.get('workflow_run'), dict)
@@ -995,13 +996,15 @@ def rehearsal_receipt(rehearse, body, run_id, artifacts, target, archive):
             if [m.filename for m in members] != ['rehearsal.json'] or members[0].file_size > 65536:
                 return 'unreadable', None
             receipt = strict(archive_file.read('rehearsal.json'))
-    except (Refused, ValueError, KeyError, OSError, zipfile.BadZipFile):
+    except (Refused, ValueError, KeyError, OSError, EOFError, RuntimeError, zipfile.BadZipFile, zipfile.LargeZipFile,
+            zlib.error):
         return 'unreadable', None
     fields = 'schema version source target archive_sha256 manifest_sha256 status steps'
     if not isinstance(receipt, dict) or set(receipt) != set(fields.split()):
         return 'unreadable', None
     steps = receipt['steps']
     if (receipt['schema'] != rehearse.SCHEMA or receipt['target'] != target or not isinstance(receipt['version'], str)
+            or re.fullmatch(r'0\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)', receipt['version']) is None
             or not digest(receipt['source'], 40)
             or any(receipt[k] is not None and not digest(receipt[k]) for k in ('archive_sha256', 'manifest_sha256'))
             or not isinstance(steps, list) or not steps
