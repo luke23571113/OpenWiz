@@ -292,7 +292,7 @@ class SealingTests(ServiceFixture):
         # comment-ok: catches: a token minted, then sealed to a key that is absent, weak or not the helper's kind.
         rsa = lambda *options: Asker("RSA", *options).key
         keys = {"missing": None, "empty": "", "not text": 7, "malformed": "not a key", "a private key": ASKER.private.decode(),
-                "cut short": ASKER.key[:-40], "junk after": ASKER.key + "x", "a second key": ASKER.key * 2,
+                "cut short": ASKER.key[:-40], "junk after": ASKER.key + "x", "a second key": ASKER.key * 2, "a blank line after": ASKER.key + "\n",
                 "CRLF": ASKER.key.replace("\n", "\r\n"),
                 "broken base64": ASKER.key.replace("A", "!"), "2048": rsa("-pkeyopt", "rsa_keygen_bits:2048"),
                 "4096": CONTRACT.public_key(4096), "3071": CONTRACT.public_key(3072).replace("/", "B", 1),
@@ -306,6 +306,7 @@ class SealingTests(ServiceFixture):
                     request = dict(SMALL, answer_key=key)
                     if key is None:
                         del request["answer_key"]
+                    self.assertNotEqual(CONTRACT.errors(request, SCHEMA, SCHEMA), [], "the schema refuses it too")
                     done = self.mint(url, request)
                     self.assertEqual((done.returncode, json.loads(done.stdout).get("refusal"), done.stderr),
                                      (2, "usage", ""))

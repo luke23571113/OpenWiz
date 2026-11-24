@@ -500,7 +500,7 @@ class Fallback(Helper):
         for reason, item in [*cases.items(), ("bad-answer", wider), ("bad-answer", short),
                              ("bad-answer", long), ("bad-answer", twice), ("bad-answer", bad_exit),
                              ("bad-answer", injected), ("bad-answer", failed_answer), ("bad-answer", plain),
-                             ("bad-answer", beside), ("bad-answer", other_key), ("bad-answer", listed),
+                             ("bad-answer", beside), ("bad-answer", other_key), ("bad-answer", answer(token="a" * 318 * 9)), ("bad-answer", listed),
                              *[("bad-answer", item) for item in unsealed]]:
             with self.subTest(reason=reason, item=item["stdout"][:60]):
                 self.log.unlink(missing_ok=True)

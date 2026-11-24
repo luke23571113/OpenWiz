@@ -45,8 +45,6 @@ def strict(text):
 
 
 def leaks(case, token):
-    """Every place in one fixture case that holds TOKEN outside its private places:
-    the private token file and exactly GH_TOKEN. An answer holds it only sealed."""
     found = []
     for key, value in case.items():
         if key in ("out", "before"):
