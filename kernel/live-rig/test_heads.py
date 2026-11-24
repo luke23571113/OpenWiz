@@ -363,6 +363,7 @@ class Heads(unittest.TestCase):
                       lambda p: p['receipts'][0].update(text=p['receipts'][0]['text'] + SECRET + '\n'),
                       lambda p: p['receipts'][0].update(text=p['receipts'][0]['text'] + '# repo: heads-throwaway\n'),
                       lambda p: p['receipts'][0].update(text=p['receipts'][0]['text'].replace(LOGIN, 'example-other')),
+                      lambda p: p['receipts'][0].update(record=p['receipts'][0]['record'].replace('five', 'four')),
                       lambda p: p['comments'][0].pop('run')):
             plan = json.loads(kept)
             plant(plan)

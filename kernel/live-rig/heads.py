@@ -44,6 +44,7 @@ STAMP = '%Y-%m-%dT%H:%M:%SZ'
 COMMENT = re.compile(r'\*\*[A-Z][A-Z0-9]{1,15} live kit run: [0-5] of 5 pass\*\*, at head `[0-9a-f]{40}`\n\n```\n'
                      r'((?:[^`\n]*\n)*)```\n')
 COMMENT_URL = r'https://github\.com/openwizdev/OpenWiz/pull/[0-9]+#issuecomment-[0-9]+'
+RECORD_REL = r'[0-9]{4}-[0-9]{2}-[0-9]{2}/[A-Za-z0-9][A-Za-z0-9._-]{0,200}\.json'
 RECEIPT_REL = re.compile(r'receipts/([a-z0-9-]{2,40})/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9a-f]{12}\.txt')
 CHECK_PREFIX = re.compile(r'^(?:pass|fail) (?:version|start|wake|stop|token): ', re.M)
 GH_OVERRIDES = ('GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN', 'GH_HOST')
@@ -167,7 +168,27 @@ def run_kit(driver, entry, wait, settings, login):
     return p.returncode, rig.record_stdout(p.stdout, settings, login)
 
 
-def check_journal(plan, settings):
+def receipt_py(record, listing, login, folder):
+    return subprocess.run([sys.executable, '-I', os.path.join(HERE, 'receipt.py'), record, '--listing', listing,
+                           '--run-by', login, '-o', folder], stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                          env=stored_login_env())
+
+
+def rebuilt_receipt(out, r, login):
+    folder = tempfile.mkdtemp()
+    try:
+        p = receipt_py(os.path.join(out, r['record']), r['listing'], login, folder)
+        if p.returncode != 0:
+            return None
+        with open(p.stdout.strip()) as f:
+            return os.path.relpath(p.stdout.strip(), folder), f.read()
+    except OSError:
+        return None
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+
+
+def check_journal(plan, settings, out):
     def ok(value, pattern):
         return isinstance(value, str) and re.fullmatch(pattern, value) is not None
 
@@ -198,16 +219,32 @@ def check_journal(plan, settings):
                                  rig.record_stdout(lines.group(1), settings, plan['login']) != lines.group(1)):
             raise Refused('%s holds a comment that is not public kit output, so nothing is posted' % JOURNAL)
     for r in plan['receipts']:
-        if not (isinstance(r, dict) and set(r) == {'rel', 'text', 'listing', 'pr', 'comment'} and
+        if not (isinstance(r, dict) and set(r) == {'rel', 'text', 'listing', 'pr', 'comment', 'record'} and
+                ok(r['record'], RECORD_REL) and
                 ok(r['rel'], RECEIPT_REL.pattern) and RECEIPT_REL.fullmatch(r['rel']).group(1) == r['listing'] and
                 index(r['pr']) and r['pr'] > 0 and index(r['comment'], len(plan['comments'])) and
                 isinstance(r['text'], str)):
             raise Refused('%s holds a receipt heads.py did not plan' % JOURNAL)
         if holds_credential_after_check_names(r['text']):
             raise Refused('%s holds a receipt with a credential, so nothing is posted' % JOURNAL)
+        # SECURITY: a receipt is published only as receipt.py rebuilds it from its run record under the verified login.
+        if rebuilt_receipt(out, r, plan['login']) != (r['rel'], r['text']) or \
+                not receipt_matches_comment(os.path.join(out, r['record']), r, plan['comments'][r['comment']]):
+            raise Refused('%s holds a receipt that is not its run record\'s receipt, so nothing is posted' % JOURNAL)
     if not all(isinstance(rel, str) for rel in plan['put']) or \
             not set(plan['put']) <= {r['rel'] for r in plan['receipts']}:
         raise Refused('%s puts a file it does not plan' % JOURNAL)
+
+
+def receipt_matches_comment(record, r, comment):
+    try:
+        rec = rig.read_json(record, 'the run record')
+        lines = COMMENT.fullmatch(comment['body'])
+        return comment['pr'] == r['pr'] and lines is not None and lines.group(1) == rec['stdout'] and \
+            comment['body'].split('\n', 1)[0].endswith(
+                ' live kit run: 5 of 5 pass**, at head `%s`' % rec['driver_commit'])
+    except (Refused, TypeError, KeyError):
+        return False
 
 
 def comment_for(ticket, passed, head, stdout):
@@ -255,9 +292,7 @@ class Session:
     def receipt(self, host, ticket, record_path, comment):
         if self.folder is None:
             self.folder = tempfile.mkdtemp(dir=self.args.out, prefix='wizmarket-')
-        p = subprocess.run([sys.executable, '-I', os.path.join(HERE, 'receipt.py'), record_path, '--listing',
-                            ticket['listing'], '--run-by', self.run_by(), '-o', self.folder],
-                           stdin=subprocess.DEVNULL, capture_output=True, text=True, env=stored_login_env())
+        p = receipt_py(record_path, ticket['listing'], self.run_by(), self.folder)
         if p.returncode != 0:
             why = (p.stderr.strip().splitlines() or ['exit %d' % p.returncode])[-1]
             self.refuse(host, 'no receipt: ' + why)
@@ -274,7 +309,7 @@ class Session:
             self.say('would add %s to %s:' % (rel, WIZMARKET))
             print(text, end='', flush=True)
         self.plan['receipts'].append({'rel': rel, 'text': text, 'listing': ticket['listing'], 'pr': ticket['pr'],
-                                      'comment': comment})
+                                      'comment': comment, 'record': os.path.relpath(record_path, self.args.out)})
 
     def host(self, name, ticket, configs, settings, kit_head, authors, cache):
         number = ticket['ticket']
@@ -483,7 +518,7 @@ def run(args):
     journal = os.path.join(args.out, JOURNAL)
     if os.path.exists(journal):
         plan = rig.read_json(journal, JOURNAL)
-        check_journal(plan, settings)
+        check_journal(plan, settings, args.out)
         if not args.post:
             preview(plan)
             return plan['outcome']
@@ -502,7 +537,7 @@ def run(args):
         os.replace(cache_path + '.part', cache_path)
     if args.post and session.plan['comments']:
         session.plan.update(login=session.run_by(), outcome=1 if session.failed else 0)
-        check_journal(session.plan, settings)
+        check_journal(session.plan, settings, args.out)
         save(journal, session.plan)
         Publish(journal, session.plan).run()
     return 1 if session.failed else 0
