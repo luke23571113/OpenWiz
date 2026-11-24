@@ -225,10 +225,41 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
         run: python3 -I tools/owned-paths/check.py --repo "$GITHUB_REPOSITORY" --pr "$PR"
 
+  line-budget:
+    if: ${{ github.event.pull_request.draft != true }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Python
+        run: sh .github/actions/docs-only/python.sh
+      - name: The line-budget tests
+        run: python3 -I tools/line-budget/test_check.py
+      - name: The line budget
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          PR: ${{ github.event.pull_request.number }}
+          QUEUE_BASE: ${{ github.event.merge_group.base_sha }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+        run: |
+          case "$EVENT" in
+            pull_request)
+              git fetch --no-tags --depth=2 origin "$GITHUB_SHA"
+              python3 -I tools/line-budget/check.py --base HEAD^1 --merge HEAD --pr "$PR" --repo "$GITHUB_REPOSITORY" ;;
+            merge_group)
+              git fetch --no-tags --depth=1 origin "$QUEUE_BASE"
+              python3 -I tools/line-budget/check.py --base "$QUEUE_BASE" --merge HEAD --pr "$QUEUE_REF" --repo "$GITHUB_REPOSITORY" ;;
+            *)
+              python3 -I tools/line-budget/check.py --total HEAD ;;
+          esac
+
   # The required check: a draft fails it, and so does any job above that did
   # not pass (owned-paths runs on pull requests only).
   ci:
-    needs: [lint, rust, release, owned-paths]
+    needs: [lint, rust, release, owned-paths, line-budget]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
