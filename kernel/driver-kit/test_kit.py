@@ -251,6 +251,88 @@ class Kit(unittest.TestCase):
                 self.assertEqual((code, out), (1, PASS[:4] + ['fail token: the file %s, which a process of the driver '
                                                              'ran, %s' % (rel, SCRIPT)]))
 
+    def test_a_relative_script_without_a_prefix_or_behind_a_decoy_is_scanned_on_linux_and_macos(self):
+        macos = {'PATH': NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable}
+        cases = {'key-runtime-relative-spaced': ('shared scripts', 'reader.py'),
+                 'key-runtime-decoy-run': ('y', 'reader.py')}
+        for name, script in cases.items():
+            driver = os.path.join(FIXTURES, 'planted', name, 'driver')
+            for python, env in ((sys.executable, {}), (os.path.join(NO_PROC, 'python3'), macos)):
+                with self.subTest(name, python=python):
+                    self.tearDown()
+                    self.setUp()
+                    env = dict(env, PATH=NO_PROC + os.pathsep + self.env['PATH']) if env else {}
+                    code, out, _ = self.keyed(driver, python=python, **env)
+                    path = os.path.realpath(os.path.join(self.folder, 'state', *script))
+                    rel = os.path.relpath(path, os.path.realpath(os.path.dirname(driver)))
+                    self.assertEqual((code, out), (1, PASS[:4] + ['fail token: the file %s, which a process of the '
+                                                                 'driver ran, %s' % (rel, SCRIPT)]))
+
+    def test_a_child_that_lives_only_during_one_call_is_seen_for_each_of_start_wake_and_stop(self):
+        macos = {'PATH': NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable}
+        driver = os.path.join(FIXTURES, 'planted', 'key-runtime-one-call', 'driver')
+        for call in ('start', 'wake', 'stop'):
+            for python, env in ((sys.executable, {}), (os.path.join(NO_PROC, 'python3'), macos)):
+                with self.subTest(call, python=python):
+                    self.tearDown()
+                    self.setUp()
+                    env = dict(env, PATH=NO_PROC + os.pathsep + self.env['PATH']) if env else {}
+                    code, out, _ = self.keyed(driver, python=python, KIT_ONE_CALL=call, **env)
+                    path = os.path.realpath(os.path.join(self.folder, 'state', 'one-call-reader.py'))
+                    rel = os.path.relpath(path, os.path.realpath(os.path.dirname(driver)))
+                    self.assertEqual((code, out), (1, PASS[:4] + ['fail token: the file %s, which a process of the '
+                                                                 'driver ran, %s' % (rel, SCRIPT)]))
+
+    @unittest.skipIf(os.geteuid() == 0, 'root lists every folder')
+    def test_a_relative_script_in_a_folder_the_kit_cannot_list_is_still_found_in_macos_text(self):
+        kit = module(os.path.join(HERE, 'kit.py'))
+        k = kit.Kit.__new__(kit.Kit)
+        k.lock, k.leaks = threading.RLock(), []
+        cwd = os.path.join(self.folder, 'unlisted')
+        os.makedirs(os.path.join(cwd, 'Shared Scripts'))
+        script = os.path.join(cwd, 'Shared Scripts', 'reader.py')
+        with open(script, 'w') as f:
+            f.write('\n')
+        os.chmod(cwd, 0o311)
+        self.addCleanup(os.chmod, cwd, 0o700)
+        self.assertEqual(list(k.text_files('python3 Shared Scripts/reader.py', cwd)), [script])
+        self.assertEqual(k.leaks, [])
+
+    def test_a_word_under_a_missing_folder_costs_one_lookup_in_macos_text(self):
+        kit = module(os.path.join(HERE, 'kit.py'))
+        k = kit.Kit.__new__(kit.Kit)
+        k.lock, k.leaks = threading.RLock(), []
+        looked, real = [], kit.os.path.exists
+        kit.os.path.exists = lambda path: looked.append(path) or real(path)
+        try:
+            found = list(k.text_files('python3 /nonexistent/openwiz/v1 ' + 'word ' * 500, self.folder))
+        finally:
+            kit.os.path.exists = real
+        self.assertEqual(found, [])
+        self.assertLessEqual(len(looked), 510, 'the search kept growing under a folder that does not exist')
+
+    @unittest.skipUnless(os.path.isdir('/proc/self'), 'reads /proc')
+    def test_a_live_marked_process_whose_folder_cannot_be_read_fails_the_check(self):
+        kit = module(os.path.join(HERE, 'kit.py'))
+        child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])
+        self.addCleanup(child.wait)
+        self.addCleanup(child.kill)
+        k = kit.Kit.__new__(kit.Kit)
+        k.lock, k.leaks, k.mark = threading.RLock(), [], 'OPENWIZ_KIT_RUN=synthetic'
+        k.table = lambda: {str(child.pid): (os.getpid(), os.getuid(), [k.mark], [sys.executable, ''], 0, 0)}
+
+        def unreadable(pid, tries=kit.HIDDEN_TRIES):
+            raise OSError(5, 'Input/output error')
+        k.folder_of = unreadable
+        self.assertEqual(list(k.run_processes()), [])
+        self.assertEqual(k.leaks, ["the kit could not read a process of the driver's working folder, so it cannot "
+                                   "check it"])
+        child.kill()
+        child.wait()
+        k.leaks = []
+        self.assertEqual(list(k.run_processes()), [])
+        self.assertEqual(k.leaks, [], 'a process that has exited is skipped')
+
     def test_the_kit_trusts_only_its_own_interpreter_not_one_on_path(self):
         fake = os.path.join(self.folder, 'bin')
         os.makedirs(fake)
