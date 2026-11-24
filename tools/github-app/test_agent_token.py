@@ -1687,45 +1687,47 @@ class SnapshotByName(Helper):
                          [], "each run removes its snapshot and its reservation")
 
     def test_a_later_run_never_takes_the_path_of_a_retired_snapshot_named_before_the_upgrade(self):
-        # comment-ok: catches: retiring a pre-upgrade snapshot without reserving its slot, so once a
-        # fallback retires a still-running legacy run's snapshot, a later run can draw that same name
-        # and the legacy run's saved path serves the later run's token.
-        cache = self.minted()
-        helper = load_helper()
-        legacy = self.private / ("run-" + cache.name[len("token-"):][:16] + "ab" * 8 + ".json")
-        legacy.write_text(json.dumps({"token": TOKEN, "expires_at": int(time.time()) + 3600,
-                                      "request": cache.name}))
-        legacy.chmod(0o600)
-        refusing = self.api(status=401)
-        self.helper("start", *REQ, OPENWIZ_TOKEN_SERVICE_READBACK="failed",
-                    OPENWIZ_GITHUB_API_BASE=refusing.base())
-        self.assertFalse(legacy.exists(), "the fallback retired the legacy snapshot")
-        self.answers(answer(token=TOKEN2))
-        real, forced, seen = helper.secrets.token_hex, ["ab" * 8], {}
+        # comment-ok: catches: an upgraded run whose snapshot name has the shape a pre-upgrade run's
+        # random name had, so once pre-upgrade code retires a still-running legacy run's snapshot
+        # without claiming a slot, a later run can draw that same name and serve its token there.
+        for retired_by in ("upgraded fallback", "pre-upgrade retire"):
+            with self.subTest(retired_by):
+                shutil.rmtree(self.private, True)
+                cache = self.minted()
+                helper, private, cache_file = self.loaded()
+                legacy = self.private / ("run-" + cache.name[len("token-"):][:16] + "ab" * 8 + ".json")
+                legacy.write_text(json.dumps({"token": TOKEN, "expires_at": int(time.time()) + 3600,
+                                              "request": cache.name}))
+                legacy.chmod(0o600)
+                if retired_by == "upgraded fallback":
+                    refusing = self.api(status=401)
+                    self.helper("start", *REQ, OPENWIZ_TOKEN_SERVICE_READBACK="failed",
+                                OPENWIZ_GITHUB_API_BASE=refusing.base())
+                else:
+                    with helper.locked(private):
+                        helper.drop(private, cache_file, cache_file, retire=True)
+                        helper.drop(private, legacy.name, cache_file, retire=True)
+                    self.assertEqual(list(self.private.glob("slot-*")), [], "pre-upgrade retire claims no slot")
+                self.assertFalse(legacy.exists(), "the legacy snapshot was retired")
+                self.answers(answer(token=TOKEN2))
+                real, seen = helper.secrets.token_hex, {}
 
-        def token_hex(size):
-            return forced.pop() if forced and size == 8 else real(size)
+                def later_child(command, child, **kwargs):
+                    seen["later"] = child.get(helper.RUN_MARK)
+                    reason, token = helper.snapshot_token(
+                        str(legacy), dict(self.env, **{helper.RUN_MARK: str(legacy)}),
+                        check=lambda snapshot, env: None)
+                    seen["served"] = (legacy.exists(), reason, token and sha(token))
+                    return 0
 
-        def later_child(command, child, **kwargs):
-            seen["later"] = child.get(helper.RUN_MARK)
-            reason, token = helper.snapshot_token(str(legacy), dict(self.env, **{helper.RUN_MARK: str(legacy)}),
-                                                  check=lambda snapshot, env: None)
-            seen["served"] = (legacy.exists(), reason, token and sha(token))
-            return 0
-
-        with mock.patch.object(helper.secrets, "token_hex", lambda size: "ab" * 8 if size == 8 else real(size)), \
-                mock.patch.object(helper, "execute", later_child), \
-                mock.patch.object(helper.sys, "stderr"):
-            with self.assertRaises(helper.Refused):
-                helper.run([*REQ, "--", "true"], dict(self.env))
-        self.assertFalse(legacy.exists(), "a run that keeps drawing the retired legacy name is refused")
-        with mock.patch.object(helper.secrets, "token_hex", token_hex), \
-                mock.patch.object(helper, "execute", later_child), \
-                mock.patch.object(helper.sys, "stderr"):
-            self.assertEqual(helper.run([*REQ, "--", "true"], dict(self.env)), 0)
-        self.assertTrue(seen["later"], "the later run was handed a snapshot")
-        self.assertEqual((seen["later"] != str(legacy), seen["served"]), (True, (False, "no current token", None)),
-                         "the legacy run's retired path stays empty and serves nothing while a later run runs")
+                with mock.patch.object(helper.secrets, "token_hex", lambda size: "ab" * 8 if size == 8 else real(size)), \
+                        mock.patch.object(helper, "execute", later_child), \
+                        mock.patch.object(helper.sys, "stderr"):
+                    self.assertEqual(helper.run([*REQ, "--", "true"], dict(self.env)), 0)
+                self.assertTrue(seen["later"], "the later run was handed a snapshot")
+                self.assertEqual((seen["later"] != str(legacy), seen["served"]),
+                                 (True, (False, "no current token", None)),
+                                 "the legacy run's retired path stays empty and serves nothing while a later run runs")
 
     def test_a_run_that_cannot_reserve_a_free_name_is_refused(self):
         # comment-ok: catches: a run that goes on under a name another run still holds once every
