@@ -402,7 +402,6 @@ mod scrub_tests {
             "#!/bin/sh\n/bin/cat /proc/$$/environ > \"${0%/*}/seen\"\n",
             0o700,
         );
-        // The synthetic parent gets its own environment, including a raw byte in a name.
         let parent = dir.file(
             "probe-parent",
             r#"#!/bin/sh
