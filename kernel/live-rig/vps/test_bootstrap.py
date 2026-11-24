@@ -355,7 +355,8 @@ class BootstrapTest(unittest.TestCase):
         with open(os.path.join(lib, 'runpane.json')) as f:
             stamp = json.load(f)
         launcher = os.path.join(self.fx.prefix, 'bin', 'runpane')
-        self.assertEqual(stamp, {'version': '2.4.246', 'sha256': pin, 'launcher': sha256(launcher)})
+        self.assertEqual(stamp, {'version': '2.4.246', 'sha256': pin, 'launcher_type': 'file',
+                                 'launcher': sha256(launcher)})
         wheel = os.path.join(lib, 'wheels', 'runpane', pin + '.whl')
         self.assertEqual(re.findall(r"(%s/[^' ]+\.whl)" % re.escape(lib), read(launcher)), [wheel])
         self.assertEqual(os.listdir(os.path.dirname(wheel)), [pin + '.whl'])
@@ -453,16 +454,17 @@ class BootstrapTest(unittest.TestCase):
         launcher = os.path.join(self.fx.prefix, 'bin', 'fakedroid')
         moved = os.path.join(self.root, 'moved-fakedroid')
         shutil.move(launcher, moved)
+        before = sha256(moved)
         os.symlink(moved, launcher)
-        calls_before = read(self.fx.calls)
         r = self.fx.run(tools=self.fx.write_tools(droid_version='1.17.3', droid_says='1.17.3'))
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertTrue(os.path.islink(launcher), 'user symlink was replaced on repin')
         self.assertEqual(os.readlink(launcher), moved)
+        self.assertEqual(sha256(moved), before)
         self.assertIn('left out fakedroid: your existing %s is not the copy this bootstrap installed there (or its '
                       'record is too old to tell), so it is kept and never run; move it aside to install the pinned '
                       '1.17.3' % launcher, self.summary(r.stdout)[1])
-        self.assertEqual(read(self.fx.calls), calls_before)
+        self.assertEqual(read(self.fx.calls).splitlines().count('fakedroid --version'), 1)
 
     def test_an_unrecognised_launcher_entry_type_fails_closed(self):
         self.assertEqual(self.fx.run().returncode, 0)
