@@ -110,6 +110,7 @@ class Supply(unittest.TestCase):
     def supply(self, answered, supplier=None):
         (self.bin / 'gh.json').write_text(json.dumps(answered))
         (self.bin / 'gh.clock').write_text('0')
+        (self.bin / 'gh.log').write_text('')
         env = {'PATH': str(self.bin), 'HOME': str(self.root), 'LANG': 'C.UTF-8'}
         return subprocess.run([sys.executable, '-I', str(supplier or self.tool / 'supply.py'), '--repository', REPO,
                                '--output', str(self.output)], env=env, capture_output=True, text=True, timeout=60)
@@ -118,6 +119,7 @@ class Supply(unittest.TestCase):
         start = int(time.time()) if start is None else start
         (self.bin / 'gh.json').write_text(json.dumps(answered))
         (self.bin / 'gh.clock').write_text('0')
+        (self.bin / 'gh.log').write_text('')
         spec = importlib.util.spec_from_file_location('read_queue_' + self.id().replace('.', '_'),
                                                       self.tool / 'read_queue.py')
         reader = importlib.util.module_from_spec(spec)
@@ -283,15 +285,14 @@ class Supply(unittest.TestCase):
                 self.assertEqual((observation['complete'], observation['queue']['complete']), (False, False))
 
     def test_a_pass_longer_than_the_guards_window_is_not_complete(self):
-        page = f'{BASE}/runs/7102/jobs?per_page=100&page=1'
-        for advance, complete in ((60, True), (61, False)):
-            with self.subTest(advance=advance):
+        for slow, advance, complete in (('graphql', 60, True), ('graphql', 61, False), ('rate_limit', 31, False)):
+            with self.subTest(slow=slow, advance=advance):
                 answered = answers()
-                answered[page] = {'gh': {'body': answered[page], 'advance': advance}}
+                answered[slow] = {'gh': {'body': answered[slow], 'advance': advance}}
                 observation = self.observe(answered)
                 self.assertEqual((observation['complete'], observation['queue']['complete']), (complete, complete))
-                if not complete:
-                    self.assertNotIn('rate_limit', self.requests()[2:])
+                if slow == 'graphql' and not complete:
+                    self.assertEqual(self.requests(), ['rate_limit', 'graphql'])
 
     def test_a_repeated_run_or_job_id_in_one_listing_is_not_complete(self):
         def overlapping_pages(answered):
