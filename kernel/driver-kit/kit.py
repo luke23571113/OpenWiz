@@ -8,8 +8,10 @@ import os
 import re
 import secrets
 import select
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import unicodedata
@@ -45,6 +47,12 @@ KEYWORDS = {'$schema', 'type', 'required', 'additionalProperties', 'properties',
             'maxLength', 'minimum', 'items', 'minItems', 'uniqueItems', 'enum', 'const', 'allOf', 'contains'}
 TYPES = {'object': dict, 'array': list, 'string': str, 'boolean': bool}
 PROC = os.path.isdir('/proc/self')
+TEMPLATE = os.path.join(HERE, '..', '..', 'adapters', 'template', 'driver')
+AGENT_CLIS = ('claude', 'claude-code', 'codex', 'cursor-agent', 'agent', 'pi', 'opencode', 'openclaw', 'copilot',
+              'goose', 'gemini', 'kimi', 'qwen', 'cline', 'kilo', 'crush', 'vibe', 'auggie', 'kiro-cli', 'junie', 'amp',
+              'agy', 'oz', 'sculpt', 'hermes', 'acpx', 'droid', 'aider')
+STUB = '#!/bin/sh\necho "kit.py: refused: $0 is an agent CLI, and a driver that still holds the template\'s command ' \
+       'never starts one" >&2\nexit 1\n'
 EFFORT = re.compile(r'[a-z][a-z0-9-]{0,19}')
 REFUSAL = ("this host can't set effort: remove the effort for this harness in your Models table or Roster to run it "
            "at the host's default")
@@ -57,6 +65,43 @@ PROBE = ['-I', '-c', "import sys; sys.stdout.write('.'); sys.stdout.flush(); sys
 
 class Unusable(Exception):
     pass
+
+
+STOCK_LAUNCHES = (
+    "return [req['harness'], '--model', req['model'], '-p', prompt]",
+    "return [req['harness'], '--model', req['model']] + effort + ['-p', prompt]",
+)
+FIXTURE_FOLDERS = (os.path.join(HERE, 'fixtures'), os.path.join(HERE, '..', '..', 'adapters', 'template', 'fixtures'))
+
+
+def _bare(text):
+    return re.sub(r'\s+', '', text)
+
+
+def holds_template_command(driver):
+    # SAFETY: a driver the kit can't read, or holding any stock template's launch line, counts as the template.
+    try:
+        with open(TEMPLATE) as f:
+            found = re.search(r'^def command\(.*?(?=^\S)', f.read(), re.S | re.M)
+        with open(driver) as f:
+            text = _bare(f.read())
+    except (OSError, UnicodeDecodeError):
+        return True
+    return not found or any(_bare(s) in text for s in STOCK_LAUNCHES) or _bare(found.group(0)) in text
+
+
+def fixture_harness(name, path):
+    found = shutil.which(name, path=path)
+    folders = {os.path.realpath(f) for f in FIXTURE_FOLDERS}
+    return bool(found) and os.path.dirname(os.path.realpath(found)) in folders
+
+
+def stub_agent_clis(folder):
+    for name in AGENT_CLIS:
+        with open(os.path.join(folder, name), 'w') as f:
+            f.write(STUB)
+        os.chmod(os.path.join(folder, name), 0o700)
+    return folder
 
 
 def _unique(pairs):
@@ -375,6 +420,13 @@ class Kit:
         self.since = started_at('self') if PROC else 0
         self.seen = PROC
         self.blind = None if PROC else self.unseen()
+        self.stubs = None
+        if holds_template_command(args.driver):
+            if not fixture_harness(args.harness, self.env.get('PATH', os.defpath)):
+                raise Unusable("the driver still holds the template's command, and harness %s is not one of the kit's "
+                               "fixtures, so the kit ran nothing: write your own command first" % args.harness)
+            self.stubs = stub_agent_clis(tempfile.mkdtemp(prefix='openwiz-kit-stubs-'))
+            self.env['PATH'] = self.stubs + os.pathsep + self.env.get('PATH', os.defpath)
         self.can, self.setting, self.effort_seen = [], None, False
 
     def leak(self, what):
@@ -1191,7 +1243,7 @@ def main(argv):
     ap.add_argument('--tracker', help='a local throwaway tracker file, read instead of GitHub')
     ap.add_argument('--wait', type=int, default=900, help='seconds to wait for each note change')
     args = ap.parse_args(argv)
-    failed = False
+    failed, kit = False, None
     try:
         kit = Kit(args, Ticket(args.repo, args.ticket, args.tracker))
         for name, (verdict, what) in kit.checks():
@@ -1200,6 +1252,9 @@ def main(argv):
     except (Unusable, records_kit.Unreadable) as e:
         print('kit.py: %s' % e, file=sys.stderr)
         return 2
+    finally:
+        if kit and kit.stubs:
+            shutil.rmtree(kit.stubs, ignore_errors=True)
     return 1 if failed else 0
 
 
