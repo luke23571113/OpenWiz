@@ -96,6 +96,7 @@ class Rig(unittest.TestCase):
                          {os.path.join(stubs, name) for name in AGENT_CLIS})
         self.env = dict(os.environ, PATH=path, KIT_TRACKER=tracker, RIG_GH_LOG=self.gh_log, RIG_GH_LOGIN=LOGIN,
                         RIG_GH_REPO=REPO, RIG_GH_TICKET=str(TICKET), GH_TOKEN=SECRET, RIG_PLANTED_KEY=SECRET,
+                        OPENWIZ_TEMPLATE_LIVE='1',
                         OPENWIZ_TEMPLATE_STATE=os.path.join(self.folder, 'state'))
 
     def tearDown(self):

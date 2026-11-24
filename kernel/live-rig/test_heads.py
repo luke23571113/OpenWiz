@@ -126,6 +126,7 @@ class Heads(unittest.TestCase):
         self.env = dict(env, PATH=path, KIT_TRACKER=tracker, HEADS_TEST=self.mark, HEADS_GH_LOG=self.gh_log,
                         HEADS_GH_STATE=self.state, HEADS_COMMENTS=self.comments, HEADS_KIT_REPO=REPO,
                         HEADS_KIT_TICKET=str(TICKET), HEADS_GH_LOGIN=LOGIN, **AUTH,
+                        OPENWIZ_TEMPLATE_LIVE='1',
                         OPENWIZ_TEMPLATE_STATE=os.path.join(self.folder, 'template-state'))
 
     def tearDown(self):
