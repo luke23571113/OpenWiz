@@ -105,6 +105,25 @@ class Ceiling(unittest.TestCase):
             self.assertEqual(r.returncode, code, (extra, r.stdout, r.stderr))
         self.assertIn('21 lines is 1 over the ceiling of 20; grew: product +10', r.stdout + r.stderr)
 
+    def test_budget_enforcement_resumes_when_base_reaches_the_ceiling(self):
+        for base_total, expected in ((21, 0), (20, 1), (19, 1)):
+            with self.subTest(base_total=base_total):
+                self.repo.git('checkout', '-q', '--detach', self.base)
+                base = self.repo.commit({'src/a.rs': lines(base_total - 1), 'Cargo.lock': lines(500)})
+                merge = self.repo.commit({'src/a.rs': lines(21)})
+                r = self.repo.check('--base', base, '--merge', merge, description='')
+                self.assertEqual(r.returncode, expected, r.stdout + r.stderr)
+                self.assertIn(f'22 of 20; base {base_total}, change +{22 - base_total}', r.stdout)
+                if expected:
+                    self.assertIn('22 lines is 2 over the ceiling of 20', r.stderr)
+                else:
+                    self.assertIn('report-only', r.stdout)
+                    self.assertEqual(r.stderr, '')
+                    malformed = self.repo.check('--base', base, '--merge', merge,
+                                                description='Line budget exception: pending')
+                    self.assertEqual(malformed.returncode, 1)
+                    self.assertIn('malformed exception line', malformed.stderr)
+
     def test_lockfiles_binaries_and_symlinks_do_not_count(self):
         merge = self.merge(9, **{'Cargo.lock': lines(500), 'blob.bin': b'\x00' + b'\n' * 500,
                                  'docs/pnpm-lock.yaml': lines(3), 'tests/package-lock.json': lines(4)})
