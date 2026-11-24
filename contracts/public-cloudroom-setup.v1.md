@@ -27,6 +27,7 @@ Each interface below was read on 2026-11-13 (CloudRoom `gui-v152`, source
 | The release's `SHA256SUMS.txt` asset | `<sha256>  <file>` per installer | The release notes: "SHA-256 checksums are in `SHA256SUMS.txt`" |
 | `room-cli cloud status --json` | `CloudroomStatus`: `account` (`{id, email}` or `null`), `signedOut` ("True only when the saved connection confirms no signed-in Cloudroom account"), `signingIn`, `selfHosted` | CloudRoom's room-cli command index (`gui/plugins/cloudroom-guide/skills/room-cli/references/command-index.md`), `gui/apps/cli/src/commands/cloudroom.ts`, `gui/packages/sdk/src/areas/cloudroom.ts` |
 | `room-cli cloud sign-in --json` | `{url}`: the browser link to CloudRoom's own sign-in | Same files |
+| `room-cli status --json` (cloud thread) | `{"thread": {"id", "projectId", "archived", ...}}`: confirms the host is an active CloudRoom cloud thread (`/usr/local/bin/room-cli`, where the desktop `cloud` subcommand does not exist) | CloudRoom cloud thread CLI (`room-cli --help`, `room-cli status --json`) |
 | `https://www.cloudroom.dev/download` | CloudRoom's own download page (it asks the visitor to sign in first) | `https://www.cloudroom.dev/docs/get-started.md` |
 | `codesign --verify --deep --strict -R <requirement>` (macOS) | Apple's signature check of the installed app, with a designated requirement: a Developer ID Application certificate whose leaf `subject.OU` is CloudRoom's team `4AJ9HF33Z5`; any other team's valid signature fails | The release notes: "Signed and notarized by Apple"; the team from the Developer ID certificate in release `gui-v153`'s `Cloudroom-v153-arm64.zip`, matching its `SHA256SUMS.txt` |
 
@@ -42,6 +43,18 @@ CloudRoom publishes no installer for macOS on Intel or for Linux on ARM.
 OpenWiz does not run on Windows. On a host without a target, the tool installs
 nothing and says so (`cloudroom_unsupported`). Asked to install, it opens
 CloudRoom's download page once instead.
+
+**CloudRoom cloud thread host:** When running on Linux inside a CloudRoom cloud
+thread (no desktop `~/.local/bin/room-cli`, `/usr/local/bin/room-cli` exists,
+and `/usr/local/bin/room-cli status --json` returns an active `thread` object
+with valid `id` and `projectId` and `archived` not true), the host is accepted
+as an already-authenticated CloudRoom host on any architecture (`aarch64` or
+`x86_64`). `status`, `install` and `sign-in` return `cloudroom_login_verified`
+without downloading, installing, running desktop `room-cli cloud` checks,
+checking FUSE or display variables, or opening a browser. The returned `id` and
+`projectId` values are never printed, saved or shown. If `status --json` fails,
+times out, is invalid or archived, detection fails closed and falls back to the
+normal target check (`cloudroom_not_installed` or `cloudroom_unsupported`).
 
 ## Installer source and integrity check
 
