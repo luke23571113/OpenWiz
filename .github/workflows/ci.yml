@@ -102,7 +102,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        part: [1, 2]
+        part: [1, 2, 3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -117,7 +117,7 @@ jobs:
         if: matrix.part == 1
         run: python3 tools/release/test.py
       - name: The kernel kits' tests
-        if: matrix.part == 2
+        if: matrix.part == 3
         run: |
           python3 -I kernel/records-kit/test_check.py
           python3 -I kernel/driver-kit/test_kit.py
