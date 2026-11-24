@@ -1022,5 +1022,12 @@ class Boat(unittest.TestCase):
             'pass stop: the run ended, and a wake after it is refused',
             'pass token: no login or token passed through the driver']), p.stderr)
 
+    def test_a_provider_qualified_model_reaches_boat(self):
+        calls, prompts = os.path.join(self.folder, 'calls'), os.path.join(self.folder, 'prompts')
+        request = dict(REQUEST, harness='kimi', model='kimi-code/kimi-for-coding')
+        turns = self.start_and_wake(request, calls, prompts)[0]
+        self.assertEqual(turns[0][turns[0].index('--model') + 1], 'kimi-code/kimi-for-coding')
+
+
 if __name__ == '__main__':
     unittest.main()
