@@ -1,20 +1,4 @@
 #!/usr/bin/env python3
-"""MT6 (#825): the overload guard's supplier. One on-demand collector read, written as the guard's input.
-
-  python3 -I supply.py --repository OWNER/NAME --output /absolute/observation.json
-
-Reads the war room collector's `queue` fact now (`collect_ci.read(repository,
-['queue'])`, tools/collector/collector.v1.md) and writes its
-`value.observation`, unchanged, to --output: owner-only, replaced atomically.
-It never reads a saved snapshot. A partial fact is written as it is (its
-`complete` is false), so the guard keeps any alarm it can still establish.
-
-The output is removed before the read, so a failed read leaves no older
-observation behind: an unavailable fact or a refused read writes nothing and
-exits 1, and the guard then decides on a missing input (unknown). Exit 0 means
-an observation was written, 2 an invalid invocation. Nothing is printed on
-stdout; stderr never carries an API answer.
-"""
 import argparse
 import os
 from pathlib import Path
@@ -23,12 +7,18 @@ import sys
 import tempfile
 
 sys.dont_write_bytecode = True
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'collector'))
-import collect_ci  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    import read_queue
+except ImportError:
+    read_queue = None
+
+DESCRIPTION = """MT6 (#825): the overload guard's supplier. One on-demand queue read, written as the guard's input."""
+READ_FAILS = (OSError, ValueError, TypeError, KeyError, ArithmeticError)
 
 
 def write(path, data):
-    fd, pending = tempfile.mkstemp(prefix='.observation-', dir=path.parent)  # mkstemp makes it owner-only
+    fd, pending = tempfile.mkstemp(prefix='.observation-', dir=path.parent)
     try:
         with os.fdopen(fd, 'wb') as stream:
             stream.write(data)
@@ -41,7 +31,7 @@ def write(path, data):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog='supply.py', description=__doc__.split('\n\n')[0])
+    parser = argparse.ArgumentParser(prog='supply.py', description=DESCRIPTION)
     parser.add_argument('--repository', required=True)
     parser.add_argument('--output', required=True, type=Path)
     args = parser.parse_args(argv)
@@ -52,16 +42,16 @@ def main(argv=None):
     except OSError:
         print('supply: the previous observation could not be removed', file=sys.stderr)
         return 1
-    try:
-        fact = collect_ci.read(args.repository, ['queue'])['ci']['queue']
-    except (collect_ci.Refused, ValueError):
-        print('supply: the collector refused the queue read', file=sys.stderr)
-        return 1
-    if fact['value'] is None:
-        print('supply: the collector\'s queue fact is unavailable', file=sys.stderr)
+    if read_queue is None:
+        print('supply: the queue reader could not be imported', file=sys.stderr)
         return 1
     try:
-        write(args.output, collect_ci.wire(fact['value']['observation']))
+        observation = read_queue.observe(args.repository)
+    except (read_queue.Fail, *READ_FAILS):
+        print('supply: the queue read failed', file=sys.stderr)
+        return 1
+    try:
+        write(args.output, read_queue.wire(observation))
     except OSError:
         print('supply: the observation could not be written', file=sys.stderr)
         return 1
