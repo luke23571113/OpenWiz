@@ -596,7 +596,7 @@ class Kit(unittest.TestCase):
                  json.dumps(dict(good, ticket=0)), json.dumps(dict(good, ticket='7')),
                  json.dumps(dict(good, ticket=True)), json.dumps(dict(good, repository='a/b/c')),
                  json.dumps(dict(good, skill='Build')), json.dumps(dict(good, skill='b' * 61)),
-                 json.dumps(dict(good, harness='/usr/bin/true')), json.dumps(dict(good, model='m' * 61)),
+                 json.dumps(dict(good, harness='/usr/bin/true')), json.dumps(dict(good, model='m' * 101)),
                  json.dumps(dict(good, model='m\n')), json.dumps([good]), 'not json',
                  json.dumps(good)[:-1] + ', "ticket": 8}']
         schema = kit.load_schema()['commands']['start']['input']
