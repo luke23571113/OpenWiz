@@ -190,8 +190,8 @@ def install(tool, file, prefix, work):
     if kind == 'installer':
         return run_installer(tool, path, prefix, work)
     staged = os.path.join(prefix, 'lib', 'openwiz-vps', 'staged', name)
-    wheels = os.path.join(prefix, 'lib', 'openwiz-vps', 'wheels', name)
-    wheel = os.path.join(wheels, file['sha256'] + '.whl')
+    wheel = wheel_path(prefix, name, file['sha256'])
+    wheels = os.path.dirname(wheel)
     new_wheel = False
     try:
         if kind == 'binary':
@@ -249,14 +249,17 @@ def stamp_path(prefix, name):
     return os.path.join(prefix, 'lib', 'openwiz-vps', name + '.json')
 
 
-def stamped(tool, file, prefix):
+def read_stamp(prefix, name):
     try:
-        with open(stamp_path(prefix, tool['name'])) as f:
+        with open(stamp_path(prefix, name)) as f:
             stamp = json.load(f)
     except (OSError, ValueError):
-        return False
-    return stamp == {'version': tool['version'], 'sha256': file['sha256']} and \
-        os.path.exists(os.path.join(prefix, 'bin', tool['name']))
+        return None
+    return stamp if isinstance(stamp, dict) else None
+
+
+def wheel_path(prefix, name, sha256):
+    return os.path.join(prefix, 'lib', 'openwiz-vps', 'wheels', name, sha256 + '.whl')
 
 
 def main():
@@ -301,12 +304,20 @@ def main():
                             % tool['home_only'])
                 continue
             file = tool['files'].get(key) or tool['files'].get('any')
-            if file and stamped(tool, file, prefix):
-                already(name, tool['version'])
-                continue
-            if os.path.lexists(dst) and not os.path.exists(stamp_path(prefix, name)):
+            if os.path.lexists(dst) and not os.path.lexists(stamp_path(prefix, name)):
                 leave(name, 'your existing %s was not installed by this bootstrap, so it is kept and never run; '
                             'move it aside to install the pinned %s' % (dst, tool['version']))
+                continue
+            stamp, launcher = read_stamp(prefix, name), sha256_of(dst)
+            if os.path.lexists(dst) and (not stamp or not launcher or stamp.get('launcher') != launcher):
+                leave(name, 'your existing %s is not the copy this bootstrap installed there (or its record is too '
+                            'old to tell), so it is kept and never run; move it aside to install the pinned %s'
+                            % (dst, tool['version']))
+                continue
+            if os.path.lexists(dst) and file and stamp.get('version') == tool['version'] and \
+                    stamp.get('sha256') == file['sha256'] and (tool['kind'] != 'wheel' or sha256_of(
+                        wheel_path(prefix, name, file['sha256'])) == file['sha256']):
+                already(name, tool['version'])
                 continue
             if tool['kind'] == 'installer' and os.path.lexists(dst):
                 leave(name, 'your existing %s is kept and not run, since its installer would overwrite it in '
@@ -342,7 +353,8 @@ def main():
                 shutil.rmtree(step, ignore_errors=True)
                 shutil.rmtree(os.path.join(prefix, 'lib', 'openwiz-vps', 'staged'), ignore_errors=True)
             stamp = stamp_path(prefix, name)
-            place(json.dumps({'version': tool['version'], 'sha256': file['sha256']}).encode(), stamp)
+            place(json.dumps({'version': tool['version'], 'sha256': file['sha256'],
+                              'launcher': sha256_of(dst)}).encode(), stamp)
             os.chmod(stamp, 0o644)
             installed += 1
             available.add(name)

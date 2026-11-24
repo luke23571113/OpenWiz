@@ -342,8 +342,9 @@ class BootstrapTest(unittest.TestCase):
     def assert_runpane_at(self, pin):
         lib = os.path.join(self.fx.prefix, 'lib', 'openwiz-vps')
         with open(os.path.join(lib, 'runpane.json')) as f:
-            self.assertEqual(json.load(f), {'version': '2.4.246', 'sha256': pin})
+            stamp = json.load(f)
         launcher = os.path.join(self.fx.prefix, 'bin', 'runpane')
+        self.assertEqual(stamp, {'version': '2.4.246', 'sha256': pin, 'launcher': sha256(launcher)})
         wheel = os.path.join(lib, 'wheels', 'runpane', pin + '.whl')
         self.assertEqual(re.findall(r"(%s/[^' ]+\.whl)" % re.escape(lib), read(launcher)), [wheel])
         self.assertEqual(os.listdir(os.path.dirname(wheel)), [pin + '.whl'])
@@ -491,8 +492,10 @@ class BootstrapTest(unittest.TestCase):
     def test_an_older_pin_of_an_installed_tool_is_kept_and_its_installer_never_rerun(self):
         self.assertEqual(self.fx.run().returncode, 0)
         stamp = os.path.join(self.fx.prefix, 'lib', 'openwiz-vps', 'fakeagent.json')
+        with open(stamp) as f:
+            older = dict(json.load(f), version='3.2.0', sha256='0' * 64)
         with open(stamp, 'w') as f:
-            json.dump({'version': '3.2.0', 'sha256': '0' * 64}, f)
+            json.dump(older, f)
         launcher = os.path.join(self.fx.prefix, 'bin', 'fakeagent')
         before, calls, installer_log = sha256(launcher), read(self.fx.calls), read(self.fx.installer_log)
         r = self.fx.run()

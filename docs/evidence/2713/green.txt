@@ -1,5 +1,8 @@
-# Green at the hand-back, the whole file:
+# Green at the review round 1 hand-back, the whole file:
 $ env -u OPENWIZ_GITHUB_APP_KEY python3 -I kernel/live-rig/vps/test_bootstrap.py    # 37 agent-CLI refusal stubs first on PATH
+test_a_hand_replaced_launcher_is_kept_on_a_repin (__main__.BootstrapTest.test_a_hand_replaced_launcher_is_kept_on_a_repin) ... ok
+test_a_same_pin_rerun_hashes_the_active_wheel (__main__.BootstrapTest.test_a_same_pin_rerun_hashes_the_active_wheel) ... ok
+test_a_stamp_that_names_no_launcher_keeps_it (__main__.BootstrapTest.test_a_stamp_that_names_no_launcher_keeps_it) ... ok
 test_an_older_pin_of_an_installed_tool_is_kept_and_its_installer_never_rerun (__main__.BootstrapTest.test_an_older_pin_of_an_installed_tool_is_kept_and_its_installer_never_rerun) ... ok
 test_checksum_mismatch_is_refused_and_nothing_from_it_runs (__main__.BootstrapTest.test_checksum_mismatch_is_refused_and_nothing_from_it_runs) ... ok
 test_corrupt_cached_wheel_is_never_imported (__main__.BootstrapTest.test_corrupt_cached_wheel_is_never_imported) ... ok
@@ -17,6 +20,6 @@ test_wrong_version_keeps_the_working_tool (__main__.BootstrapTest.test_wrong_ver
 test_every_tool_names_its_source_exact_version_checksum_and_why (__main__.ToolsJsonTest.test_every_tool_names_its_source_exact_version_checksum_and_why) ... ok
 
 ----------------------------------------------------------------------
-Ran 15 tests in <t>s
+Ran 18 tests in <t>s
 
 OK
