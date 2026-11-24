@@ -49,6 +49,7 @@ REFUSAL = ("this host can't set effort: remove the effort for this harness in yo
            "at the host's default")
 CANT = "Effort: the host can't set it"
 NOT_DECLARED = 'not declared yet; required from EF14'
+LEFT_A_RUN = re.compile(r'\b(unknown|stop|end|archive|kill|by hand)\b', re.I)
 PLACEHOLDER = re.compile(r'<[a-z][a-z-]*>')
 LISTED = re.compile(r'\s*,? for ([a-z][a-z0-9-]*(?:, [a-z][a-z0-9-]*)*(?:,? and [a-z][a-z0-9-]*)?)(?=[,.;]| with|$)')
 PROBE = ['-I', '-c', "import sys; sys.stdout.write('.'); sys.stdout.flush(); sys.stdin.read()"]
@@ -300,7 +301,7 @@ class Kit:
         self.since = started_at('self') if PROC else 0
         self.seen = PROC
         self.blind = None if PROC else self.unseen()
-        self.can, self.setting, self.effort_seen = [], None, False
+        self.can, self.setting, self.effort_seen, self.cleanup = [], None, False, None
 
     def leak(self, what):
         with self.lock:
@@ -624,23 +625,13 @@ class Kit:
                 self.call('stop', {'run': v['run']})
                 return 'fail', "effort: its README says %s can't set effort, but a start with it was taken" % a.harness
             if kind == 'refused':
-                self.setting = None
-                if v['next'] != REFUSAL:
-                    plain = self.call('start', request)
-                    if plain[0] != 'ok':
-                        return 'fail', plain[1]['error'] if plain[0] == 'refused' else plain[1]
-                    self.call('stop', {'run': plain[1]['run']})
-                    self.wait(lambda: not any(True for _ in self.started()))
-                    return 'fail', 'effort: start refused %s without the refusal text: %s' % (a.effort, v['error'])
-                if not cant and not unlisted:
-                    return 'fail', 'effort: start refused %s for %s, but its README says that harness takes %s' % (
-                        a.effort, a.harness, a.effort)
-                effort = 'refused for %s with the refusal text, as the README says' % a.harness if cant else \
-                    'refused %s with the refusal text, a word its README does not list for %s' % (a.effort, a.harness)
+                failed, effort = self.refused(request, v, before, cant, unlisted)
+                if failed:
+                    return failed, effort
             elif not hosts:
                 return self.started_run(before, (kind, v), effort)
             else:
-                request = dict(request, effort=a.effort)
+                plain, request = request, dict(request, effort=a.effort)
         else:
             kind, v = self.call('start', dict(request, effort=a.effort))
             if kind == 'ok':
@@ -655,7 +646,48 @@ class Kit:
         if not self.wait(lambda: not any(True for _ in self.started())):
             return 'fail', 'effort: a process the start with effort began still runs'
         before = set(self.ticket.builder_notes())
-        return self.started_run(before, self.sampled('start', request), effort)
+        answer = self.sampled('start', request)
+        if 'effort' in request and answer[0] == 'refused':
+            failed, effort = self.refused(plain, answer[1], before, cant, unlisted)
+            if failed:
+                return failed, effort
+            if not self.wait(lambda: not any(True for _ in self.started())):
+                return 'fail', 'effort: a process the start with effort began still runs'
+            before = set(self.ticket.builder_notes())
+            answer = self.sampled('start', plain)
+        return self.started_run(before, answer, effort)
+
+    def refused(self, request, v, before, cant, unlisted):
+        a = self.args
+        self.setting = None
+        if v['next'] != REFUSAL:
+            return 'fail', self.retried(request, v, before)
+        if not cant and not unlisted:
+            return 'fail', 'effort: start refused %s for %s, but its README says that harness takes %s' % (
+                a.effort, a.harness, a.effort)
+        return None, 'refused for %s with the refusal text, as the README says' % a.harness if cant else \
+            'refused %s with the refusal text, a word its README does not list for %s' % (a.effort, a.harness)
+
+    def retried(self, request, v, before):
+        said = 'effort: start refused %s without the refusal text: %s' % (self.args.effort, v['error'])
+        gone = self.wait(lambda: not any(True for _ in self.started()))
+        if not gone or LEFT_A_RUN.search(v['error'] + '\n' + v['next']) or set(self.ticket.builder_notes()) - before:
+            return said + '; it may have left a run, so the kit started none without effort; next: ' + v['next']
+        kind, p = self.sampled('start', request)
+        if kind != 'ok':
+            return p['error'] if kind == 'refused' else p
+        self.run, self.stopped = p['run'], True
+        kind, s = self.sampled('stop', {'run': self.run})
+        if kind == 'ok' and s['run'] == self.run:
+            why = None if self.wait(lambda: not any(True for _ in self.started())) else 'a process it started still runs'
+        else:
+            why = s['error'] + '; next: ' + s['next'] if kind == 'refused' else s if kind == 'bad' else \
+                'its stop answered for another run'
+        if why:
+            self.cleanup = "the kit's start without effort, run %s, may still run: %s" % (self.run, why)
+        else:
+            self.run, self.stopped = None, False
+        return said
 
     def started_run(self, before, answer, effort):
         kind, v = answer
@@ -1051,7 +1083,8 @@ class Kit:
                 self.stop_the_started_run_unchecked()
             yield 'start', result
             for name in ('wake', 'stop'):
-                yield name, getattr(self, name)() if result[0] == 'pass' else ('fail', 'not run: start failed')
+                yield name, getattr(self, name)() if result[0] == 'pass' else (
+                    'fail', self.cleanup if name == 'stop' and self.cleanup else 'not run: start failed')
         finally:
             self.stop_the_started_run_unchecked()
         yield 'token', self.token()
