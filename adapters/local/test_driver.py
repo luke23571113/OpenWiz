@@ -22,6 +22,9 @@ NO_PROC = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit', 'fixtures', 'no
 
 TOKEN = 'gh' + 'p_' + 'Synthetic0Local0Value' * 2 + '00'
 OPAQUE = 'opaque-fixture-value-7Kq2Zr9w'
+NO_LSOF = ('driver: lsof could not run or failed, so the driver could not check which processes hold this '
+           "run's output file open; it ended only the turns' process groups and the processes their "
+           'supervisors recorded')
 PASS = ['pass version: openwiz:records v1, and the schema is driver v1',
         'pass start: the run posted builder status note 1',
         'pass wake: the run edited builder status note 1',
@@ -339,6 +342,35 @@ class Local(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertEqual(self.driver('wake', out), (0, dict(out, woke=True)))
 
+    def test_a_quick_clean_first_turn_starts(self):
+        talker = os.path.join(self.folder, 'talker')
+        os.mkdir(talker)
+        with open(os.path.join(talker, 'claude'), 'w') as f:
+            f.write('#!%s\nimport os\nprint(os.environ["TALK"])\n' % sys.executable)
+        os.chmod(os.path.join(talker, 'claude'), 0o700)
+        request = {'repository': 'example/quick', 'ticket': 7, 'skill': 'build-ticket', 'harness': 'claude',
+                   'model': 'synthetic-1'}
+        talks = dict(self.env, PATH=talker + os.pathsep + self.env['PATH'])
+        for case, env in [('relative state', dict(self.env, OPENWIZ_LOCAL_STATE='state'))] + [
+                (said, dict(talks, TALK=said)) for said in (
+                    'Updated the permission documentation and the login guide.',
+                    'Added tests for unauthorized requests.',
+                    'Summary: unauthorized requests now get a 401, and a denied upload was refused.',
+                    'Checked that the session token is invalid after logout, and that the request was denied.')]:
+            with self.subTest(case):
+                p = subprocess.run([DRIVER, 'start'], input=json.dumps(request), env=env, cwd=self.folder,
+                                   capture_output=True, text=True, timeout=60)
+                self.assertEqual(p.returncode, 0, p.stdout)
+                self.assertEqual(self.driver('wake', json.loads(p.stdout))[0], 0)
+        for said, says in (('Error: 401 Unauthorized', 'not signed in'), ('Unauthorized', 'not signed in'),
+                           ('Not logged in \u00b7 Please run /login', 'not signed in'),
+                           ('API Error: OAuth token has expired.', 'not signed in'),
+                           ('Error: permission to use Write was denied.', 'refused a tool')):
+            with self.subTest(said):
+                code, err = self.start(env=dict(talks, TALK=said), repository='example/quick')
+                self.assertEqual(code, 1, err)
+                self.assertIn(says + ' (exit 0)', err['error'])
+
     def test_a_credential_shaped_start_field_is_refused_before_anything_starts(self):
         calls, logging = os.path.join(self.folder, 'calls'), os.path.join(self.folder, 'logging-bin')
         os.mkdir(logging)
@@ -407,6 +439,47 @@ class Local(unittest.TestCase):
         worker = self.handed_off(pids)
         self.assertEqual(self.driver('stop', out, dict(self.env, **macos)), (0, dict(out, stopped=True)))
         self.assertFalse(alive(worker), 'a worker the turn handed off as it exited still runs after stop')
+
+    def test_without_proc_as_on_macos_stop_says_when_lsof_cannot_check_the_output_file(self):
+        for broken in (False, True):
+            with self.subTest(lsof_fails=broken):
+                self.tearDown()
+                self.setUp()
+                macos = {'PATH': NO_PROC + os.pathsep + self.env['PATH'], 'NO_PROC_PYTHON': sys.executable}
+                out, _, _ = self.first_turn(**macos)
+                stop = dict(self.env, **macos)
+                if broken:
+                    folder = os.path.join(self.folder, 'broken-lsof')
+                    os.mkdir(folder)
+                    with open(os.path.join(folder, 'lsof'), 'w') as f:
+                        f.write('#!/bin/sh\necho "lsof: synthetic failure %s" >&2\nexit 1\n' % OPAQUE)
+                    os.chmod(os.path.join(folder, 'lsof'), 0o700)
+                    stop['PATH'] = folder + os.pathsep + stop['PATH']
+                p = subprocess.run([DRIVER, 'stop'], input=json.dumps(out), env=stop, capture_output=True, text=True,
+                                   timeout=60)
+                self.assertEqual((p.returncode, json.loads(p.stdout)), (0, dict(out, stopped=True)))
+                self.assertEqual('could not check' in p.stderr, broken, p.stderr)
+                self.assertNotIn(OPAQUE, p.stderr)
+
+    def test_without_proc_as_on_macos_stop_warns_when_lsof_failed_in_a_supervisor_that_has_exited(self):
+        folder, pids = self.harness_handing_off_as_it_exits('claude')
+        broken = os.path.join(self.folder, 'broken-lsof')
+        os.mkdir(broken)
+        with open(os.path.join(broken, 'lsof'), 'w') as f:
+            f.write('#!/bin/sh\necho "lsof: synthetic failure %s" >&2\nexit 1\n' % OPAQUE)
+        os.chmod(os.path.join(broken, 'lsof'), 0o700)
+        macos = dict(self.env, PATH=os.pathsep.join((broken, folder, NO_PROC, self.env['PATH'])),
+                     NO_PROC_PYTHON=sys.executable)
+        code, out = self.start(env=macos)
+        self.assertEqual(code, 0, out)
+        self.handed_off(pids)
+        with open(os.path.join(self.env['OPENWIZ_LOCAL_STATE'], out['run'] + '.json')) as f:
+            supervisor = json.load(f)['turns'][0]['supervisor']
+        self.until(lambda: not alive(supervisor))
+        p = subprocess.run([DRIVER, 'stop'], input=json.dumps(out), env=macos, capture_output=True, text=True, timeout=60)
+        self.assertEqual((p.returncode, json.loads(p.stdout)), (0, dict(out, stopped=True)))
+        self.assertEqual([l for l in p.stderr.splitlines() if 'could not check' in l], [NO_LSOF], p.stderr)
+        self.assertNotIn(OPAQUE, p.stderr)
 
     def asked_ps_for_environments(self, calls):
         with open(calls) as f:
