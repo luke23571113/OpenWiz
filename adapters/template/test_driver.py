@@ -16,8 +16,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DRIVER = os.path.join(HERE, 'driver')
 NO_PROC = os.path.join(HERE, '..', '..', 'kernel', 'driver-kit', 'fixtures', 'no-proc')
 REPO = os.path.realpath(os.path.join(HERE, '..', '..'))
-HARNESSES = ('claude', 'claude-code', 'codex', 'gemini', 'opencode', 'openclaw', 'cursor-agent', 'amp', 'aider',
-             'goose', 'pi')
+sys.path.insert(0, os.path.join(REPO, 'kernel', 'driver-kit'))
+from stubs import stub_path
+sys.path.pop(0)
+
 TOOLS = ('sh', 'ps', 'lsof', 'awk', 'sleep', 'dirname')
 START = {'repository': 'example/site', 'ticket': 7, 'skill': 'build-ticket', 'harness': 'fake-harness',
          'model': 'Synthetic 1'}
@@ -74,16 +76,22 @@ def pinned_path(folder, *fixtures):
         if shutil.which(name):
             os.symlink(shutil.which(name), os.path.join(tools, name))
     os.symlink(sys.executable, os.path.join(tools, 'python3'))
-    return no_real_harness(os.pathsep.join(fixtures + (tools,)))
+    guarded = stub_path(path=tools)
+    stub_dir = guarded.split(os.pathsep, 1)[0]
+    return os.pathsep.join((*fixtures, guarded)), stub_dir
 
 
-def no_real_harness(path):
-    for name in HARNESSES:
+def no_real_harness(path, stub_dir):
+    if stub_dir not in path.split(os.pathsep):
+        raise AssertionError('the shared stub directory is missing from PATH')
+    stub_dir = os.path.realpath(stub_dir)
+    for name in os.listdir(stub_dir):
         found = shutil.which(name, path=path)
-        if found and not os.path.realpath(found).startswith(REPO + os.sep):
-            raise AssertionError('%s on the PATH is %s, outside the fixtures: a test could launch a real harness'
-                                 % (name, found))
-    return path
+        if found:
+            resolved = os.path.realpath(found)
+            if not (os.path.dirname(resolved) == stub_dir or resolved.startswith(REPO + os.sep)):
+                raise AssertionError('%s on PATH is outside the fixtures and stubs: a test could launch a real harness'
+                                     % name)
 
 
 def alive(pid):
@@ -112,9 +120,11 @@ class Template(unittest.TestCase):
         self.folder = tempfile.mkdtemp()
         self.mark = secrets.token_hex(8)
         self.turns, self.hold = os.path.join(self.folder, 'turns'), os.path.join(self.folder, 'hold')
+        path, self.stub_dir = pinned_path(self.folder, os.path.join(HERE, 'fixtures'))
+        self.addCleanup(shutil.rmtree, self.stub_dir)
+        no_real_harness(path, self.stub_dir)
         self.env = dict(os.environ, KIT_TEST=self.mark, FAKE_TURNS=self.turns, FAKE_HOLD=self.hold,
-                        OPENWIZ_TEMPLATE_STATE=os.path.join(self.folder, 'state'),
-                        PATH=pinned_path(self.folder, os.path.join(HERE, 'fixtures')))
+                        OPENWIZ_TEMPLATE_STATE=os.path.join(self.folder, 'state'), PATH=path)
 
     def tearDown(self):
         os.chmod(self.folder, 0o700)
@@ -155,7 +165,7 @@ class Template(unittest.TestCase):
 
     def call(self, cmd, request, driver=DRIVER, **env):
         env = dict(self.env, **env)
-        no_real_harness(env['PATH'])
+        no_real_harness(env['PATH'], self.stub_dir)
         p = subprocess.run([driver, cmd], input=json.dumps(request), env=env, capture_output=True, text=True,
                            timeout=60)
         return p.returncode, json.loads(p.stdout)
@@ -190,7 +200,7 @@ class Template(unittest.TestCase):
             self.setUp()
         finally:
             os.environ['PATH'] = old
-        self.assertIsNone(shutil.which('claude', path=self.env['PATH']), 'the PATH reaches a real claude')
+        self.assertEqual(shutil.which('claude', path=self.env['PATH']), os.path.join(self.stub_dir, 'claude'))
         self.assertEqual(shutil.which('fake-harness', path=self.env['PATH']),
                          os.path.join(HERE, 'fixtures', 'fake-harness'))
         with self.assertRaisesRegex(AssertionError, 'could launch a real harness'):
