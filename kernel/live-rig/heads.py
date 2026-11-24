@@ -73,7 +73,7 @@ def load_tickets(path):
 
 def git(*args, cwd=None):
     # SECURITY: replace refs are ignored, so a checkout can never show another commit's tree under the head's name.
-    env = dict(os.environ, GIT_NO_REPLACE_OBJECTS='1', GIT_TERMINAL_PROMPT='0')
+    env = dict(stored_login_env(), GIT_NO_REPLACE_OBJECTS='1', GIT_TERMINAL_PROMPT='0')
     try:
         p = subprocess.run(['git', '-C', cwd or ROOT] + list(args), stdin=subprocess.DEVNULL, capture_output=True,
                            text=True, timeout=600, env=env)
@@ -93,7 +93,8 @@ def record_authors():
 
 def stored_login_env():
     # SECURITY: every gh call, the kit's included, goes as the person's stored github.com login, never an override.
-    return dict({k: v for k, v in os.environ.items() if k not in GH_OVERRIDES}, GH_HOST='github.com')
+    # SECURITY: names are filtered before any value is read, so a blocked override's value never enters this process.
+    return dict({k: os.environ[k] for k in list(os.environ) if k not in GH_OVERRIDES}, GH_HOST='github.com')
 
 
 def gh(args, send=None):
@@ -256,7 +257,7 @@ class Session:
             self.folder = tempfile.mkdtemp(dir=self.args.out, prefix='wizmarket-')
         p = subprocess.run([sys.executable, '-I', os.path.join(HERE, 'receipt.py'), record_path, '--listing',
                             ticket['listing'], '--run-by', self.run_by(), '-o', self.folder],
-                           stdin=subprocess.DEVNULL, capture_output=True, text=True)
+                           stdin=subprocess.DEVNULL, capture_output=True, text=True, env=stored_login_env())
         if p.returncode != 0:
             why = (p.stderr.strip().splitlines() or ['exit %d' % p.returncode])[-1]
             self.refuse(host, 'no receipt: ' + why)
