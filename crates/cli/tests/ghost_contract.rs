@@ -5,9 +5,9 @@
 #[path = "../../../tests/support/schema.rs"]
 mod schema;
 
+use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use serde_json::{Value, json};
 
@@ -304,47 +304,37 @@ fn schema_rejects_malformed_samples() {
 
 #[test]
 fn cli_ghost_stubs_refuse_with_stable_exit_and_message() {
-    let bin = env!("CARGO_BIN_EXE_openwiz");
+    let run_ghost = |args: &[&str]| -> (i32, String, String) {
+        let os_args: Vec<OsString> = args.iter().map(OsString::from).collect();
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let code = openwiz_cli::ghost::run(&os_args, &mut out, &mut err);
+        (
+            code,
+            String::from_utf8_lossy(&out).into_owned(),
+            String::from_utf8_lossy(&err).into_owned(),
+        )
+    };
 
     for sub in ["serve", "--stdio", "pair", "bench", "forget"] {
-        let out = Command::new(bin)
-            .args(["ghost", sub])
-            .output()
-            .expect("run openwiz ghost");
-        assert_eq!(
-            out.status.code(),
-            Some(5),
-            "ghost {sub} should exit 5, stderr={}",
-            String::from_utf8_lossy(&out.stderr)
-        );
-        let stderr = String::from_utf8_lossy(&out.stderr);
+        let (code, stdout, stderr) = run_ghost(&[sub]);
+        assert_eq!(code, 5, "ghost {sub} should exit 5, stderr={stderr}");
         assert!(
             stderr.contains("not built yet") && stderr.contains(sub),
             "ghost {sub} stderr should mention not built yet and {sub}: {stderr}"
         );
         assert!(
-            out.stdout.is_empty(),
+            stdout.is_empty(),
             "ghost {sub} stdout should be empty in text mode"
         );
     }
 
-    let help = Command::new(bin)
-        .args(["ghost", "--help"])
-        .output()
-        .expect("run openwiz ghost --help");
-    assert_eq!(help.status.code(), Some(0));
-    let stdout = String::from_utf8_lossy(&help.stdout);
+    let (code, stdout, _stderr) = run_ghost(&["--help"]);
+    assert_eq!(code, 0);
     for sub in ["serve", "--stdio", "pair", "bench", "forget"] {
         assert!(stdout.contains(sub), "ghost --help missing {sub}: {stdout}");
     }
 
-    let bad = Command::new(bin)
-        .args(["ghost", "nope"])
-        .output()
-        .expect("run openwiz ghost nope");
-    assert_eq!(
-        bad.status.code(),
-        Some(2),
-        "unknown ghost subcommand should exit 2"
-    );
+    let (code, _stdout, _stderr) = run_ghost(&["nope"]);
+    assert_eq!(code, 2, "unknown ghost subcommand should exit 2");
 }
