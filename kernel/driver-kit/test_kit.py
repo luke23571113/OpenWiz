@@ -669,6 +669,96 @@ class Kit(unittest.TestCase):
                                    timeout=60)
                 self.assertEqual((p.returncode == 0), valid, p.stdout)
 
+    def test_key_check_nested_probe_uses_synthetic_repo_and_model(self):
+        kit = module(os.path.join(HERE, 'kit.py'))
+        driver = os.path.join(FIXTURES, 'key-host-probe', 'driver')
+        cases = [('outer repo differs', 'other/throwaway', 'Synthetic 1'),
+                 ('outer model differs', 'example/site', 'Other Model 2')]
+        for label, repo, model in cases:
+            with self.subTest(label):
+                self.tearDown()
+                self.setUp()
+                answers = [
+                    {'method': 'GET', 'path': '/v1/repositories', 'status': 200, 'body': {'repository': repo}},
+                    {'method': 'GET', 'path': '/v1/models', 'status': 200, 'body': {'model': model}},
+                ]
+                host = kit.FakeHost(answers=answers, test_key=KEY)
+                self.addCleanup(host.close)
+                env = dict(self.env, DEVIN_API_KEY=KEY, OPENWIZ_HOSTKEY_TEST_ORIGIN=host.origin)
+                no_real_harness(env['PATH'])
+                p = subprocess.run([sys.executable, '-I', os.path.join(HERE, 'kit.py'), '--driver', driver,
+                                    '--repo', repo, '--ticket', '7', '--harness', 'fake-harness',
+                                    '--model', model, '--tracker', self.env['KIT_TRACKER'], '--wait', '8'],
+                                   env=env, capture_output=True, text=True, timeout=120,
+                                   cwd=os.path.join(HERE, '..', '..'))
+                self.assertEqual((p.returncode, p.stdout.splitlines()), (0, PASS[:4] + [KEY_PASS]), p.stderr)
+                self.assertNotIn('kit-canary-', p.stdout + p.stderr)
+                self.assertNotIn(KEY, p.stdout + p.stderr)
+
+    def test_key_host_fixture_echoes_request_uuid_on_create(self):
+        kit = module(os.path.join(HERE, 'kit.py'))
+        driver = os.path.join(FIXTURES, 'key-host-echo', 'driver')
+        answers = [{'method': 'POST', 'path': '/v1/runs/[^/]+/start', 'status': 200,
+                    'body': {'id': '{{request.id}}'}}]
+        host = kit.FakeHost(answers=answers, test_key=KEY)
+        self.addCleanup(host.close)
+        code, out, err = self.kit(driver, DEVIN_API_KEY=KEY, OPENWIZ_HOSTKEY_TEST_ORIGIN=host.origin)
+        self.assertEqual((code, out), (0, PASS[:4] + [KEY_PASS]), err)
+        self.assertNotIn('kit-canary-', '\n'.join(out) + err)
+        self.assertNotIn(KEY, '\n'.join(out) + err)
+
+    def test_malformed_echo_placeholder_in_kit_host_json_is_refused(self):
+        kit = module(os.path.join(HERE, 'kit.py'))
+        bad_dir = os.path.join(self.folder, 'bad-echo')
+        os.makedirs(os.path.join(bad_dir, 'fixtures'))
+        shutil.copy(os.path.join(FIXTURES, 'key-host', 'README.md'), os.path.join(bad_dir, 'README.md'))
+        driver = os.path.join(bad_dir, 'driver')
+        with open(driver, 'w') as f:
+            f.write('#!%s\nimport importlib.machinery, importlib.util, sys\nsys.dont_write_bytecode = True\n'
+                    's = importlib.util.spec_from_loader("kh", importlib.machinery.SourceFileLoader("kh", %r))\n'
+                    'm = importlib.util.module_from_spec(s)\ns.loader.exec_module(m)\nm.t.main()\n'
+                    % (sys.executable, KEY_HOST))
+        os.chmod(driver, 0o700)
+        with open(os.path.join(bad_dir, 'fixtures', 'kit-host.json'), 'w') as f:
+            json.dump({'answers': [{'method': 'POST', 'path': '/v1/runs/[^/]+/start', 'status': 200,
+                                    'body': {'id': '{{other.id}}'}}]}, f)
+        host = kit.FakeHost(test_key=KEY)
+        self.addCleanup(host.close)
+        code, out, err = self.kit(driver, DEVIN_API_KEY=KEY, OPENWIZ_HOSTKEY_TEST_ORIGIN=host.origin)
+        self.assertEqual(code, 2, '\n'.join(out) + err)
+        self.assertIn("cannot read the driver's fixtures/kit-host.json:", err)
+        self.assertIn('malformed echo placeholder', err)
+        malformed = [
+            {'id': '{{}}'}, {'id': '{{request}}'}, {'id': '{{request.}}'}, {'id': '{{request..id}}'},
+            {'id': '{{other.id}}'}, {'id': '{{start}}'}, {'id': '{{start.unknown}}'}, {'id': '{{start.model.sub}}'},
+            {'id': '{{request.id'}, {'id': 'request.id}}'}, {'id': 'prefix-{{request.id}}'},
+            {'id': '{{request.id!}}'}, {'{{request.id}}': 'value'}, [{'nested': '{{request.1bad}}'}],
+        ]
+        for body in malformed:
+            with self.subTest(body=body):
+                with self.assertRaisesRegex(ValueError, 'malformed echo placeholder'):
+                    kit.FakeHost(answers=[{'method': 'POST', 'path': '/v1/runs', 'status': 200, 'body': body}])
+
+    def test_echo_placeholder_nested_and_fails_closed_when_missing(self):
+        import urllib.error
+        import urllib.request
+        kit = module(os.path.join(HERE, 'kit.py'))
+        answers = [{'method': 'POST', 'path': '/v1/runs', 'status': 200,
+                    'body': {'id': '{{request.meta.id}}', 'ticket': '{{request.ticket}}'}}]
+        host = kit.FakeHost(answers=answers)
+        self.addCleanup(host.close)
+        for bad in (b'{"meta": {}, "ticket": 7}', b'{"meta": "scalar", "ticket": 7}', b'[1, 2]', b'not-json', b''):
+            with self.subTest(bad=bad):
+                req = urllib.request.Request(host.origin + '/v1/runs', data=bad, method='POST')
+                with self.assertRaises(urllib.error.HTTPError) as ctx:
+                    urllib.request.urlopen(req, timeout=10)
+                self.assertEqual(ctx.exception.code, 400)
+        payload = json.dumps({'meta': {'id': '{{request.ticket}}'}, 'ticket': 7}).encode()
+        req = urllib.request.Request(host.origin + '/v1/runs', data=payload, method='POST')
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            self.assertEqual(resp.status, 200)
+            self.assertEqual(json.loads(resp.read().decode()), {'id': '{{request.ticket}}', 'ticket': 7})
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
